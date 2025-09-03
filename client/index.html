@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>WebRTC Call</title>
+  </head>
+  <body>
+    <h2>Ваш ID: <span id="myId">-</span></h2>
+    <input id="targetId" placeholder="Введите ID собеседника" />
+    <button id="callBtn">📞 Call</button>
+
+    <h3>Видео</h3>
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
