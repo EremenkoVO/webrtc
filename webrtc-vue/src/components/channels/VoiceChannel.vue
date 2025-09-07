@@ -1,15 +1,9 @@
 <template>
   <div class="voice-channel">
-    <VideoGrid
-      :participants="participants || []"
-      :is-in-call="isInCall"
-      @toggle-fullscreen="handleToggleFullscreen"
-    />
+    <VideoGrid :participants="participants" :is-in-call="isInCall" />
 
     <VideoControls
       :is-in-call="isInCall"
-      :is-audio-enabled="isAudioEnabled"
-      :is-video-enabled="isVideoEnabled"
       @disconnect="handleDisconnect"
       @toggle-audio="handleToggleAudio"
       @toggle-video="handleToggleVideo"
@@ -20,16 +14,15 @@
 <script setup lang="ts">
 import { useMedia } from '../../composables/useMedia';
 import type { Participant } from '../../types';
-import VideoGrid from '../video/VideoGrid.vue';
 import VideoControls from '../video/VideoControls.vue';
+import VideoGrid from '../video/VideoGrid.vue';
 
 interface Props {
-  participants?: Participant[];
+  participants: Participant[];
   isInCall?: boolean;
 }
 
 withDefaults(defineProps<Props>(), {
-  participants: () => [],
   isInCall: false,
 });
 
@@ -38,20 +31,14 @@ interface Emits {
   (e: 'disconnect-call'): void;
   (e: 'toggle-audio'): void;
   (e: 'toggle-video'): void;
-  (e: 'toggle-fullscreen', userId: number | null): void;
+  (e: 'toggle-fullscreen', userId: number): void;
 }
 
 const emit = defineEmits<Emits>();
 
-const {
-  isAudioEnabled,
-  isVideoEnabled,
-  toggleAudio,
-  toggleVideo,
-  setFullscreenUser,
-} = useMedia();
+const { toggleAudio, toggleVideo, setFullscreenUser } = useMedia();
 
-const handleDisconnect = () => {
+const handleDisconnect = async () => {
   console.log('VoiceChannel: Disconnect requested');
   emit('disconnect-call');
 };
@@ -68,7 +55,7 @@ const handleToggleVideo = () => {
   emit('toggle-video');
 };
 
-const handleToggleFullscreen = (userId: number | null) => {
+const handleToggleFullscreen = (userId: number) => {
   console.log('VoiceChannel: Toggle fullscreen for user', userId);
   setFullscreenUser(userId);
   emit('toggle-fullscreen', userId);

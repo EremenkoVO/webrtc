@@ -32,19 +32,42 @@
         <i :class="isVideoEnabled ? 'fas fa-video' : 'fas fa-video-slash'"></i>
       </button>
 
-      <button class="control-btn" title="Screen Share">
-        <i class="fas fa-desktop"></i>
+      <button
+        class="control-btn settings-btn"
+        @click="showDeviceSettings = true"
+        title="Audio/Video Settings"
+      >
+        <i class="fas fa-cog"></i>
       </button>
+
+      <!-- <button class="control-btn" title="Screen Share">
+        <i class="fas fa-desktop"></i>
+      </button> -->
+    </div>
+
+    <!-- Device Settings Modal -->
+    <div
+      v-if="showDeviceSettings"
+      class="modal-overlay"
+      @click.self="showDeviceSettings = false"
+    >
+      <DeviceSelector @close="showDeviceSettings = false" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue';
+import { useMediaStore } from '../../stores/media';
+import DeviceSelector from '../settings/DeviceSelector.vue';
+
 interface Props {
-  isInCall: boolean;
-  isAudioEnabled: boolean;
-  isVideoEnabled: boolean;
+  isInCall?: boolean;
 }
+
+withDefaults(defineProps<Props>(), {
+  isInCall: false,
+});
 
 interface Emits {
   (e: 'disconnect'): void;
@@ -52,8 +75,14 @@ interface Emits {
   (e: 'toggle-video'): void;
 }
 
-defineProps<Props>();
 defineEmits<Emits>();
+
+const media = useMediaStore();
+
+const showDeviceSettings = ref<boolean>(false);
+
+const isVideoEnabled = computed(() => media.isVideoEnabled);
+const isAudioEnabled = computed(() => media.isAudioEnabled);
 </script>
 
 <style scoped>
@@ -86,6 +115,7 @@ defineEmits<Emits>();
   justify-content: center;
   transition: all 0.2s;
   font-size: 16px;
+  position: relative;
 }
 
 .control-btn:hover:not(:disabled) {
@@ -102,12 +132,38 @@ defineEmits<Emits>();
   background: #5865f2;
 }
 
+.control-btn.active:hover:not(:disabled) {
+  background: #4752c4;
+}
+
 .control-btn.danger {
   background: #ed4245;
 }
 
 .control-btn.danger:hover:not(:disabled) {
   background: #c03537;
+}
+
+.control-btn.settings-btn {
+  background: #5865f2;
+}
+
+.control-btn.settings-btn:hover:not(:disabled) {
+  background: #4752c4;
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
 }
 
 @media (max-width: 768px) {

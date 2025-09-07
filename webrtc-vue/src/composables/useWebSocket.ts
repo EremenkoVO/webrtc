@@ -50,11 +50,12 @@ export const useWebSocket = () => {
       ],
     });
 
-    // Add local stream tracks
+    // Add local stream tracks IMMEDIATELY when creating connection
     const localStream = mediaStore.localStream;
     if (localStream) {
-      console.log('Adding local tracks to peer connection');
+      console.log('Adding local tracks to peer connection immediately');
       localStream.getTracks().forEach((track) => {
+        console.log('Adding track:', track.kind);
         pc.addTrack(track, localStream);
       });
     }
@@ -74,22 +75,31 @@ export const useWebSocket = () => {
     // Handle remote stream
     pc.ontrack = (event) => {
       console.log('Received remote track from user:', remoteUserId);
+      console.log('Track kind:', event.track.kind);
+      console.log('Stream count:', event.streams.length);
+
       if (event.streams?.[0]) {
         const remoteStream = event.streams[0];
+        console.log('Remote stream tracks:', remoteStream.getTracks().length);
+
         remoteStreams[remoteUserId] = remoteStream;
         mediaStore.setRemoteStream(remoteUserId, remoteStream);
         console.log('Remote stream set for user:', remoteUserId);
 
-        // Добавляем участника в список, если его там нет
-        const participantExists = usersStore.callParticipants.some(
-          (p) => p.userId === remoteUserId,
-        );
-        if (!participantExists) {
-          usersStore.addCallParticipant({
-            userId: remoteUserId,
-            username: `User ${remoteUserId}`, // Будет обновлено позже
-          });
-        }
+        // Убедимся, что участник добавлен в список
+        setTimeout(() => {
+          const participantExists = usersStore.callParticipants.some(
+            (p) => p.userId === remoteUserId,
+          );
+          if (!participantExists) {
+            usersStore.addCallParticipant({
+              userId: remoteUserId,
+              username:
+                usersStore.onlineUsers.find((u) => u.userId === remoteUserId)
+                  ?.username || `User ${remoteUserId}`,
+            });
+          }
+        }, 100);
       }
     };
 
@@ -98,6 +108,9 @@ export const useWebSocket = () => {
       console.log(`Connection state for ${remoteUserId}:`, pc.connectionState);
       if (pc.connectionState === 'connected') {
         console.log('Peer connection established with user:', remoteUserId);
+      } else if (pc.connectionState === 'failed') {
+        console.error('Peer connection failed with user:', remoteUserId);
+        closePeerConnection(remoteUserId);
       }
     };
 
@@ -107,6 +120,9 @@ export const useWebSocket = () => {
         `ICE connection state for ${remoteUserId}:`,
         pc.iceConnectionState,
       );
+      if (pc.iceConnectionState === 'failed') {
+        console.error('ICE connection failed with user:', remoteUserId);
+      }
     };
 
     peerConnections[remoteUserId] = pc;
@@ -121,6 +137,13 @@ export const useWebSocket = () => {
 
     try {
       console.log('Starting call...');
+      // Убедимся, что предыдущие ресурсы очищены
+      if (usersStore.isInCall) {
+        disconnectCall();
+        // Небольшая задержка для полной очистки
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
       usersStore.setInCall(true);
       usersStore.clearCallParticipants();
 
@@ -130,15 +153,61 @@ export const useWebSocket = () => {
         username: authStore.user.username,
       });
 
-      // Get local media stream
+      // Get local media stream - теперь с правильным выбором устройств
       console.log('Requesting local media stream...');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: false,
-        audio: true,
-      });
+      let stream: MediaStream;
+
+      try {
+        // Получаем список устройств
+        const audioDevices = await getAudioDevices();
+        const videoDevices = await getVideoDevices();
+
+        // Используем конкретные устройства или устройства по умолчанию
+        const audioConstraints: MediaTrackConstraints | boolean =
+          audioDevices.length > 0
+            ? { deviceId: { exact: audioDevices[0].deviceId } }
+            : true;
+
+        const videoConstraints: MediaTrackConstraints | boolean =
+          videoDevices.length > 0
+            ? {
+                deviceId: { exact: videoDevices[0].deviceId },
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+              }
+            : { width: { ideal: 640 }, height: { ideal: 480 } };
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: audioConstraints,
+          video: videoConstraints,
+        });
+
+        console.log('Media stream acquired with separate audio/video devices');
+      } catch (error) {
+        console.warn(
+          'Failed to get media stream with specific devices, trying defaults:',
+          error,
+        );
+        try {
+          // Fallback на стандартные устройства
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: true,
+          });
+          console.log('Default media stream acquired');
+        } catch (fallbackError) {
+          console.error('Failed to get any media stream:', fallbackError);
+          throw new Error(
+            'Failed to access camera/microphone. Please check your device permissions.',
+          );
+        }
+      }
 
       mediaStore.setLocalStream(stream);
-      console.log('Local stream acquired');
+      console.log(
+        'Local stream acquired with tracks:',
+        stream.getTracks().length,
+      );
 
       // Уведомляем других пользователей о входе в звонок
       wsService.send({
@@ -148,11 +217,9 @@ export const useWebSocket = () => {
       });
     } catch (error) {
       console.error('Failed to start call:', error);
-      usersStore.setInCall(false);
-      mediaStore.clearStreams();
-      throw new Error(
-        'Failed to access camera/microphone: ' + (error as Error).message,
-      );
+      // Убедимся, что все ресурсы очищены при ошибке
+      disconnectCall();
+      throw error;
     }
   };
 
@@ -161,7 +228,26 @@ export const useWebSocket = () => {
       console.log('Creating offer for user:', remoteUserId);
 
       const pc = createPeerConnection(remoteUserId);
-      const offer = await pc.createOffer();
+
+      // Убеждаемся, что локальный стрим добавлен
+      const localStream = mediaStore.localStream;
+      if (localStream) {
+        localStream.getTracks().forEach((track) => {
+          // Проверяем, не добавлен ли уже этот трек
+          const senderExists = pc
+            .getSenders()
+            .some((sender) => sender.track && sender.track.id === track.id);
+          if (!senderExists) {
+            console.log('Adding track to peer connection:', track.kind);
+            pc.addTrack(track, localStream);
+          }
+        });
+      }
+
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      });
       await pc.setLocalDescription(offer);
 
       if (pc.localDescription) {

@@ -30,6 +30,7 @@ export const handleWebSocketMessage = (
         if (data.to && clients.has(data.to)) {
           const targetClient = clients.get(data.to);
           if (targetClient && targetClient.readyState === WebSocket.OPEN) {
+            console.dir(ws.username);
             targetClient.send(
               JSON.stringify({
                 ...data,

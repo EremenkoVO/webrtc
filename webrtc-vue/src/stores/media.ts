@@ -18,6 +18,7 @@ export const useMediaStore = defineStore('media', () => {
       audioTracks.forEach((track) => {
         track.enabled = !track.enabled;
       });
+      console.log(!isAudioEnabled.value);
       isAudioEnabled.value = !isAudioEnabled.value;
     }
   };
