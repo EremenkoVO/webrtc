@@ -1,13 +1,13 @@
 <template>
-  <CallView />
+  <div id="app">
+    <router-view />
+  </div>
 </template>
 
-<script lang="ts">
-import { defineComponent } from 'vue';
-import CallView from './components/CallView.vue';
-
-export default defineComponent({
-  name: 'App',
-  components: { CallView },
-});
-</script>
+<style>
+#app {
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+}
+</style>

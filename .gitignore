@@ -1,2 +1,4 @@
 node_modules
+webrtc-vue/node_modules
+server/node_modules
 cert

@@ -1,0 +1,1 @@
+{"version":3,"file":"service.d.ts","sourceRoot":"","sources":["../../channels/service.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,OAAO,EAAE,MAAM,UAAU,CAAC;AAEnC,eAAO,MAAM,cAAc;0BACL,OAAO,EAAE;0BAIP,MAAM,QAAQ,MAAM,GAAG,OAAO,KAAG,OAAO,GAAG,IAAI;+BAe1C,MAAM,KAAG,OAAO;CAkB5C,CAAC"}

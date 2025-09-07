@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(mkdir:*)",
+      "Bash(openssl req:*)",
+      "Bash(npm run build:*)",
+      "Read(/E:\\Projects\\webrtc\\server\\websocket/**)",
+      "Read(/E:\\Projects\\webrtc\\server\\websocket/**)",
+      "Read(/E:\\Projects\\webrtc\\webrtc-vue\\src\\composables/**)",
+      "Read(/E:\\Projects\\webrtc\\webrtc-vue\\src\\composables/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
