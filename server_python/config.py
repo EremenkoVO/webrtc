@@ -12,12 +12,7 @@ class Config:
     JWT_EXPIRES_IN = os.getenv('JWT_EXPIRES_IN', '24h')
 
     # CORS Configuration
-    CORS_ORIGINS = [
-        'http://185.31.166.30:5000',
-        'http://185.31.166.30:8080',
-        'https://localhost:5173',
-        'http://localhost:5173',
-    ]
+    CORS_ORIGINS = '*'
 
     # Database Configuration
     DATABASE_FILENAME = os.getenv('DB_FILENAME', 'database.db')
