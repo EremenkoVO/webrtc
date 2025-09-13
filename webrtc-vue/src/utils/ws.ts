@@ -7,7 +7,7 @@ export class WebSocketClient {
   private ws: WebSocket | null = null;
   private messageHandler: ((msg: SignalMessage) => void) | null = null;
 
-  connect(userId: number, username: string, token: string): void {
+  connect(_userId: number, _username: string, token: string): void {
     this.ws = new WebSocket(`wss://192.168.1.129:8080?token=${token}`);
 
     this.ws.onopen = () => {
