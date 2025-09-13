@@ -10,8 +10,8 @@ export const config = {
   cors: {
     origins: [
       'https://192.168.1.129:5173',
-      'https://176.108.244.60:5173',
-      'http://176.108.244.60:5173',
+      'https://176.108.246.7',
+      'http://176.108.246.7',
       'https://localhost:5173',
       'http://localhost:5173',
     ],

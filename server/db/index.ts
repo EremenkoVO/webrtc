@@ -1,8 +1,8 @@
-import Database from 'better-sqlite3';
+import sqlite3 from 'sqlite3';
 import { config } from '../config/index';
 import { createTables } from './schema';
 
-export const db: Database.Database = new Database(config.database.filename);
+export const db = new sqlite3.Database(config.database.filename);
 
 // Initialize database
 try {
