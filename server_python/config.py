@@ -8,14 +8,13 @@ class Config:
     HOST = os.getenv('HOST', 'localhost')
 
     # JWT Configuration
-    SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here')
+    SECRET_KEY = os.getenv('SECRET_KEY', 'alksjdbflajkug4lta7utio78^T&^tgosjhdbfl,s')
     JWT_EXPIRES_IN = os.getenv('JWT_EXPIRES_IN', '24h')
 
     # CORS Configuration
     CORS_ORIGINS = [
-        'https://192.168.1.129:5173',
-        'https://176.108.246.7',
-        'http://176.108.246.7',
+        'http://185.31.166.30:5000',
+        'http://185.31.166.30:8080',
         'https://localhost:5173',
         'http://localhost:5173',
     ]

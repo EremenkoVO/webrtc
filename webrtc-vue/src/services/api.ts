@@ -1,10 +1,9 @@
 import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import axios from 'axios';
-import setting from '../../settings.json';
 import { useAuthStore } from '../stores/auth';
 
-const HOST = setting.HOST || 'localhost';
-const PORT = setting.PORT || 3000;
+const HOST = '185.31.166.30';
+const PORT = 8080;
 
 class ApiService {
   private api: AxiosInstance;
