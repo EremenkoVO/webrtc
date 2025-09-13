@@ -3,7 +3,7 @@ networks:
 
 services:
   nginx:
-    image: nginx:stable-latest
+    image: nginx:latest
     ports:
       - '8080:80'
     volumes:
