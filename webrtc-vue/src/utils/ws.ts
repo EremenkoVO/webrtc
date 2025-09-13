@@ -1,3 +1,4 @@
+import { config } from '../config';
 import { useAuthStore } from '../stores/auth';
 import { useMediaStore } from '../stores/media';
 import { useUsersStore } from '../stores/users';
@@ -8,7 +9,8 @@ export class WebSocketClient {
   private messageHandler: ((msg: SignalMessage) => void) | null = null;
 
   connect(_userId: number, _username: string, token: string): void {
-    this.ws = new WebSocket(`wss://192.168.1.129:8080?token=${token}`);
+    const wsUrl = config.getWebSocketUrl();
+    this.ws = new WebSocket(`${wsUrl}?token=${token}`);
 
     this.ws.onopen = () => {
       console.log('WebSocket connected');

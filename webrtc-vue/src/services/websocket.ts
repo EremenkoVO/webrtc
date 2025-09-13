@@ -1,3 +1,4 @@
+import { config } from '../config';
 import type { SignalMessage } from '../types';
 
 export class WebSocketService {
@@ -8,7 +9,8 @@ export class WebSocketService {
   private reconnectDelay: number = 1000;
 
   connect(userId: number, username: string, token: string): void {
-    this.ws = new WebSocket(`wss://192.168.1.129:8080?token=${token}`);
+    const wsUrl = config.getWebSocketUrl();
+    this.ws = new WebSocket(`${wsUrl}?token=${token}`);
 
     this.ws.onopen = () => {
       console.log('WebSocket connected');
