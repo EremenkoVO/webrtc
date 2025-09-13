@@ -11,6 +11,8 @@ services:
     depends_on:
       - backend
       - frontend
+    networks:
+      - dev
 
   backend:
     build: ./server
@@ -27,6 +29,6 @@ services:
   frontend:
     build: ./webrtc-vue
     ports:
-      - '8080:80'
+      - '5000:80'
     networks:
       - dev
