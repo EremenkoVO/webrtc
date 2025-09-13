@@ -1,11 +1,8 @@
-FROM node:24-alpine
-
-RUN apk add --no-cache python3 make g++
+FROM node:24-bookworm
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --build-from-source
 RUN npm install
 
 COPY . .
