@@ -14,13 +14,6 @@ services:
     networks:
       - dev
 
-  frontend:
-    build: ./webrtc-vue
-    ports:
-      - '5000:80'
-    networks:
-      - dev
-
   backend:
     build: ./server
     ports:
@@ -30,5 +23,12 @@ services:
     environment:
       - NODE_ENV=development
     command: npm start
+    networks:
+      - dev
+
+  frontend:
+    build: ./webrtc-vue
+    ports:
+      - '5000:80'
     networks:
       - dev
