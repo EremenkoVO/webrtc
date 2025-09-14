@@ -2,15 +2,12 @@ import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import axios from 'axios';
 import { useAuthStore } from '../stores/auth';
 
-const HOST = '185.31.166.30';
-const PORT = 3000;
-
 class ApiService {
   private api: AxiosInstance;
 
   constructor() {
     this.api = axios.create({
-      baseURL: `http://${HOST}:${PORT}/api`,
+      baseURL: `https://localhost:3000/api`,
       timeout: 10000,
       headers: {
         'Content-Type': 'application/json',

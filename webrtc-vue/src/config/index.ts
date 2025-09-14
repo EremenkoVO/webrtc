@@ -5,8 +5,8 @@ export const config = {
     const host = window.location.host;
 
     // In development, use the dev server port
-    if (host.includes('5173')) {
-      return `${protocol}//${host.replace('5173', '3000')}`;
+    if (host.includes('5000')) {
+      return `${protocol}//${host.replace('5000', '3000')}`;
     }
 
     // In production, use the same host (nginx will proxy)
@@ -19,11 +19,11 @@ export const config = {
     const host = window.location.host;
 
     // In development, use the dev server port for API
-    if (host.includes('5173')) {
-      return `${protocol}//${host.replace('5173', '3000')}/api`;
+    if (host.includes('5000')) {
+      return `${protocol}//${host.replace('5000', '3000')}/api`;
     }
 
     // In production, use the same host with /api prefix
     return `${protocol}//${host}/api`;
-  }
+  },
 };
