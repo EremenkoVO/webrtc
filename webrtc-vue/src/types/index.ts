@@ -92,6 +92,8 @@ export interface UserListMessage {
 
 export interface UserJoinedMessage {
   type: 'user_joined';
+  userId: number;
+  username: string;
   user: Participant;
   from?: number;
   to?: number;
