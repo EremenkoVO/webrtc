@@ -31,8 +31,8 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useAuthStore } from '../../stores/auth';
 import { useRouter } from 'vue-router';
+import { useAuthStore } from '../../stores/auth';
 import AuthForm from './AuthForm.vue';
 
 const authStore = useAuthStore();
@@ -49,7 +49,6 @@ const handleSubmit = async (credentials: {
   try {
     if (isLoginMode.value) {
       const result = await authStore.login(credentials);
-      console.log(result);
       if (result.success) {
         router.push('/');
       } else {
@@ -58,7 +57,7 @@ const handleSubmit = async (credentials: {
     } else {
       const result = await authStore.register(credentials);
       if (result.success) {
-        isLoginMode.value = true;
+        router.push('/');
       } else {
         alert(result.message || 'Registration failed');
       }

@@ -45,7 +45,8 @@ async def register(user_data: UserRegister):
         return {
             "success": True,
             "message": "User registered successfully",
-            "userId": user_id
+            "token": create_access_token({"id": user_id, "username": username}),
+            "user": {"id": user_id, "username": username}
         }
     except Exception as e:
         if "UNIQUE constraint failed" in str(e):

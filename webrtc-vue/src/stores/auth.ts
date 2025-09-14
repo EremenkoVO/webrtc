@@ -53,12 +53,18 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
-  const register = async (
-    credentials: RegisterCredentials,
-  ): Promise<boolean> => {
+  const register = async (credentials: RegisterCredentials): Promise<any> => {
     try {
       const response = await authService.register(credentials);
-      return response.success;
+      if (response.success && response.user && response.token) {
+        user.value = response.user;
+        token.value = response.token;
+
+        localStorage.setItem('user', JSON.stringify(response.user));
+        localStorage.setItem('token', response.token);
+
+        return response;
+      }
     } catch (error) {
       console.error('Registration error:', error);
       throw error;
