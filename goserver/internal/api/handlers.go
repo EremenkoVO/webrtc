@@ -10,40 +10,22 @@ func New() *Server {
 	return &Server{}
 }
 
-// Register
-// (POST /api/auth/register)
-func (s *Server) RegisterApiAuthRegisterPost(w http.ResponseWriter, r *http.Request) {}
+// User login
+// (POST /api/v1/auth/login)
+func (s *Server) LoginUser(w http.ResponseWriter, r *http.Request) {}
 
-// Login
-// (POST /api/auth/login)
-func (s *Server) LoginApiAuthLoginPost(w http.ResponseWriter, r *http.Request) {}
+// Logout user
+// (POST /api/v1/auth/logout)
+func (s *Server) LogoutUser(w http.ResponseWriter, r *http.Request) {}
 
-// Get Current User
-// (GET /api/auth/me)
-func (s *Server) GetCurrentUserApiAuthMeGet(w http.ResponseWriter, r *http.Request) {}
+// Refresh access token
+// (POST /api/v1/auth/refresh)
+func (s *Server) RefreshToken(w http.ResponseWriter, r *http.Request) {}
 
-// Get Channels
-// (GET /api/channels/)
-func (s *Server) GetChannelsApiChannelsGet(w http.ResponseWriter, r *http.Request) {}
+// Register new user
+// (POST /api/v1/auth/register)
+func (s *Server) RegisterUser(w http.ResponseWriter, r *http.Request) {}
 
-// Create Channel
-// (POST /api/channels/)
-func (s *Server) CreateChannelApiChannelsPost(w http.ResponseWriter, r *http.Request) {}
-
-// Health Check
-// (GET /api/health)
-func (s *Server) HealthCheckApiHealthGet(w http.ResponseWriter, r *http.Request) {}
-
-// Create Message
-// (POST /api/messages/)
-func (s *Server) CreateMessageApiMessagesPost(w http.ResponseWriter, r *http.Request) {}
-
-// Get Messages
-// (GET /api/messages/channel/{channel_id})
-func (s *Server) GetMessagesApiMessagesChannelChannelIdGet(
-	w http.ResponseWriter,
-	r *http.Request,
-	channelId int,
-	params GetMessagesApiMessagesChannelChannelIdGetParams,
-) {
-}
+// Get current user profile
+// (GET /api/v1/me)
+func (s *Server) GetCurrentUser(w http.ResponseWriter, r *http.Request) {}
