@@ -7,171 +7,114 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-
-	"github.com/oapi-codegen/runtime"
 )
 
 const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
-// ChannelCreate defines model for ChannelCreate.
-type ChannelCreate struct {
-	Name string `json:"name"`
+// Defines values for ErrorResponseCode.
+const (
+	INVALIDCREDENTIALS  ErrorResponseCode = "INVALID_CREDENTIALS"
+	INVALIDREFRESHTOKEN ErrorResponseCode = "INVALID_REFRESH_TOKEN"
+	NOTFOUND            ErrorResponseCode = "NOT_FOUND"
+	SERVERERROR         ErrorResponseCode = "SERVER_ERROR"
+	TOKENEXPIRED        ErrorResponseCode = "TOKEN_EXPIRED"
+	TOOMANYREQUESTS     ErrorResponseCode = "TOO_MANY_REQUESTS"
+	UNAUTHORIZED        ErrorResponseCode = "UNAUTHORIZED"
+	VALIDATIONERROR     ErrorResponseCode = "VALIDATION_ERROR"
+)
+
+// AuthTokens defines model for AuthTokens.
+type AuthTokens struct {
+	AccessToken *string `json:"access_token,omitempty"`
+
+	// ExpiresIn Access token expiration time in seconds
+	ExpiresIn *int `json:"expires_in,omitempty"`
+
+	// RefreshExpiresIn Refresh token expiration time in seconds
+	RefreshExpiresIn *int    `json:"refresh_expires_in,omitempty"`
+	RefreshToken     *string `json:"refresh_token,omitempty"`
 }
 
-// HTTPValidationError defines model for HTTPValidationError.
-type HTTPValidationError struct {
-	Detail *[]ValidationError `json:"detail,omitempty"`
+// ErrorResponse defines model for ErrorResponse.
+type ErrorResponse struct {
+	Code    ErrorResponseCode `json:"code"`
+	Message string            `json:"message"`
 }
 
-// MessageCreate defines model for MessageCreate.
-type MessageCreate struct {
-	ChannelId int    `json:"channel_id"`
-	Content   string `json:"content"`
-}
+// ErrorResponseCode defines model for ErrorResponse.Code.
+type ErrorResponseCode string
 
-// UnauthorizedError Access token is missing or invalid
-type UnauthorizedError = interface{}
-
-// UserLogin defines model for UserLogin.
-type UserLogin struct {
+// LoginRequest defines model for LoginRequest.
+type LoginRequest struct {
 	Password string `json:"password"`
 	Username string `json:"username"`
 }
 
-// UserRegister defines model for UserRegister.
-type UserRegister struct {
+// RefreshRequest defines model for RefreshRequest.
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// RegisterRequest defines model for RegisterRequest.
+type RegisterRequest struct {
 	Password string `json:"password"`
 	Username string `json:"username"`
 }
 
-// ValidationError defines model for ValidationError.
-type ValidationError struct {
-	Loc  []ValidationError_Loc_Item `json:"loc"`
-	Msg  string                     `json:"msg"`
-	Type string                     `json:"type"`
+// UserProfile defines model for UserProfile.
+type UserProfile struct {
+	Id       *string `json:"id,omitempty"`
+	Username *string `json:"username,omitempty"`
 }
 
-// ValidationErrorLoc0 defines model for .
-type ValidationErrorLoc0 = string
+// BadRequestError defines model for BadRequestError.
+type BadRequestError = ErrorResponse
 
-// ValidationErrorLoc1 defines model for .
-type ValidationErrorLoc1 = int
+// ConflictUserError defines model for ConflictUserError.
+type ConflictUserError = ErrorResponse
 
-// ValidationError_Loc_Item defines model for ValidationError.loc.Item.
-type ValidationError_Loc_Item struct {
-	union json.RawMessage
-}
+// NotFoundError defines model for NotFoundError.
+type NotFoundError = ErrorResponse
 
-// GetMessagesApiMessagesChannelChannelIdGetParams defines parameters for GetMessagesApiMessagesChannelChannelIdGet.
-type GetMessagesApiMessagesChannelChannelIdGetParams struct {
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
-}
+// ServerError defines model for ServerError.
+type ServerError = ErrorResponse
 
-// LoginApiAuthLoginPostJSONRequestBody defines body for LoginApiAuthLoginPost for application/json ContentType.
-type LoginApiAuthLoginPostJSONRequestBody = UserLogin
+// UnauthorizedError defines model for UnauthorizedError.
+type UnauthorizedError = ErrorResponse
 
-// RegisterApiAuthRegisterPostJSONRequestBody defines body for RegisterApiAuthRegisterPost for application/json ContentType.
-type RegisterApiAuthRegisterPostJSONRequestBody = UserRegister
+// UnprocessableEntityError defines model for UnprocessableEntityError.
+type UnprocessableEntityError = ErrorResponse
 
-// CreateChannelApiChannelsPostJSONRequestBody defines body for CreateChannelApiChannelsPost for application/json ContentType.
-type CreateChannelApiChannelsPostJSONRequestBody = ChannelCreate
+// LoginUserJSONRequestBody defines body for LoginUser for application/json ContentType.
+type LoginUserJSONRequestBody = LoginRequest
 
-// CreateMessageApiMessagesPostJSONRequestBody defines body for CreateMessageApiMessagesPost for application/json ContentType.
-type CreateMessageApiMessagesPostJSONRequestBody = MessageCreate
+// RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
+type RefreshTokenJSONRequestBody = RefreshRequest
 
-// AsValidationErrorLoc0 returns the union data inside the ValidationError_Loc_Item as a ValidationErrorLoc0
-func (t ValidationError_Loc_Item) AsValidationErrorLoc0() (ValidationErrorLoc0, error) {
-	var body ValidationErrorLoc0
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromValidationErrorLoc0 overwrites any union data inside the ValidationError_Loc_Item as the provided ValidationErrorLoc0
-func (t *ValidationError_Loc_Item) FromValidationErrorLoc0(v ValidationErrorLoc0) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeValidationErrorLoc0 performs a merge with any union data inside the ValidationError_Loc_Item, using the provided ValidationErrorLoc0
-func (t *ValidationError_Loc_Item) MergeValidationErrorLoc0(v ValidationErrorLoc0) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsValidationErrorLoc1 returns the union data inside the ValidationError_Loc_Item as a ValidationErrorLoc1
-func (t ValidationError_Loc_Item) AsValidationErrorLoc1() (ValidationErrorLoc1, error) {
-	var body ValidationErrorLoc1
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromValidationErrorLoc1 overwrites any union data inside the ValidationError_Loc_Item as the provided ValidationErrorLoc1
-func (t *ValidationError_Loc_Item) FromValidationErrorLoc1(v ValidationErrorLoc1) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeValidationErrorLoc1 performs a merge with any union data inside the ValidationError_Loc_Item, using the provided ValidationErrorLoc1
-func (t *ValidationError_Loc_Item) MergeValidationErrorLoc1(v ValidationErrorLoc1) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t ValidationError_Loc_Item) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	return b, err
-}
-
-func (t *ValidationError_Loc_Item) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	return err
-}
+// RegisterUserJSONRequestBody defines body for RegisterUser for application/json ContentType.
+type RegisterUserJSONRequestBody = RegisterRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Login
-	// (POST /api/auth/login)
-	LoginApiAuthLoginPost(w http.ResponseWriter, r *http.Request)
-	// Get Current User
-	// (GET /api/auth/me)
-	GetCurrentUserApiAuthMeGet(w http.ResponseWriter, r *http.Request)
-	// Register
-	// (POST /api/auth/register)
-	RegisterApiAuthRegisterPost(w http.ResponseWriter, r *http.Request)
-	// Get Channels
-	// (GET /api/channels/)
-	GetChannelsApiChannelsGet(w http.ResponseWriter, r *http.Request)
-	// Create Channel
-	// (POST /api/channels/)
-	CreateChannelApiChannelsPost(w http.ResponseWriter, r *http.Request)
-	// Health Check
-	// (GET /api/health)
-	HealthCheckApiHealthGet(w http.ResponseWriter, r *http.Request)
-	// Create Message
-	// (POST /api/messages/)
-	CreateMessageApiMessagesPost(w http.ResponseWriter, r *http.Request)
-	// Get Messages
-	// (GET /api/messages/channel/{channel_id})
-	GetMessagesApiMessagesChannelChannelIdGet(w http.ResponseWriter, r *http.Request, channelId int, params GetMessagesApiMessagesChannelChannelIdGetParams)
+	// User login
+	// (POST /api/v1/auth/login)
+	LoginUser(w http.ResponseWriter, r *http.Request)
+	// Logout user
+	// (POST /api/v1/auth/logout)
+	LogoutUser(w http.ResponseWriter, r *http.Request)
+	// Refresh access token
+	// (POST /api/v1/auth/refresh)
+	RefreshToken(w http.ResponseWriter, r *http.Request)
+	// Register new user
+	// (POST /api/v1/auth/register)
+	RegisterUser(w http.ResponseWriter, r *http.Request)
+	// Get current user profile
+	// (GET /api/v1/me)
+	GetCurrentUser(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -183,11 +126,11 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
-// LoginApiAuthLoginPost operation middleware
-func (siw *ServerInterfaceWrapper) LoginApiAuthLoginPost(w http.ResponseWriter, r *http.Request) {
+// LoginUser operation middleware
+func (siw *ServerInterfaceWrapper) LoginUser(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.LoginApiAuthLoginPost(w, r)
+		siw.Handler.LoginUser(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -197,8 +140,8 @@ func (siw *ServerInterfaceWrapper) LoginApiAuthLoginPost(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
-// GetCurrentUserApiAuthMeGet operation middleware
-func (siw *ServerInterfaceWrapper) GetCurrentUserApiAuthMeGet(w http.ResponseWriter, r *http.Request) {
+// LogoutUser operation middleware
+func (siw *ServerInterfaceWrapper) LogoutUser(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
@@ -207,7 +150,7 @@ func (siw *ServerInterfaceWrapper) GetCurrentUserApiAuthMeGet(w http.ResponseWri
 	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetCurrentUserApiAuthMeGet(w, r)
+		siw.Handler.LogoutUser(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -217,11 +160,11 @@ func (siw *ServerInterfaceWrapper) GetCurrentUserApiAuthMeGet(w http.ResponseWri
 	handler.ServeHTTP(w, r)
 }
 
-// RegisterApiAuthRegisterPost operation middleware
-func (siw *ServerInterfaceWrapper) RegisterApiAuthRegisterPost(w http.ResponseWriter, r *http.Request) {
+// RefreshToken operation middleware
+func (siw *ServerInterfaceWrapper) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RegisterApiAuthRegisterPost(w, r)
+		siw.Handler.RefreshToken(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -231,8 +174,22 @@ func (siw *ServerInterfaceWrapper) RegisterApiAuthRegisterPost(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
-// GetChannelsApiChannelsGet operation middleware
-func (siw *ServerInterfaceWrapper) GetChannelsApiChannelsGet(w http.ResponseWriter, r *http.Request) {
+// RegisterUser operation middleware
+func (siw *ServerInterfaceWrapper) RegisterUser(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCurrentUser operation middleware
+func (siw *ServerInterfaceWrapper) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
@@ -241,103 +198,7 @@ func (siw *ServerInterfaceWrapper) GetChannelsApiChannelsGet(w http.ResponseWrit
 	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetChannelsApiChannelsGet(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateChannelApiChannelsPost operation middleware
-func (siw *ServerInterfaceWrapper) CreateChannelApiChannelsPost(w http.ResponseWriter, r *http.Request) {
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateChannelApiChannelsPost(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// HealthCheckApiHealthGet operation middleware
-func (siw *ServerInterfaceWrapper) HealthCheckApiHealthGet(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.HealthCheckApiHealthGet(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateMessageApiMessagesPost operation middleware
-func (siw *ServerInterfaceWrapper) CreateMessageApiMessagesPost(w http.ResponseWriter, r *http.Request) {
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateMessageApiMessagesPost(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetMessagesApiMessagesChannelChannelIdGet operation middleware
-func (siw *ServerInterfaceWrapper) GetMessagesApiMessagesChannelChannelIdGet(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "channel_id" -------------
-	var channelId int
-
-	err = runtime.BindStyledParameterWithOptions("simple", "channel_id", r.PathValue("channel_id"), &channelId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "channel_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetMessagesApiMessagesChannelChannelIdGetParams
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetMessagesApiMessagesChannelChannelIdGet(w, r, channelId, params)
+		siw.Handler.GetCurrentUser(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -467,14 +328,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc("POST "+options.BaseURL+"/api/auth/login", wrapper.LoginApiAuthLoginPost)
-	m.HandleFunc("GET "+options.BaseURL+"/api/auth/me", wrapper.GetCurrentUserApiAuthMeGet)
-	m.HandleFunc("POST "+options.BaseURL+"/api/auth/register", wrapper.RegisterApiAuthRegisterPost)
-	m.HandleFunc("GET "+options.BaseURL+"/api/channels/", wrapper.GetChannelsApiChannelsGet)
-	m.HandleFunc("POST "+options.BaseURL+"/api/channels/", wrapper.CreateChannelApiChannelsPost)
-	m.HandleFunc("GET "+options.BaseURL+"/api/health", wrapper.HealthCheckApiHealthGet)
-	m.HandleFunc("POST "+options.BaseURL+"/api/messages/", wrapper.CreateMessageApiMessagesPost)
-	m.HandleFunc("GET "+options.BaseURL+"/api/messages/channel/{channel_id}", wrapper.GetMessagesApiMessagesChannelChannelIdGet)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/login", wrapper.LoginUser)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/logout", wrapper.LogoutUser)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/refresh", wrapper.RefreshToken)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/register", wrapper.RegisterUser)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/me", wrapper.GetCurrentUser)
 
 	return m
 }

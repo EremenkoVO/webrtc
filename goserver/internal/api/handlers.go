@@ -4,11 +4,11 @@ import "net/http"
 
 type Server struct{}
 
+var _ ServerInterface = (*Server)(nil)
+
 func New() *Server {
 	return &Server{}
 }
-
-var _ ServerInterface = (*Server)(nil)
 
 // Register
 // (POST /api/auth/register)

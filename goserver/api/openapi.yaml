@@ -4,311 +4,342 @@ info:
   description: Python WebRTC signaling server with WebSocket support
   version: 1.0.0
 paths:
-  /api/auth/register:
+  /api/v1/auth/register:
     post:
-      tags:
-        - auth
-      summary: Register
-      description: Register a new user
-      operationId: register_api_auth_register_post
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UserRegister'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema: {}
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/auth/login:
-    post:
-      tags:
-        - auth
-      summary: Login
-      description: Login user and return JWT token
-      operationId: login_api_auth_login_post
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UserLogin'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema: {}
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/auth/me:
-    get:
-      tags:
-        - auth
-      summary: Get Current User
-      description: Get current user information
-      operationId: get_current_user_api_auth_me_get
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema: {}
-        '401':
-          description: Access token is missing or invalid
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/channels/:
-    get:
-      tags:
-        - channels
-      summary: Get Channels
-      description: Get all channels
-      operationId: get_channels_api_channels__get
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema: {}
-        '401':
-          description: Access token is missing or invalid
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    post:
-      tags:
-        - channels
-      summary: Create Channel
-      description: Create a new channel
-      operationId: create_channel_api_channels__post
-      security:
-        - bearerAuth: []
+      tags: [Auth]
+      summary: Register new user
+      description: |
+        Create a new user account with password, and username.
+
+        **Request body:**
+        ```json
+        {
+          "password": "string",
+          "name": "John Doe"
+        }
+        ```
+
+        **Successful response:**
+        Returns `access_token` and `refresh_token` with expiration times.
+      operationId: registerUser
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ChannelCreate'
+              $ref: '#/components/schemas/RegisterRequest'
       responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema: {}
-        '401':
-          description: Access token is missing or invalid
+        '201':
+          description: User successfully registered
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UnauthorizedError'
+                $ref: '#/components/schemas/AuthTokens'
+              examples:
+                success:
+                  summary: Successful registration
+                  value:
+                    access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    refresh_token: "dGhpc2lzYXJlZnJlc2h0b2tlbg..."
+                    expires_in: 3600
+                    refresh_expires_in: 86400
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '409':
+          $ref: '#/components/responses/ConflictUserError'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/messages/channel/{channel_id}:
-    get:
-      tags:
-        - messages
-      summary: Get Messages
-      description: Get messages for a specific channel
-      operationId: get_messages_api_messages_channel__channel_id__get
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: channel_id
-          in: path
-          required: true
-          schema:
-            type: integer
-            title: Channel Id
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            default: 100
-            title: Limit
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema: {}
-        '401':
-          description: Access token is missing or invalid
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/messages/:
+          $ref: '#/components/responses/UnprocessableEntityError'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /api/v1/auth/login:
     post:
-      tags:
-        - messages
-      summary: Create Message
-      description: Create a new message
-      operationId: create_message_api_messages__post
-      security:
-        - bearerAuth: []
+      tags: [Auth]
+      summary: User login
+      description: |
+        Authenticate user with username and password.
+
+        **Request body:**
+        ```json
+        {
+          "username": "usertest",
+          "password": "string"
+        }
+        ```
+
+        **Successful response:**
+        Returns `access_token` and `refresh_token` with expiration times.
+      operationId: loginUser
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/MessageCreate'
+              $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: Successful Response
+          description: Successful login
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+              examples:
+                success:
+                  summary: Successful login
+                  value:
+                    access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    refresh_token: "dGhpc2lzYXJlZnJlc2h0b2tlbg..."
+                    expires_in: 3600
+                    refresh_expires_in: 86400
+        '400':
+          $ref: '#/components/responses/BadRequestError'
         '401':
-          description: Access token is missing or invalid
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
+          $ref: '#/components/responses/UnauthorizedError'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/health:
-    get:
-      summary: Health Check
-      description: Health check endpoint
-      operationId: health_check_api_health_get
+          $ref: '#/components/responses/UnprocessableEntityError'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      description: |
+        Exchange a valid `refresh_token` for a new `access_token`.
+
+        **Request body:**
+        ```json
+        {
+          "refresh_token": "string"
+        }
+        ```
+
+        **Successful response:**
+        Returns a new `access_token` with expiration time.
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
       responses:
         '200':
-          description: Successful Response
+          description: Successful token refresh
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+              examples:
+                success:
+                  summary: Successful token refresh
+                  value:
+                    access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    refresh_token: "dGhpc2lzYXJlZnJlc2h0b2tlbg..."
+                    expires_in: 3600
+                    refresh_expires_in: 86400
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntityError'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout user
+      description: |
+        Invalidate the current session tokens.
+
+        Requires a valid `Authorization: Bearer <access_token>` header.
+      operationId: logoutUser
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Successfully logged out (no content returned)
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /api/v1/me:
+    get:
+      tags: [User]
+      summary: Get current user profile
+      description: |
+        Retrieve details of the authenticated user.
+
+        Requires a valid `Authorization: Bearer <access_token>` header.
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+              examples:
+                success:
+                  summary: Current user profile
+                  value:
+                    id: "123"
+                    name: "John Doe"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        default:
+          $ref: '#/components/responses/ServerError'
 components:
   securitySchemes:
-    bearerAuth: # arbitrary name for the security scheme
+    bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
   schemas:
-    ChannelCreate:
+    RegisterRequest:
+      type: object
+      required: [password, username]
       properties:
-        name:
+        password:
           type: string
-          title: Name
+          format: password
+          minLength: 6
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+    LoginRequest:
       type: object
-      required:
-        - name
-      title: ChannelCreate
-    HTTPValidationError:
+      required: [username, password]
       properties:
-        detail:
-          items:
-            $ref: '#/components/schemas/ValidationError'
-          type: array
-          title: Detail
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+    RefreshRequest:
       type: object
-      title: HTTPValidationError
-    MessageCreate:
+      required: [refresh_token]
       properties:
-        channel_id:
+        refresh_token:
+          type: string
+    AuthTokens:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
           type: integer
-          title: Channel Id
-        content:
-          type: string
-          title: Content
+          description: Access token expiration time in seconds
+        refresh_expires_in:
+          type: integer
+          description: Refresh token expiration time in seconds
+    UserProfile:
       type: object
-      required:
-        - channel_id
-        - content
-      title: MessageCreate
-    UserLogin:
       properties:
+        id:
+          type: string
         username:
           type: string
-          title: Username
-        password:
-          type: string
-          title: Password
+    ErrorResponse:
       type: object
-      required:
-        - username
-        - password
-      title: UserLogin
-    UserRegister:
       properties:
-        username:
+        code:
           type: string
-          title: Username
-        password:
+          enum:
+            - INVALID_CREDENTIALS
+            - TOKEN_EXPIRED
+            - INVALID_REFRESH_TOKEN
+            - UNAUTHORIZED
+            - VALIDATION_ERROR
+            - NOT_FOUND
+            - TOO_MANY_REQUESTS
+            - SERVER_ERROR
+        message:
           type: string
-          title: Password
-      type: object
-      required:
-        - username
-        - password
-      title: UserRegister
-    ValidationError:
-      properties:
-        loc:
-          items:
-            anyOf:
-              - type: string
-              - type: integer
-          type: array
-          title: Location
-        msg:
-          type: string
-          title: Message
-        type:
-          type: string
-          title: Error Type
-      type: object
-      required:
-        - loc
-        - msg
-        - type
-      title: ValidationError
+      required: [code, message]
+  responses:
+    BadRequestError:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            badRequest:
+              value:
+                code: "VALIDATION_ERROR"
+                message: "Invalid input data."
+    ConflictUserError:
+      description: Conflict - User already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            conflict:
+              value:
+                code: "USER_EXISTS"
+                message: "User with this username already exists"
     UnauthorizedError:
-      description: Access token is missing or invalid
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthorized:
+              value:
+                code: "UNAUTHORIZED"
+                message: "Missing or invalid access token."
+    UnprocessableEntityError:
+      description: Unprocessable Entity
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unprocessable:
+              value:
+                code: "VALIDATION_ERROR"
+                message: "Unable to process the request due to semantic errors."
+    NotFoundError:
+      description: Resource Not Found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            notFound:
+              value:
+                code: "NOT_FOUND"
+                message: "The requested resource does not exist."
+    TooManyRequestsError:
+      description: Too Many Requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            tooMany:
+              value:
+                code: "TOO_MANY_REQUESTS"
+                message: "You have exceeded the allowed number of requests."
+    ServerError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            serverError:
+              value:
+                code: "SERVER_ERROR"
+                message: "An unexpected error occurred."
