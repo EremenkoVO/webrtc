@@ -2,14 +2,6 @@ package api
 
 import "net/http"
 
-type Server struct{}
-
-var _ ServerInterface = (*Server)(nil)
-
-func New() *Server {
-	return &Server{}
-}
-
 // User login
 // (POST /api/v1/auth/login)
 func (s *Server) LoginUser(w http.ResponseWriter, r *http.Request) {}
