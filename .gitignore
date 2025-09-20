@@ -3,3 +3,5 @@ webrtc-vue/node_modules
 server/node_modules
 cert
 .claude
+**/__pycache__/
+*.pyc
