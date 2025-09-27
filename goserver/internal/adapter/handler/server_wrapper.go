@@ -132,8 +132,8 @@ func convertToUserProfile(profile *domain.User) api.UserProfile {
 }
 
 func WriteJSONResponse[T any](w http.ResponseWriter, status int, resp T) {
-	w.WriteHeader(status)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
 	body, _ := json.Marshal(resp)
 	_, _ = w.Write(body)
 }
