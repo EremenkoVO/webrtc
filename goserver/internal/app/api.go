@@ -61,12 +61,14 @@ func (app *API) init(ctx context.Context) error {
 
 	// Setup HTTP server with routes
 	apiHandler := api.HandlerWithOptions(serverWrapper, api.StdHTTPServerOptions{
-		Middlewares: []api.MiddlewareFunc{handler.LoggingMiddleware, handler.CORS, authenticator.Middleware},
+		Middlewares: []api.MiddlewareFunc{authenticator.Middleware},
 	})
+
+	finalHandler := handler.LoggingMiddleware(handler.CORS(apiHandler))
 
 	app.httpServer = &http.Server{
 		Addr:    app.config.ListenAddr(),
-		Handler: apiHandler,
+		Handler: finalHandler,
 	}
 
 	return nil
