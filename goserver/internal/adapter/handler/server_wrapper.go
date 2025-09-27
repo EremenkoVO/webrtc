@@ -14,12 +14,18 @@ import (
 type ServerWrapper struct {
 	authService ports.AuthService
 	userService ports.UserService
+	roomService ports.RoomService
 }
 
-func NewServerWrapper(authService ports.AuthService, userService ports.UserService) *ServerWrapper {
+func NewServerWrapper(
+	authService ports.AuthService,
+	userService ports.UserService,
+	roomService ports.RoomService,
+) *ServerWrapper {
 	return &ServerWrapper{
 		authService: authService,
 		userService: userService,
+		roomService: roomService,
 	}
 }
 

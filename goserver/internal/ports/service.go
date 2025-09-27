@@ -3,6 +3,8 @@ package ports
 import (
 	"context"
 
+	"github.com/gorilla/websocket"
+
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
 )
 
@@ -16,4 +18,11 @@ type AuthService interface {
 
 type UserService interface {
 	GetProfile(ctx context.Context, userID int) (*domain.User, error)
+}
+
+type RoomService interface {
+	ListRooms() []*domain.Room
+	CreateRoom(roomName string) *domain.Room
+	GetRoom(roomID string) *domain.Room
+	HandleWebSocketConnection(conn *websocket.Conn)
 }
