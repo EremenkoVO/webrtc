@@ -10,11 +10,11 @@ import (
 	"github.com/kelseyhightower/envconfig"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/adapter/handler"
+	"github.com/EremenkoVO/webrtc/goserver/internal/adapter/repository/accesstoken"
 	"github.com/EremenkoVO/webrtc/goserver/internal/adapter/repository/sqlite"
 	"github.com/EremenkoVO/webrtc/goserver/internal/config"
 	"github.com/EremenkoVO/webrtc/goserver/internal/db"
 	"github.com/EremenkoVO/webrtc/goserver/internal/gen/api"
-	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/cache"
 	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/jwt"
 	authService "github.com/EremenkoVO/webrtc/goserver/internal/services/auth"
 	userService "github.com/EremenkoVO/webrtc/goserver/internal/services/user"
@@ -49,10 +49,10 @@ func (app *API) init(ctx context.Context) error {
 
 	// Initialize JWT manager and token cache
 	jwtManager := jwt.NewJWTManager(app.config.Auth.TokenSecret)
-	tokenCache := cache.NewTokenCache()
+	accessTokenRepo := accesstoken.NewAccessTokenRepository(ctx)
 
 	// Initialize services
-	authSvc := authService.NewAuthService(userRepo, tokenRepo, jwtManager, tokenCache)
+	authSvc := authService.NewAuthService(userRepo, tokenRepo, jwtManager, accessTokenRepo)
 	userSvc := userService.NewUserService(userRepo)
 
 	// Initialize handlers
