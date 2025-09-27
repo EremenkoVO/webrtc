@@ -7,16 +7,24 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/kelseyhightower/envconfig"
+
+	"github.com/EremenkoVO/webrtc/goserver/internal/adapter/handler"
+	"github.com/EremenkoVO/webrtc/goserver/internal/adapter/repository/sqlite"
 	"github.com/EremenkoVO/webrtc/goserver/internal/config"
 	"github.com/EremenkoVO/webrtc/goserver/internal/db"
-	"github.com/kelseyhightower/envconfig"
+	"github.com/EremenkoVO/webrtc/goserver/internal/gen/api"
+	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/jwt"
+	authService "github.com/EremenkoVO/webrtc/goserver/internal/services/auth"
+	userService "github.com/EremenkoVO/webrtc/goserver/internal/services/user"
 )
 
 const prefix = "mydiscord"
 
 type API struct {
-	config config.Config
-	db     *sql.DB
+	config     config.Config
+	db         *sql.DB
+	httpServer *http.Server
 }
 
 func (app *API) Init() (init, stop func(context.Context) error) {
@@ -34,25 +42,52 @@ func (app *API) init(ctx context.Context) error {
 		return fmt.Errorf("failed init database: %w", err)
 	}
 
-	// TODO:
-	// - init services
-	// - init server
+	// Initialize repositories
+	userRepo := sqlite.NewUserRepository(app.db)
+	tokenRepo := sqlite.NewTokenRepository(app.db)
+
+	// Initialize JWT manager
+	jwtManager := jwt.NewJWTManager(app.config.Auth.TokenSecret)
+
+	// Initialize services
+	authSvc := authService.NewAuthService(userRepo, tokenRepo, jwtManager)
+	userSvc := userService.NewUserService(userRepo)
+
+	// Initialize handlers
+	serverWrapper := handler.NewServerWrapper(authSvc, userSvc)
+	authenticator := handler.NewAuthenticator(authSvc)
+
+	// Setup HTTP server with routes
+	apiHandler := api.HandlerWithOptions(serverWrapper, api.StdHTTPServerOptions{
+		Middlewares: []api.MiddlewareFunc{authenticator.Middleware},
+	})
+
+	app.httpServer = &http.Server{
+		Addr:    app.config.ListenAddr(),
+		Handler: apiHandler,
+	}
 
 	return nil
 }
 
 func (app *API) stop(ctx context.Context) error {
-	// TODO:
-	// - close services
-	// - close database
+	// Shutdown HTTP server gracefully
+	if app.httpServer != nil {
+		if err := app.httpServer.Shutdown(ctx); err != nil {
+			log.Printf("failed shutdown HTTP server: %v", err)
+		}
+	}
 
-	if err := app.db.Close(); err != nil {
-		log.Printf("failed close database: %v", err)
+	// Close database
+	if app.db != nil {
+		if err := app.db.Close(); err != nil {
+			log.Printf("failed close database: %v", err)
+		}
 	}
 
 	return nil
 }
 
 func (app *API) Server() *http.Server {
-	return nil
+	return app.httpServer
 }

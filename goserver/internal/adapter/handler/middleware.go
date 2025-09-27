@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
+	"github.com/EremenkoVO/webrtc/goserver/internal/gen/api"
 	"github.com/EremenkoVO/webrtc/goserver/internal/ports"
 )
 
@@ -26,6 +27,13 @@ func NewAuthenticator(authService ports.AuthService) *Authenticator {
 
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if this route requires authentication
+		if _, ok := r.Context().Value(api.BearerAuthScopes).([]string); !ok {
+			// No authentication required
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			sendAuthError(w, domain.ErrUnauthorized)

@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
 	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/jwt"
 	"github.com/EremenkoVO/webrtc/goserver/internal/ports"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type authService struct {
@@ -65,12 +66,12 @@ func (s *authService) Register(ctx context.Context, username, password string) (
 	return s.generateTokens(ctx, user.ID)
 }
 
-func (s *authService) Login(ctx context.Context, email, password string) (*domain.AuthTokens, error) {
-	if email == "" || password == "" {
+func (s *authService) Login(ctx context.Context, username, password string) (*domain.AuthTokens, error) {
+	if username == "" || password == "" {
 		return nil, domain.ErrValidation
 	}
 
-	user, err := s.userRepo.FindByEmail(ctx, email)
+	user, err := s.userRepo.FindByUsername(ctx, username)
 	if err != nil {
 		return nil, domain.ErrServerError
 	}

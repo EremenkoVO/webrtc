@@ -21,9 +21,9 @@ func (r *userRepository) CreateUser(ctx context.Context, user *domain.User) erro
 	return err
 }
 
-func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
+func (r *userRepository) FindByUsername(ctx context.Context, username string) (*domain.User, error) {
 	query := `SELECT id, username, password, created_at FROM users WHERE username = ?`
-	row := r.db.QueryRowContext(ctx, query, email)
+	row := r.db.QueryRowContext(ctx, query, username)
 
 	var user domain.User
 	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.CreatedAt)
@@ -38,7 +38,7 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain
 	return &user, nil
 }
 
-func (r *userRepository) FindByID(ctx context.Context, id string) (*domain.User, error) {
+func (r *userRepository) FindByID(ctx context.Context, id int) (*domain.User, error) {
 	query := `SELECT id, username, password, created_at FROM users WHERE id = ?`
 	row := r.db.QueryRowContext(ctx, query, id)
 

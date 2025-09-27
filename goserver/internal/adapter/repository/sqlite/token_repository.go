@@ -46,7 +46,7 @@ func (r *tokenRepository) DeleteRefreshToken(ctx context.Context, token string) 
 	return err
 }
 
-func (r *tokenRepository) DeleteAllRefreshTokens(ctx context.Context, userID string) error {
+func (r *tokenRepository) DeleteAllRefreshTokens(ctx context.Context, userID int) error {
 	query := `DELETE FROM refresh_tokens WHERE user_id = ?`
 	_, err := r.db.ExecContext(ctx, query, userID)
 

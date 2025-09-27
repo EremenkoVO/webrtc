@@ -1,9 +1,16 @@
 package config
 
+import "fmt"
+
 type Config struct {
+	Port     int       `envconfig:"PORT" default:"8080"`
 	Logger   Logger    `envconfig:"LOGGER"`
 	Database *Database `envconfig:"DATABASE"`
 	Auth     *Auth     `envconfig:"AUTH"`
+}
+
+func (c *Config) ListenAddr() string {
+	return fmt.Sprintf(":%d", c.Port)
 }
 
 type Logger struct {

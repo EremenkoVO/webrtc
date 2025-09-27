@@ -8,9 +8,9 @@ import (
 
 type UserRepository interface {
 	CreateUser(ctx context.Context, user *domain.User) error
-	FindByEmail(ctx context.Context, email string) (*domain.User, error)
+	FindByUsername(ctx context.Context, username string) (*domain.User, error)
 	FindByID(ctx context.Context, id int) (*domain.User, error)
-	UserExists(ctx context.Context, email string) (bool, error)
+	UserExists(ctx context.Context, username string) (bool, error)
 }
 
 type TokenRepository interface {
