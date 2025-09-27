@@ -9,6 +9,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/oapi-codegen/runtime"
 )
 
 const (
@@ -39,6 +42,12 @@ type AuthTokens struct {
 	RefreshToken     *string `json:"refresh_token,omitempty"`
 }
 
+// CreateRoomRequest defines model for CreateRoomRequest.
+type CreateRoomRequest struct {
+	// Name Human-readable room name
+	Name string `json:"name"`
+}
+
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
 	Code    ErrorResponseCode `json:"code"`
@@ -63,6 +72,20 @@ type RefreshRequest struct {
 type RegisterRequest struct {
 	Password string `json:"password"`
 	Username string `json:"username"`
+}
+
+// Room defines model for Room.
+type Room struct {
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	Id        *string    `json:"id,omitempty"`
+	Name      *string    `json:"name,omitempty"`
+}
+
+// RoomJoinResponse defines model for RoomJoinResponse.
+type RoomJoinResponse struct {
+	// ClientId Unique ID assigned to this client in the room
+	ClientId *string `json:"client_id,omitempty"`
+	RoomId   *string `json:"room_id,omitempty"`
 }
 
 // UserProfile defines model for UserProfile.
@@ -98,6 +121,9 @@ type RefreshTokenJSONRequestBody = RefreshRequest
 // RegisterUserJSONRequestBody defines body for RegisterUser for application/json ContentType.
 type RegisterUserJSONRequestBody = RegisterRequest
 
+// CreateRoomJSONRequestBody defines body for CreateRoom for application/json ContentType.
+type CreateRoomJSONRequestBody = CreateRoomRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// User login
@@ -115,6 +141,18 @@ type ServerInterface interface {
 	// Get current user profile
 	// (GET /api/v1/me)
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
+	// List available rooms
+	// (GET /api/v1/rooms)
+	ListRooms(w http.ResponseWriter, r *http.Request)
+	// Create a new signaling room
+	// (POST /api/v1/rooms)
+	CreateRoom(w http.ResponseWriter, r *http.Request)
+	// Join a signaling room
+	// (POST /api/v1/rooms/{roomId}/join)
+	JoinRoom(w http.ResponseWriter, r *http.Request, roomId string)
+	// WebSocket connection for signaling
+	// (GET /api/v1/ws)
+	SignalingWebSocket(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -199,6 +237,91 @@ func (siw *ServerInterfaceWrapper) GetCurrentUser(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCurrentUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRooms operation middleware
+func (siw *ServerInterfaceWrapper) ListRooms(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRooms(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRoom operation middleware
+func (siw *ServerInterfaceWrapper) CreateRoom(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRoom(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// JoinRoom operation middleware
+func (siw *ServerInterfaceWrapper) JoinRoom(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.JoinRoom(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SignalingWebSocket operation middleware
+func (siw *ServerInterfaceWrapper) SignalingWebSocket(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SignalingWebSocket(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -333,6 +456,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/refresh", wrapper.RefreshToken)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/register", wrapper.RegisterUser)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/me", wrapper.GetCurrentUser)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/rooms", wrapper.ListRooms)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/rooms", wrapper.CreateRoom)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/rooms/{roomId}/join", wrapper.JoinRoom)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/ws", wrapper.SignalingWebSocket)
 
 	return m
 }

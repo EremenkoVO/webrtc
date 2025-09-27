@@ -17,6 +17,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/moeryomenko/squad v1.15.0
 	github.com/moeryomenko/ttlcache v1.3.0
+	github.com/oapi-codegen/runtime v1.1.2
 	github.com/pressly/goose/v3 v3.25.0
 	golang.org/x/crypto v0.42.0
 	modernc.org/sqlite v1.38.2
@@ -53,6 +54,7 @@ require (
 	github.com/alingse/nilnesserr v0.2.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/apex/log v1.9.0 // indirect
 	github.com/ashanbrown/forbidigo/v2 v2.1.0 // indirect
 	github.com/ashanbrown/makezero/v2 v2.0.1 // indirect
