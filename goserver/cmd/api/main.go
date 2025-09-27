@@ -12,7 +12,7 @@ func main() {
 	app := app.API{}
 
 	s, err := squad.New(
-		squad.WithBootstrap(app.Init),
+		squad.WithSubsystem(app.Init()),
 		squad.WithSignalHandler(),
 	)
 	if err != nil {
