@@ -7,7 +7,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
-	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/cache"
 	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/jwt"
 	"github.com/EremenkoVO/webrtc/goserver/internal/ports"
 )
@@ -16,14 +15,14 @@ type authService struct {
 	userRepo   ports.UserRepository
 	tokenRepo  ports.TokenRepository
 	jwt        *jwt.JWTManager
-	tokenCache *cache.TokenCache
+	tokenCache ports.AccessTokenRepository
 }
 
 func NewAuthService(
 	userRepo ports.UserRepository,
 	tokenRepo ports.TokenRepository,
 	jwt *jwt.JWTManager,
-	tokenCache *cache.TokenCache,
+	tokenCache ports.AccessTokenRepository,
 ) ports.AuthService {
 	return &authService{
 		userRepo:   userRepo,
@@ -132,8 +131,7 @@ func (s *authService) Logout(ctx context.Context, accessToken string) error {
 		return domain.ErrUnauthorized
 	}
 
-	// Remove all access tokens for this user from cache
-	s.tokenCache.DeleteByUserID(userID)
+	s.tokenCache.Delete(accessToken)
 
 	// Remove all refresh tokens from database
 	err = s.tokenRepo.DeleteAllRefreshTokens(ctx, userID)
@@ -172,7 +170,7 @@ func (s *authService) generateTokens(ctx context.Context, userID int) (*domain.A
 	if err != nil {
 		return nil, domain.ErrServerError
 	}
-	s.tokenCache.Set(accessToken, userID, claims.ExpiresAt.Time)
+	s.tokenCache.Set(userID, accessToken, claims.ExpiresAt.Time)
 
 	// Store refresh token
 	refreshTokenEntity := &domain.RefreshToken{
