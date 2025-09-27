@@ -1,0 +1,345 @@
+openapi: 3.0.0
+info:
+  title: WebRTC Signaling Server
+  description: Python WebRTC signaling server with WebSocket support
+  version: 1.0.0
+paths:
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register new user
+      description: |
+        Create a new user account with password, and username.
+
+        **Request body:**
+        ```json
+        {
+          "password": "string",
+          "name": "John Doe"
+        }
+        ```
+
+        **Successful response:**
+        Returns `access_token` and `refresh_token` with expiration times.
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+              examples:
+                success:
+                  summary: Successful registration
+                  value:
+                    access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    refresh_token: "dGhpc2lzYXJlZnJlc2h0b2tlbg..."
+                    expires_in: 3600
+                    refresh_expires_in: 86400
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '409':
+          $ref: '#/components/responses/ConflictUserError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntityError'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: User login
+      description: |
+        Authenticate user with username and password.
+
+        **Request body:**
+        ```json
+        {
+          "username": "usertest",
+          "password": "string"
+        }
+        ```
+
+        **Successful response:**
+        Returns `access_token` and `refresh_token` with expiration times.
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+              examples:
+                success:
+                  summary: Successful login
+                  value:
+                    access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    refresh_token: "dGhpc2lzYXJlZnJlc2h0b2tlbg..."
+                    expires_in: 3600
+                    refresh_expires_in: 86400
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntityError'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      description: |
+        Exchange a valid `refresh_token` for a new `access_token`.
+
+        **Request body:**
+        ```json
+        {
+          "refresh_token": "string"
+        }
+        ```
+
+        **Successful response:**
+        Returns a new `access_token` with expiration time.
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Successful token refresh
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+              examples:
+                success:
+                  summary: Successful token refresh
+                  value:
+                    access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    refresh_token: "dGhpc2lzYXJlZnJlc2h0b2tlbg..."
+                    expires_in: 3600
+                    refresh_expires_in: 86400
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntityError'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout user
+      description: |
+        Invalidate the current session tokens.
+
+        Requires a valid `Authorization: Bearer <access_token>` header.
+      operationId: logoutUser
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Successfully logged out (no content returned)
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /api/v1/me:
+    get:
+      tags: [User]
+      summary: Get current user profile
+      description: |
+        Retrieve details of the authenticated user.
+
+        Requires a valid `Authorization: Bearer <access_token>` header.
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+              examples:
+                success:
+                  summary: Current user profile
+                  value:
+                    id: "123"
+                    name: "John Doe"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        default:
+          $ref: '#/components/responses/ServerError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [password, username]
+      properties:
+        password:
+          type: string
+          format: password
+          minLength: 6
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+    AuthTokens:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          description: Access token expiration time in seconds
+        refresh_expires_in:
+          type: integer
+          description: Refresh token expiration time in seconds
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_CREDENTIALS
+            - TOKEN_EXPIRED
+            - INVALID_REFRESH_TOKEN
+            - UNAUTHORIZED
+            - VALIDATION_ERROR
+            - NOT_FOUND
+            - TOO_MANY_REQUESTS
+            - SERVER_ERROR
+        message:
+          type: string
+      required: [code, message]
+  responses:
+    BadRequestError:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            badRequest:
+              value:
+                code: "VALIDATION_ERROR"
+                message: "Invalid input data."
+    ConflictUserError:
+      description: Conflict - User already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            conflict:
+              value:
+                code: "USER_EXISTS"
+                message: "User with this username already exists"
+    UnauthorizedError:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthorized:
+              value:
+                code: "UNAUTHORIZED"
+                message: "Missing or invalid access token."
+    UnprocessableEntityError:
+      description: Unprocessable Entity
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unprocessable:
+              value:
+                code: "VALIDATION_ERROR"
+                message: "Unable to process the request due to semantic errors."
+    NotFoundError:
+      description: Resource Not Found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            notFound:
+              value:
+                code: "NOT_FOUND"
+                message: "The requested resource does not exist."
+    TooManyRequestsError:
+      description: Too Many Requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            tooMany:
+              value:
+                code: "TOO_MANY_REQUESTS"
+                message: "You have exceeded the allowed number of requests."
+    ServerError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            serverError:
+              value:
+                code: "SERVER_ERROR"
+                message: "An unexpected error occurred."
