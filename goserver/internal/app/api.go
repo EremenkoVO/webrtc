@@ -61,7 +61,7 @@ func (app *API) init(ctx context.Context) error {
 
 	// Setup HTTP server with routes
 	apiHandler := api.HandlerWithOptions(serverWrapper, api.StdHTTPServerOptions{
-		Middlewares: []api.MiddlewareFunc{authenticator.Middleware},
+		Middlewares: []api.MiddlewareFunc{handler.CORS, authenticator.Middleware},
 	})
 
 	app.httpServer = &http.Server{
