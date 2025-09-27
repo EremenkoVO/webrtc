@@ -2,8 +2,10 @@ package handler
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
 	"github.com/EremenkoVO/webrtc/goserver/internal/gen/api"
@@ -75,6 +77,41 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), contextKeyUserID, userID)
 		ctx = context.WithValue(ctx, contextKeyToken, token)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func LoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		wrapped := &responseWriter{
+			ResponseWriter: w,
+			statusCode:     200,
+		}
+
+		next.ServeHTTP(wrapped, r)
+
+		duration := time.Since(start)
+
+		slog.Info("HTTP request",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
+			slog.String("query", r.URL.RawQuery),
+			slog.String("remote_addr", r.RemoteAddr),
+			slog.String("user_agent", r.Header.Get("User-Agent")),
+			slog.Int("status_code", wrapped.statusCode),
+			slog.Duration("duration", duration),
+		)
 	})
 }
 
