@@ -1,17 +1,17 @@
 import vue from '@vitejs/plugin-vue';
+import { defineConfig } from 'vite';
 import fs from 'fs';
 import path from 'path';
-import { defineConfig } from 'vite';
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue()],
   server: {
-    host: '0.0.0.0',
-    port: 5173,
     https: {
       key: fs.readFileSync(path.resolve(__dirname, 'cert/key.pem')),
       cert: fs.readFileSync(path.resolve(__dirname, 'cert/cert.pem')),
     },
+    port: 5000,
+    host: true,
   },
 });
