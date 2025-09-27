@@ -1,0 +1,15 @@
+# Go build artifacts
+*.o
+*.test
+/bin/
+
+# Development tools and configurations
+.git/
+.vscode/
+.env
+
+# Temporary files
+tmp/
+
+# Vendor directory (if not needed in build context)
+vendor/
