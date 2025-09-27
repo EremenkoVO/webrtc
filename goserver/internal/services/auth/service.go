@@ -7,25 +7,29 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
+	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/cache"
 	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/jwt"
 	"github.com/EremenkoVO/webrtc/goserver/internal/ports"
 )
 
 type authService struct {
-	userRepo  ports.UserRepository
-	tokenRepo ports.TokenRepository
-	jwt       *jwt.JWTManager
+	userRepo   ports.UserRepository
+	tokenRepo  ports.TokenRepository
+	jwt        *jwt.JWTManager
+	tokenCache *cache.TokenCache
 }
 
 func NewAuthService(
 	userRepo ports.UserRepository,
 	tokenRepo ports.TokenRepository,
 	jwt *jwt.JWTManager,
+	tokenCache *cache.TokenCache,
 ) ports.AuthService {
 	return &authService{
-		userRepo:  userRepo,
-		tokenRepo: tokenRepo,
-		jwt:       jwt,
+		userRepo:   userRepo,
+		tokenRepo:  tokenRepo,
+		jwt:        jwt,
+		tokenCache: tokenCache,
 	}
 }
 
@@ -128,6 +132,10 @@ func (s *authService) Logout(ctx context.Context, accessToken string) error {
 		return domain.ErrUnauthorized
 	}
 
+	// Remove all access tokens for this user from cache
+	s.tokenCache.DeleteByUserID(userID)
+
+	// Remove all refresh tokens from database
 	err = s.tokenRepo.DeleteAllRefreshTokens(ctx, userID)
 	if err != nil {
 		return domain.ErrServerError
@@ -137,25 +145,40 @@ func (s *authService) Logout(ctx context.Context, accessToken string) error {
 }
 
 func (s *authService) ValidateToken(ctx context.Context, token string) (int, error) {
-	return s.jwt.ValidateToken(token)
+	userID, found := s.tokenCache.Get(token)
+	if !found {
+		return 0, domain.ErrInvalidCredentials
+	}
+
+	return userID, nil
 }
 
 func (s *authService) generateTokens(ctx context.Context, userID int) (*domain.AuthTokens, error) {
-	accessToken, err := s.jwt.GenerateToken(userID, time.Hour)
+	accessTokenDuration := time.Hour
+	refreshTokenDuration := 24 * time.Hour
+
+	accessToken, err := s.jwt.GenerateToken(userID, accessTokenDuration)
 	if err != nil {
 		return nil, domain.ErrServerError
 	}
 
-	refreshToken, err := s.jwt.GenerateToken(userID, 24*time.Hour)
+	refreshToken, err := s.jwt.GenerateToken(userID, refreshTokenDuration)
 	if err != nil {
 		return nil, domain.ErrServerError
 	}
+
+	// Parse the generated token to get the exact expiration time and add to cache
+	claims, err := s.jwt.ParseToken(accessToken)
+	if err != nil {
+		return nil, domain.ErrServerError
+	}
+	s.tokenCache.Set(accessToken, userID, claims.ExpiresAt.Time)
 
 	// Store refresh token
 	refreshTokenEntity := &domain.RefreshToken{
 		Token:     refreshToken,
 		UserID:    userID,
-		ExpiresAt: time.Now().Add(24 * time.Hour),
+		ExpiresAt: time.Now().Add(refreshTokenDuration),
 	}
 
 	err = s.tokenRepo.StoreRefreshToken(ctx, refreshTokenEntity)

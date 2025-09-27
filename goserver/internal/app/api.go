@@ -14,6 +14,7 @@ import (
 	"github.com/EremenkoVO/webrtc/goserver/internal/config"
 	"github.com/EremenkoVO/webrtc/goserver/internal/db"
 	"github.com/EremenkoVO/webrtc/goserver/internal/gen/api"
+	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/cache"
 	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/jwt"
 	authService "github.com/EremenkoVO/webrtc/goserver/internal/services/auth"
 	userService "github.com/EremenkoVO/webrtc/goserver/internal/services/user"
@@ -46,11 +47,12 @@ func (app *API) init(ctx context.Context) error {
 	userRepo := sqlite.NewUserRepository(app.db)
 	tokenRepo := sqlite.NewTokenRepository(app.db)
 
-	// Initialize JWT manager
+	// Initialize JWT manager and token cache
 	jwtManager := jwt.NewJWTManager(app.config.Auth.TokenSecret)
+	tokenCache := cache.NewTokenCache()
 
 	// Initialize services
-	authSvc := authService.NewAuthService(userRepo, tokenRepo, jwtManager)
+	authSvc := authService.NewAuthService(userRepo, tokenRepo, jwtManager, tokenCache)
 	userSvc := userService.NewUserService(userRepo)
 
 	// Initialize handlers

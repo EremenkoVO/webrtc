@@ -34,18 +34,27 @@ func (m *JWTManager) GenerateToken(userID int, duration time.Duration) (string, 
 }
 
 func (m *JWTManager) ValidateToken(tokenString string) (int, error) {
+	claims, err := m.ParseToken(tokenString)
+	if err != nil {
+		return 0, err
+	}
+
+	return claims.UserID, nil
+}
+
+func (m *JWTManager) ParseToken(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (any, error) {
 		return m.secret, nil
 	})
 
 	if err != nil || !token.Valid {
-		return 0, fmt.Errorf("invalid token")
+		return nil, fmt.Errorf("invalid token")
 	}
 
 	claims, ok := token.Claims.(*Claims)
 	if !ok {
-		return 0, fmt.Errorf("invalid token claims")
+		return nil, fmt.Errorf("invalid token claims")
 	}
 
-	return claims.UserID, nil
+	return claims, nil
 }
