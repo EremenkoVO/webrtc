@@ -18,7 +18,12 @@ type accessTokenRepository struct {
 
 func NewAccessTokenRepository(ctx context.Context) *accessTokenRepository {
 	return &accessTokenRepository{
-		cache: cache.NewCache[string, int](ctx, defaultCapacity, cache.WithTTLEpochGranularity(granularity), cache.WithEvictionPolicy(cache.NOOP)),
+		cache: cache.NewCache[string, int](
+			ctx,
+			defaultCapacity,
+			cache.WithTTLEpochGranularity(granularity),
+			cache.WithEvictionPolicy(cache.NOOP),
+		),
 	}
 }
 
