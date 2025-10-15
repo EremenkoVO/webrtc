@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -78,7 +79,7 @@ func (s *ServerWrapper) SignalingWebSocket(w http.ResponseWriter, r *http.Reques
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		WriteErrorResponse(w, http.StatusBadRequest, api.ErrorResponse{
-			Message: "failed to upgrade connection",
+			Message: fmt.Sprintf("failed to upgrade connection: %v", err),
 		})
 		return
 	}
