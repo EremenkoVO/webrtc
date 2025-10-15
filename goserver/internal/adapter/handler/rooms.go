@@ -12,6 +12,11 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
+	// Allow all subprotocols
+	Subprotocols: []string{},
+	// Read and write buffer sizes
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
 }
 
 // List available rooms
@@ -76,12 +81,16 @@ func (s *ServerWrapper) JoinRoom(w http.ResponseWriter, r *http.Request, roomId 
 // WebSocket connection for signaling
 // (GET /api/v1/ws)
 func (s *ServerWrapper) SignalingWebSocket(w http.ResponseWriter, r *http.Request) {
+	// Log the incoming request headers for debugging
+	fmt.Printf("WebSocket upgrade request from %s\n", r.RemoteAddr)
+	fmt.Printf("Headers: Connection=%s, Upgrade=%s\n",
+		r.Header.Get("Connection"), r.Header.Get("Upgrade"))
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		WriteErrorResponse(w, http.StatusBadRequest, api.ErrorResponse{
 			Message: fmt.Sprintf("failed to upgrade connection: %v", err),
 		})
-		return
 	}
 
 	s.roomService.HandleWebSocketConnection(conn)
