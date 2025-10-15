@@ -1,32 +1,15 @@
 <script setup lang="ts">
-import {
-  AuthService,
-  ErrorResponse,
-  SignalingService,
-  type Room,
-  type RoomJoinResponse,
-  type UserProfile,
-} from '@/api/index'
+import { AuthService, SignalingService, type Room, type UserProfile } from '@/api/index'
 import { useApiErrors } from '@/composible/useApiErrors'
 import router from '@/router'
 import { useAuthStore } from '@/stores/authStore'
-import { useRoomStore } from '@/stores/roomStore'
-import { useSignalingStore } from '@/stores/signalingStore'
 import { faXmarkCircle } from '@fortawesome/free-regular-svg-icons'
-import {
-  faBullhorn,
-  faCheck,
-  faPlus,
-  faRightToBracket,
-  faSignOutAlt,
-} from '@fortawesome/free-solid-svg-icons'
+import { faBullhorn, faCheck, faPlus, faSignOutAlt } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { onMounted, ref, watch } from 'vue'
 
 const { clearErrors, parseApiError } = useApiErrors()
 const authStore = useAuthStore()
-const roomStore = useRoomStore()
-const signalingStore = useSignalingStore()
 
 const channels = ref<Room[]>([])
 const selectedChannelId = ref<string | undefined>(undefined)
@@ -101,40 +84,6 @@ function selectChannel(id: string | undefined) {
   selectedChannelId.value = id
 }
 
-function isErrorResponse(response: RoomJoinResponse | ErrorResponse): response is ErrorResponse {
-  return 'error' in response
-}
-
-async function connectToRoom(id: string | undefined) {
-  if (typeof id === 'undefined') return
-
-  try {
-    const response = await SignalingService.joinRoom(id)
-
-    if (isErrorResponse(response)) {
-      throw response
-    }
-
-    if (response.client_id && response.room_id) {
-      await roomStore.setClientAndRoomId(response.client_id, id)
-
-      // Join the signaling room via WebSocket
-      if (!signalingStore.isConnected) {
-        signalingStore.connect()
-        // Wait for connection to establish
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-      }
-
-      signalingStore.joinRoom(id)
-      console.log('Connected to room:', id)
-    }
-  } catch (e) {
-    console.error(e)
-    parseApiError(e)
-    return
-  }
-}
-
 async function logout() {
   try {
     await AuthService.logoutUser()
@@ -153,7 +102,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen font-sans text-slate-100 bg-gradient-to-b from-slate-900 to-slate-950">
+  <div
+    class="min-h-screen font-sans text-slate-100 bg-gradient-to-b from-slate-900 to-slate-950 border-r border-slate-800"
+  >
     <!-- mobile header with toggle -->
     <header class="md:hidden flex items-center p-2 bg-slate-900/40 border-b border-slate-800">
       <div class="ml-3 font-semibold">{{ serverName }}</div>
@@ -251,31 +202,18 @@ onMounted(() => {
         </div>
 
         <!-- simple preview for selected channel -->
-        <div v-if="showSidebar && selectedChannelId" class="px-3 py-3 border-t border-slate-800">
+        <div v-if="showSidebar && selectedChannelId" class="px-3 py-3">
           <div class="font-semibold">
             <FontAwesomeIcon :icon="faBullhorn" />
             {{ channels.find((c) => c.id === selectedChannelId)?.name }}
           </div>
           <!-- View who connected to the channel -->
-
-          <div class="text-sm text-slate-200 mt-2 mb-4">
-            <!-- This is a placeholder. Implement actual user listing when available. -->
-            <button
-              type="button"
-              class="px-3 py-2 rounded-md bg-emerald-500 text-white"
-              @click="connectToRoom(selectedChannelId)"
-            >
-              <FontAwesomeIcon :icon="faRightToBracket" />
-              Подключиться к комнате
-            </button>
-          </div>
-
           <div class="text-sm text-slate-400 mt-1">Подключенные пользователи:</div>
         </div>
       </aside>
 
       <!-- logout button -->
-      <div class="p-4 border-t border-slate-800">
+      <div class="p-4">
         <div class="mb-4">
           <div class="text-sm text-slate-400">Вы вошли как:</div>
           <div class="font-semibold">{{ props.user.username }}</div>

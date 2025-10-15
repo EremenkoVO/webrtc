@@ -1,10 +1,17 @@
 <script setup lang="ts">
+import { SignalingService, type ErrorResponse, type RoomJoinResponse } from '@/api'
+import { useWebRTC } from '@/composible/useWebRTC'
 import { useRoomStore } from '@/stores/roomStore'
 import { useSignalingStore } from '@/stores/signalingStore'
-import { useWebRTC } from '@/composible/useWebRTC'
-import { computed, ref, watch } from 'vue'
-import { faVideo, faVideoSlash, faMicrophone, faMicrophoneSlash, faPhoneSlash } from '@fortawesome/free-solid-svg-icons'
+import {
+  faMicrophone,
+  faMicrophoneSlash,
+  faPhoneSlash,
+  faVideo,
+  faVideoSlash,
+} from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps<{
   selectedChannelId: string | undefined
@@ -12,7 +19,7 @@ const props = defineProps<{
 
 const roomStore = useRoomStore()
 const signalingStore = useSignalingStore()
-const { localStream, remotePeers, isMediaInitialized, initializeMedia, stopMedia, joinRoomWithMedia, leaveRoom } = useWebRTC()
+const { localStream, remotePeers, stopMedia, joinRoomWithMedia, leaveRoom } = useWebRTC()
 
 const clientId = computed(() => roomStore.clientId)
 const isInCall = ref(false)
@@ -25,6 +32,8 @@ async function startCall() {
     console.error('No channel selected')
     return
   }
+
+  await connectToRoom(props.selectedChannelId)
 
   try {
     await joinRoomWithMedia(props.selectedChannelId, {
@@ -67,14 +76,51 @@ function toggleAudio() {
   }
 }
 
-// Watch for channel changes and leave current call
-watch(() => props.selectedChannelId, (newId, oldId) => {
-  if (oldId && newId !== oldId && isInCall.value) {
-    endCall()
+function isErrorResponse(response: RoomJoinResponse | ErrorResponse): response is ErrorResponse {
+  return 'error' in response
+}
+
+async function connectToRoom(id: string | undefined) {
+  if (typeof id === 'undefined') return
+
+  try {
+    const response = await SignalingService.joinRoom(id)
+
+    if (isErrorResponse(response)) {
+      throw response
+    }
+
+    if (response.client_id && response.room_id) {
+      await roomStore.setClientAndRoomId(response.client_id, id)
+
+      // Join the signaling room via WebSocket
+      if (!signalingStore.isConnected) {
+        signalingStore.connect()
+        // Wait for connection to establish
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+
+      signalingStore.joinRoom(id)
+      console.log('Connected to room:', id)
+    }
+  } catch (e) {
+    console.error(e)
+    return
   }
-})
+}
+
+// Watch for channel changes and leave current call
+watch(
+  () => props.selectedChannelId,
+  (newId, oldId) => {
+    if (oldId && newId !== oldId && isInCall.value) {
+      endCall()
+    }
+  },
+)
 
 // Setup video element refs
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function setupVideoElement(el: any, stream: MediaStream | null) {
   if (el && stream && el instanceof HTMLVideoElement) {
     el.srcObject = stream
@@ -83,7 +129,10 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-gradient-to-b from-slate-900 to-slate-950 text-white">
+  <div
+    v-if="selectedChannelId"
+    class="flex flex-col h-full bg-gradient-to-b from-slate-900 to-slate-950 text-white"
+  >
     <!-- Header -->
     <div class="p-4 border-b border-slate-800">
       <h1 class="text-xl font-semibold">Канал: {{ selectedChannelId }}</h1>
@@ -105,10 +154,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
 
     <!-- Video Grid -->
     <div class="flex-1 p-4 overflow-auto">
-      <div
-        v-if="!isInCall"
-        class="flex items-center justify-center h-full"
-      >
+      <div v-if="!isInCall" class="flex items-center justify-center h-full">
         <div class="text-center">
           <p class="text-slate-400 mb-4">Вы не в звонке</p>
           <button
@@ -163,15 +209,13 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
     </div>
 
     <!-- Call Controls -->
-    <div v-if="isInCall" class="p-4 border-t border-slate-800">
+    <div v-if="isInCall" class="p-4">
       <div class="flex items-center justify-center gap-4">
         <button
           type="button"
           :class="[
             'p-4 rounded-full transition-colors',
-            videoEnabled
-              ? 'bg-slate-700 hover:bg-slate-600'
-              : 'bg-red-600 hover:bg-red-700',
+            videoEnabled ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-600 hover:bg-red-700',
           ]"
           @click="toggleVideo"
           :title="videoEnabled ? 'Отключить видео' : 'Включить видео'"
@@ -183,14 +227,15 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
           type="button"
           :class="[
             'p-4 rounded-full transition-colors',
-            audioEnabled
-              ? 'bg-slate-700 hover:bg-slate-600'
-              : 'bg-red-600 hover:bg-red-700',
+            audioEnabled ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-600 hover:bg-red-700',
           ]"
           @click="toggleAudio"
           :title="audioEnabled ? 'Отключить микрофон' : 'Включить микрофон'"
         >
-          <FontAwesomeIcon :icon="audioEnabled ? faMicrophone : faMicrophoneSlash" class="text-xl" />
+          <FontAwesomeIcon
+            :icon="audioEnabled ? faMicrophone : faMicrophoneSlash"
+            class="text-xl"
+          />
         </button>
 
         <button
