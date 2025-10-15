@@ -11,6 +11,7 @@ import { useApiErrors } from '@/composible/useApiErrors'
 import router from '@/router'
 import { useAuthStore } from '@/stores/authStore'
 import { useRoomStore } from '@/stores/roomStore'
+import { useSignalingStore } from '@/stores/signalingStore'
 import { faXmarkCircle } from '@fortawesome/free-regular-svg-icons'
 import {
   faBullhorn,
@@ -25,6 +26,7 @@ import { onMounted, ref, watch } from 'vue'
 const { clearErrors, parseApiError } = useApiErrors()
 const authStore = useAuthStore()
 const roomStore = useRoomStore()
+const signalingStore = useSignalingStore()
 
 const channels = ref<Room[]>([])
 const selectedChannelId = ref<string | undefined>(undefined)
@@ -115,21 +117,21 @@ async function connectToRoom(id: string | undefined) {
 
     if (response.client_id && response.room_id) {
       await roomStore.setClientAndRoomId(response.client_id, id)
-      await getSignalingWebSocket()
+
+      // Join the signaling room via WebSocket
+      if (!signalingStore.isConnected) {
+        signalingStore.connect()
+        // Wait for connection to establish
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+
+      signalingStore.joinRoom(id)
+      console.log('Connected to room:', id)
     }
   } catch (e) {
     console.error(e)
     parseApiError(e)
     return
-  }
-}
-
-async function getSignalingWebSocket() {
-  try {
-    const signalingWebSocket = SignalingService.signalingWebSocket()
-    console.log('Connected to signaling WebSocket:', signalingWebSocket)
-  } catch (e) {
-    console.error('Failed to connect to signaling WebSocket:', e)
   }
 }
 
