@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { SignalingService } from '@/api/index'
-import { onMounted } from 'vue'
+import { useSignalingStore } from '@/stores/signalingStore'
+import { onMounted, onUnmounted } from 'vue'
 
-async function getSignalingWebSocket() {
-  try {
-    const signalingWebSocket = SignalingService.signalingWebSocket()
-    console.log('Connected to signaling WebSocket:', signalingWebSocket)
-  } catch (e) {
-    console.error('Failed to connect to signaling WebSocket:', e)
-  }
-}
+const signalingStore = useSignalingStore()
 
 onMounted(() => {
-  getSignalingWebSocket()
+  // Connect to signaling server on app mount
+  signalingStore.connect()
+})
+
+onUnmounted(() => {
+  // Disconnect on app unmount
+  signalingStore.disconnect()
 })
 </script>
 
