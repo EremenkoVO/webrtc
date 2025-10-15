@@ -1,5 +1,36 @@
 @import 'tailwindcss';
 
 body {
-  @apply min-h-screen bg-blue-100;
+  @apply min-h-screen bg-gray-700;
+}
+
+* {
+  @apply box-border;
+}
+button {
+  @apply cursor-pointer;
+}
+
+button,
+input,
+textarea,
+select,
+a {
+  @apply transition duration-150 ease-in-out;
+}
+
+button:focus {
+  @apply outline-none ring-2 ring-blue-500;
+}
+input:focus {
+  @apply outline-none ring-2 ring-blue-500;
+}
+textarea:focus {
+  @apply outline-none ring-2 ring-blue-500;
+}
+select:focus {
+  @apply outline-none ring-2 ring-blue-500;
+}
+a:focus {
+  @apply outline-none ring-2 ring-blue-500;
 }

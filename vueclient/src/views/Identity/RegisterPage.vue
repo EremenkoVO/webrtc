@@ -12,11 +12,18 @@ const authStore = useAuthStore()
 
 const isLoading = ref<boolean>(false)
 const password = ref<string>('')
+const confirmPassword = ref<string>('')
 const username = ref<string>('')
 const showPassword = ref<boolean>(false)
 
 const handleLogin = async () => {
   isLoading.value = true
+
+  if (password.value !== confirmPassword.value) {
+    parseApiError({ message: 'Пароли не совпадают' })
+    isLoading.value = false
+    return
+  }
 
   try {
     clearErrors()
@@ -112,7 +119,7 @@ onMounted(() => {
             </div>
 
             <input
-              v-model="password"
+              v-model="confirmPassword"
               class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-500 focus:border-transparent outline-none transition"
               :type="showPassword ? 'text' : 'password'"
               autocomplete="current-password"
