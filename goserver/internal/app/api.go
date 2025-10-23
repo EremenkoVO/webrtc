@@ -9,7 +9,6 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/moeryomenko/healing"
-	"github.com/moeryomenko/healing/checkers"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/adapter/handler"
 	"github.com/EremenkoVO/webrtc/goserver/internal/adapter/repository/accesstoken"
@@ -47,9 +46,6 @@ func (app *API) init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed init database: %w", err)
 	}
-
-	// Add sqlite readiness prober
-	app.Health.AddReadyChecker("sqlite", checkers.SQLPoolReadinessChecker(app.db))
 
 	// Initialize repositories
 	userRepo := sqlite.NewUserRepository(app.db)
