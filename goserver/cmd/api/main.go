@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/moeryomenko/healing"
 	"github.com/moeryomenko/squad"
@@ -16,7 +17,7 @@ func main() {
 
 	s, err := squad.New(
 		squad.WithSubsystem(app.Init()),
-		squad.WithSignalHandler(),
+		squad.WithSignalHandler(squad.WithShutdownInGracePeriod(5*time.Second)),
 	)
 	if err != nil {
 		log.Fatalf("failed start server: %s", err)
