@@ -21,6 +21,11 @@ export function useWebRTC() {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
+      {
+        urls: 'turn:176.108.251.198:3478?transport=udp',
+        username: 'webrtc',
+        credential: 'dfe277NDR987fapq196',
+      },
     ],
   }
 
