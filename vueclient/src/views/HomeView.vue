@@ -11,6 +11,7 @@ const { parseApiError } = useApiErrors()
 const authStore = useAuthStore()
 
 const selectedChannelId = ref<string | undefined>(undefined)
+const selectedChannelName = ref<string | undefined>(undefined)
 const user: Ref<UserProfile> = ref({ id: '', username: '' })
 
 const getUser = async () => {
@@ -35,8 +36,9 @@ const getUser = async () => {
   }
 }
 
-function selectChannel(channelId: string) {
-  selectedChannelId.value = channelId
+function selectChannel(channel: { id: string; name: string }) {
+  selectedChannelId.value = channel.id
+  selectedChannelName.value = channel.name
 }
 
 onMounted(async () => {
@@ -48,7 +50,10 @@ onMounted(async () => {
   <div class="flex h-screen">
     <SidebarComponent @channel-selected="selectChannel" :user="user" />
     <div class="flex-1 overflow-auto">
-      <ChannelComponent :selectedChannelId="selectedChannelId" />
+      <ChannelComponent
+        :selectedChannelId="selectedChannelId"
+        :selected-channel-name="selectedChannelName"
+      />
     </div>
   </div>
 </template>
