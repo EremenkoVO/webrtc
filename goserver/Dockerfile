@@ -40,6 +40,7 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /src/bin/api /bin/api
 
 EXPOSE 8080
+EXPOSE 8081
 USER 1000
 
 ENTRYPOINT [ "/bin/api" ]
