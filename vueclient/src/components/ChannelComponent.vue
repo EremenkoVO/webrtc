@@ -247,7 +247,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             <FontAwesomeIcon :icon="faUser" class="text-4xl" />
           </div>
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
-            Вы {{ localStream?.id }}
+            Вы ({{ localStream?.id }})
           </div>
         </div>
 
