@@ -34,7 +34,7 @@ const {
 
 const clientId = computed(() => roomStore.clientId)
 const isInCall = ref(false)
-const videoEnabled = ref(true)
+const videoEnabled = ref(false)
 const audioEnabled = ref(true)
 const cameraMenuOpen = ref(false)
 const microphoneMenuOpen = ref(false)
