@@ -3,13 +3,21 @@ import { AuthService, SignalingService, type Room, type UserProfile } from '@/ap
 import { useApiErrors } from '@/composible/useApiErrors'
 import router from '@/router'
 import { useAuthStore } from '@/stores/authStore'
-import { faXmarkCircle } from '@fortawesome/free-regular-svg-icons'
-import { faBullhorn, faCheck, faPlus, faSignOutAlt } from '@fortawesome/free-solid-svg-icons'
+import { faArrowAltCircleRight, faXmarkCircle } from '@fortawesome/free-regular-svg-icons'
+import { faCheck, faPlus, faSignOutAlt } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 const { clearErrors, parseApiError } = useApiErrors()
 const authStore = useAuthStore()
+
+const props = defineProps<{
+  user: UserProfile
+}>()
+
+const emit = defineEmits<{
+  (e: 'channelSelected', payload: { id: string; name: string }): void
+}>()
 
 const channels = ref<Room[]>([])
 const selectedChannelId = ref<string | undefined>(undefined)
@@ -18,17 +26,13 @@ const newChannelName = ref('')
 const showSidebar = ref(true)
 const serverName = ref('WebRTC App')
 
-const props = defineProps<{
-  user: UserProfile
-}>()
-
-const emit = defineEmits<{
-  (e: 'channelSelected', channelId: string): void
-}>()
+const selectedChannelName = computed(() => {
+  return channels.value.find((ch) => ch.id === selectedChannelId.value)?.name || ''
+})
 
 watch(selectedChannelId, (newVal) => {
   if (newVal) {
-    emit('channelSelected', newVal)
+    emit('channelSelected', { id: newVal, name: selectedChannelName.value })
   }
 })
 
@@ -106,11 +110,21 @@ onMounted(() => {
     class="min-h-screen font-sans text-slate-100 bg-gradient-to-b from-slate-900 to-slate-950 border-r border-slate-800"
   >
     <!-- mobile header with toggle -->
-    <header class="md:hidden flex items-center p-2 bg-slate-900/40 border-b border-slate-800">
-      <div class="ml-3 font-semibold">{{ serverName }}</div>
+    <header class="flex items-center p-2 bg-slate-900/40 border-b border-slate-800">
+      <div v-if="showSidebar" class="ml-3 font-semibold">{{ serverName }}</div>
+      <button
+        type="button"
+        class="ml-auto p-2 rounded-md text-slate-200 bg-slate-700/30 hover:bg-slate-700/50"
+        :class="{ 'w-full': !showSidebar }"
+        @click="showSidebar = !showSidebar"
+        :aria-pressed="showSidebar"
+        title="Открыть/Закрыть боковую панель"
+      >
+        <FontAwesomeIcon :icon="showSidebar ? faXmarkCircle : faArrowAltCircleRight" />
+      </button>
     </header>
 
-    <div class="flex flex-col justify-between h-[calc(100vh-56px)] md:h-screen">
+    <div class="flex flex-col justify-between h-[calc(100vh-56px)] md:h-min-screen">
       <!-- channels panel -->
       <aside
         :class="[
@@ -120,7 +134,10 @@ onMounted(() => {
             : '-translate-x-full md:translate-x-0 w-[56px] md:w-[56px]',
         ]"
       >
-        <div class="flex items-center justify-between px-3 py-3 border-b border-slate-800">
+        <div
+          v-if="showSidebar"
+          class="flex items-center justify-between px-3 py-3 border-b border-slate-800"
+        >
           <div class="flex items-center gap-2">
             <i class="fa-solid fa-server text-indigo-400"></i>
             <div>
@@ -200,21 +217,11 @@ onMounted(() => {
             </li>
           </ul>
         </div>
-
-        <!-- simple preview for selected channel -->
-        <div v-if="showSidebar && selectedChannelId" class="px-3 py-3">
-          <div class="font-semibold">
-            <FontAwesomeIcon :icon="faBullhorn" />
-            {{ channels.find((c) => c.id === selectedChannelId)?.name }}
-          </div>
-          <!-- View who connected to the channel -->
-          <div class="text-sm text-slate-400 mt-1">Подключенные пользователи:</div>
-        </div>
       </aside>
 
       <!-- logout button -->
       <div class="p-4">
-        <div class="mb-4">
+        <div v-if="showSidebar" class="mb-4">
           <div class="text-sm text-slate-400">Вы вошли как:</div>
           <div class="font-semibold">{{ props.user.username }}</div>
         </div>
@@ -225,7 +232,7 @@ onMounted(() => {
           @click="logout"
         >
           <FontAwesomeIcon :icon="faSignOutAlt" />
-          <span>Выйти</span>
+          <span v-if="showSidebar">Выйти</span>
         </button>
       </div>
     </div>

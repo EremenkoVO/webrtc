@@ -1,7 +1,7 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
 import { OpenAPI } from '@/api/core/OpenAPI'
 import { SignalingMessage } from '@/api/models/SignalingMessage'
+import { defineStore } from 'pinia'
+import { computed, ref } from 'vue'
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 
@@ -85,7 +85,9 @@ export const useSignalingStore = defineStore('signaling', () => {
     reconnectAttempts.value++
 
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.value), 30000)
-    console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts.value}/${maxReconnectAttempts})`)
+    console.log(
+      `Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts.value}/${maxReconnectAttempts})`,
+    )
 
     reconnectTimeout.value = setTimeout(() => {
       connect()

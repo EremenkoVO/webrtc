@@ -34,7 +34,7 @@ export function useWebRTC() {
 
   // Initialize local media (camera and microphone)
   async function initializeMedia(
-    constraints: MediaStreamConstraints = { video: true, audio: true },
+    constraints: MediaStreamConstraints = { video: false, audio: true },
   ) {
     try {
       localStream.value = await navigator.mediaDevices.getUserMedia(constraints)
@@ -296,6 +296,68 @@ export function useWebRTC() {
     console.log('Left room')
   }
 
+  // Смена видеокамеры
+  async function switchCamera(deviceId: string) {
+    try {
+      console.log('Switching camera to device:', deviceId)
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: deviceId } },
+        audio: false,
+      })
+
+      const newVideoTrack = newStream.getVideoTracks()[0]
+      if (!newVideoTrack) return
+
+      const oldVideoTrack = localStream.value?.getVideoTracks()[0]
+
+      // Заменяем трек во всех соединениях
+      peers.value.forEach(({ connection }) => {
+        const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'video')
+        if (sender) sender.replaceTrack(newVideoTrack)
+      })
+
+      // Останавливаем старый трек и обновляем localStream
+      if (oldVideoTrack) oldVideoTrack.stop()
+      const audioTrack = localStream.value?.getAudioTracks()[0]
+      localStream.value = new MediaStream([newVideoTrack, ...(audioTrack ? [audioTrack] : [])])
+
+      console.log('Camera switched successfully')
+    } catch (error) {
+      console.error('Failed to switch camera:', error)
+    }
+  }
+
+  // Смена микрофона
+  async function switchMicrophone(deviceId: string) {
+    try {
+      console.log('Switching microphone to device:', deviceId)
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: { deviceId: { exact: deviceId } },
+      })
+
+      const newAudioTrack = newStream.getAudioTracks()[0]
+      if (!newAudioTrack) return
+
+      const oldAudioTrack = localStream.value?.getAudioTracks()[0]
+
+      // Заменяем трек во всех соединениях
+      peers.value.forEach(({ connection }) => {
+        const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'audio')
+        if (sender) sender.replaceTrack(newAudioTrack)
+      })
+
+      // Останавливаем старый трек и обновляем localStream
+      if (oldAudioTrack) oldAudioTrack.stop()
+      const videoTrack = localStream.value?.getVideoTracks()[0]
+      localStream.value = new MediaStream([newAudioTrack, ...(videoTrack ? [videoTrack] : [])])
+
+      console.log('Microphone switched successfully')
+    } catch (error) {
+      console.error('Failed to switch microphone:', error)
+    }
+  }
+
   // Cleanup on unmount
   onUnmounted(() => {
     leaveRoom()
@@ -315,5 +377,9 @@ export function useWebRTC() {
     leaveRoom,
     createOffer,
     removePeer,
+
+    // Switch devices
+    switchCamera,
+    switchMicrophone,
   }
 }
