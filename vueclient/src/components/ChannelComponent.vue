@@ -34,7 +34,7 @@ const {
 
 const clientId = computed(() => roomStore.clientId)
 const isInCall = ref(false)
-const videoEnabled = ref(true)
+const videoEnabled = ref(false)
 const audioEnabled = ref(true)
 const cameraMenuOpen = ref(false)
 const microphoneMenuOpen = ref(false)
@@ -247,7 +247,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             <FontAwesomeIcon :icon="faUser" class="text-4xl" />
           </div>
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
-            Вы {{ localStream?.id }}
+            Вы ({{ localStream?.id }})
           </div>
         </div>
 
