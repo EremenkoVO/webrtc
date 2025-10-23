@@ -1,25 +1,10 @@
 package domain
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/gen/api"
 )
-
-var ConflictUserAlreadyExists = NewDomainError("user already exists")
-
-type DomainError struct {
-	err error
-}
-
-func NewDomainError(msg string) *DomainError {
-	return &DomainError{errors.New(msg)}
-}
-
-func (e *DomainError) Error() string {
-	return e.err.Error()
-}
 
 type ErrorResponse struct {
 	Code    string `json:"code"`
