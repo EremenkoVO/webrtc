@@ -1,6 +1,6 @@
-import { ref, onUnmounted, computed } from 'vue'
-import { useSignalingStore } from '@/stores/signalingStore'
 import { SignalingMessage } from '@/api/models/SignalingMessage'
+import { useSignalingStore } from '@/stores/signalingStore'
+import { computed, onUnmounted, ref } from 'vue'
 
 export interface PeerConnection {
   peerId: string
@@ -28,7 +28,9 @@ export function useWebRTC() {
   const remotePeers = computed(() => Array.from(peers.value.values()))
 
   // Initialize local media (camera and microphone)
-  async function initializeMedia(constraints: MediaStreamConstraints = { video: true, audio: true }) {
+  async function initializeMedia(
+    constraints: MediaStreamConstraints = { video: true, audio: true },
+  ) {
     try {
       localStream.value = await navigator.mediaDevices.getUserMedia(constraints)
       isMediaInitialized.value = true
@@ -58,6 +60,8 @@ export function useWebRTC() {
       localStream.value.getTracks().forEach((track) => {
         pc.addTrack(track, localStream.value!)
       })
+    } else {
+      console.warn('No local stream when creating connection')
     }
 
     // Handle ICE candidates
@@ -86,13 +90,18 @@ export function useWebRTC() {
     const remoteStream = new MediaStream()
     pc.ontrack = (event) => {
       console.log('Received remote track from', peerId, event.track.kind)
-      event.streams[0].getTracks().forEach((track) => {
-        remoteStream.addTrack(track)
-      })
+      const [stream] = event.streams
+      if (!stream) return
 
       const peer = peers.value.get(peerId)
       if (peer) {
-        peer.remoteStream = remoteStream
+        peer.remoteStream = stream
+      } else {
+        peers.value.set(peerId, {
+          peerId,
+          connection: pc,
+          remoteStream: stream,
+        })
       }
     }
 
@@ -192,8 +201,9 @@ export function useWebRTC() {
   function setupSignalingHandlers() {
     // Handle peer joined - initiate connection
     signalingStore.onMessage(SignalingMessage.type.PEER_JOINED, (message) => {
-      if (message.from) {
-        console.log('Peer joined, creating offer:', message.from)
+      if (message.from && message.from !== signalingStore.clientId) {
+        // Только существующие участники создают offer
+        console.log('Existing peer creating offer to new peer:', message.from)
         createOffer(message.from)
       }
     })
@@ -251,9 +261,7 @@ export function useWebRTC() {
 
       // Connect to signaling server if not connected
       if (!signalingStore.isConnected) {
-        signalingStore.connect()
-        // Wait a bit for connection to establish
-        await new Promise((resolve) => setTimeout(resolve, 1000))
+        await signalingStore.connect() // сделай connect() возвращающим Promise, когда socket открыт
       }
 
       // Join the room
