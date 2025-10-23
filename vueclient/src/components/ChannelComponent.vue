@@ -310,6 +310,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
               <ul
                 v-if="cameraMenuOpen"
                 class="absolute right-0 bottom-12 mt-2 w-56 bg-slate-800 text-white rounded-xl shadow-lg z-50"
+                v-click-outside="() => (cameraMenuOpen = false)"
               >
                 <li
                   v-for="device in videoDevices"
@@ -356,6 +357,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             <ul
               v-if="microphoneMenuOpen"
               class="absolute right-0 bottom-12 mt-2 w-56 bg-slate-800 text-white rounded-xl shadow-lg z-50"
+              v-click-outside="() => (microphoneMenuOpen = false)"
             >
               <li
                 v-for="device in audioDevices"
