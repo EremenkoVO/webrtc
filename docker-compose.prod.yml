@@ -24,8 +24,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-      frontend:
-        condition: service_started
     networks:
       - prod
     restart: unless-stopped
@@ -42,21 +40,21 @@ services:
     container_name: webrtc_backend
     expose:
       - "8080"
+      - "8081"
     volumes:
-      - ssl_certs:/app/cert:ro
-      - backend_data:/app/data
+      - backend_data:/data/
     environment:
       - MYDISCORD_PORT=8080
-      - MYDISCORD_DATABASE_DSN=/app/data/database.db
+      - MYDISCORD_DATABASE_DSN=":memory:?_foreign_keys=true"
       - MYDISCORD_DATABASE_SALT=${MYDISCORD_DATABASE_SALT:-change-this-salt}
       - MYDISCORD_AUTH_TOKEN_SECRET=${MYDISCORD_AUTH_TOKEN_SECRET:-change-this-secret}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test: ["CMD", "curl", "-f", "http://localhost:8081/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - prod
     logging:
@@ -74,6 +72,9 @@ services:
       - "80"
     networks:
       - prod
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     logging:
       driver: "json-file"

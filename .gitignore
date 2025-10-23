@@ -6,3 +6,4 @@ cert
 **/__pycache__/
 *.pyc
 **/bin/
+ssl_certs/
