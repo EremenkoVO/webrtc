@@ -408,6 +408,9 @@ components:
         from:
           type: string
           description: Sender client ID
+        username:
+          type: string
+          description: Sender username
         to:
           type: string
           description: Target client ID (used for direct messages like offer/answer/ice)

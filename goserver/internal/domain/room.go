@@ -23,11 +23,12 @@ type Client struct {
 }
 
 type SignalingMessage struct {
-	Type    string `json:"type"`
-	Room    string `json:"room,omitempty"`
-	From    string `json:"from,omitempty"`
-	To      string `json:"to,omitempty"`
-	Payload any    `json:"payload,omitempty"`
+	Type     string `json:"type"`
+	Room     string `json:"room,omitempty"`
+	Username string `json:"username,omitempty"`
+	From     string `json:"from,omitempty"`
+	To       string `json:"to,omitempty"`
+	Payload  any    `json:"payload,omitempty"`
 }
 
 func (r *Room) BroadcastExcept(msg SignalingMessage, except string) {

@@ -95,8 +95,11 @@ func (s *Service) readPump(client *domain.Client) {
 			room.Clients[client.ID] = client
 			room.Mu.Unlock()
 
-			client.Send <- domain.SignalingMessage{Type: "joined", From: client.ID}
-			room.BroadcastExcept(domain.SignalingMessage{Type: "peer-joined", From: client.ID}, client.ID)
+			client.Send <- domain.SignalingMessage{Type: "joined", From: client.ID, Username: msg.Username}
+			room.BroadcastExcept(
+				domain.SignalingMessage{Type: "peer-joined", From: client.ID, Username: msg.Username},
+				client.ID,
+			)
 
 		case "offer", "answer", "ice":
 			if client.Room == nil {
