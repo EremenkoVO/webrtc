@@ -10,6 +10,7 @@ export const useSignalingStore = defineStore('signaling', () => {
   const ws = ref<WebSocket | null>(null)
   const connectionState = ref<ConnectionState>('disconnected')
   const clientId = ref<string | null>(null)
+  const username = ref<string | null>(null)
   const currentRoomId = ref<string | null>(null)
   const connectedPeers = ref<Set<string>>(new Set())
   const reconnectAttempts = ref(0)
@@ -117,6 +118,7 @@ export const useSignalingStore = defineStore('signaling', () => {
     connectionState.value = 'disconnected'
     currentRoomId.value = null
     clientId.value = null
+    username.value = null
     connectedPeers.value.clear()
     reconnectAttempts.value = 0
   }
@@ -138,17 +140,19 @@ export const useSignalingStore = defineStore('signaling', () => {
   }
 
   // Join a room
-  function joinRoom(roomId: string) {
+  function joinRoom(roomId: string, userName?: string) {
     if (!isConnected.value) {
       console.error('Cannot join room: WebSocket not connected')
       return false
     }
 
     currentRoomId.value = roomId
+    if (userName) username.value = userName
 
     const message: SignalingMessage = {
       type: SignalingMessage.type.JOIN,
       room: roomId,
+      username: userName || undefined,
     }
 
     return sendMessage(message)
@@ -242,13 +246,14 @@ export const useSignalingStore = defineStore('signaling', () => {
     switch (message.type) {
       case SignalingMessage.type.JOINED:
         clientId.value = message.from || null
-        console.log('Joined room with client ID:', clientId.value)
+        username.value = message.username || username.value
+        console.log('Joined room as', username.value, 'with client ID:', clientId.value)
         break
 
       case SignalingMessage.type.PEER_JOINED:
         if (message.from) {
           connectedPeers.value.add(message.from)
-          console.log('Peer joined:', message.from)
+          console.log('Peer joined:', message.from, 'username:', message?.username)
         }
         break
 
@@ -262,15 +267,10 @@ export const useSignalingStore = defineStore('signaling', () => {
 
     // Call registered handlers for this message type
     const handlers = messageHandlers.value.get(message.type)
-    if (handlers) {
-      handlers.forEach((handler) => handler(message))
-    }
+    if (handlers) handlers.forEach((handler) => handler(message))
 
-    // Call handlers for all message types
     const allHandlers = messageHandlers.value.get('*')
-    if (allHandlers) {
-      allHandlers.forEach((handler) => handler(message))
-    }
+    if (allHandlers) allHandlers.forEach((handler) => handler(message))
   }
 
   // Register a message handler

@@ -19,6 +19,10 @@ export type SignalingMessage = {
      */
     from?: string;
     /**
+     * Sender username
+     */
+    username?: string;
+    /**
      * Target client ID (used for direct messages like offer/answer/ice)
      */
     to?: string;
