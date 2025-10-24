@@ -23,11 +23,6 @@ export function useWebRTC() {
   // ICE configuration
   const iceConfiguration: RTCConfiguration = {
     iceServers: [
-      {
-        urls: 'turn:176.108.251.198:3478?transport=udp',
-        username: 'webrtc',
-        credential: import.meta.env.VITE_PASS_STUN_SERVERS,
-      },
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
     ],
