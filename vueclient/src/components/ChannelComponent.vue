@@ -7,13 +7,11 @@ import { useRoomStore } from '@/stores/roomStore'
 import { useSignalingStore } from '@/stores/signalingStore'
 import {
   faChevronUp,
-  faDisplay,
   faMicrophone,
   faMicrophoneSlash,
   faPhoneSlash,
   faVideo,
   faVideoSlash,
-  faXmark,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { computed, ref, watch } from 'vue'
@@ -37,8 +35,6 @@ const {
   leaveRoom,
   switchCamera,
   switchMicrophone,
-  startScreenShare,
-  stopScreenShare,
 } = useWebRTC()
 
 const clientId = computed(() => roomStore.clientId)
@@ -47,7 +43,6 @@ const videoEnabled = ref(false)
 const audioEnabled = ref(true)
 const cameraMenuOpen = ref(false)
 const microphoneMenuOpen = ref(false)
-const isSharingScreen = ref(false)
 const videoDevices = ref<MediaDeviceInfo[]>([])
 const audioDevices = ref<MediaDeviceInfo[]>([])
 const audioElement = ref<HTMLAudioElement | null>(null)
@@ -84,42 +79,17 @@ async function startCall() {
 
   console.log(props.userName)
   try {
-    await joinRoomWithMedia(props.selectedChannelId, props.userName || 'Anonymous', {
+    await joinRoomWithMedia(props.selectedChannelId, {
       video: videoEnabled.value,
-      audio: audioEnabled.value,
+      audio: audioEnabled.value
+        ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        : false,
     })
     isInCall.value = true
     callStore.setStateCall(true)
   } catch (error) {
     console.error('Failed to start call:', error)
     alert('Не удалось начать звонок. Проверьте разрешения на камеру и микрофон.')
-  }
-}
-
-// Start screen share
-async function startScreenSharing() {
-  if (!props.selectedChannelId) {
-    console.error('No channel selected')
-    return
-  }
-
-  try {
-    await startScreenShare().then(() => {
-      console.log('Screen sharing started')
-      isSharingScreen.value = true
-    })
-  } catch (error) {
-    console.error('Failed to start screen share:', error)
-  }
-}
-
-// Stop screen share
-async function stopScreenSharing() {
-  try {
-    await stopScreenShare()
-    isSharingScreen.value = false
-  } catch (error) {
-    console.error('Failed to stop screen share:', error)
   }
 }
 
@@ -356,7 +326,9 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             playsinline
             class="w-full h-full object-cover"
           ></video>
-          <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">Вы</div>
+          <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
+            Вы ({{ signalingStore.clientId }})
+          </div>
         </div>
 
         <!-- Видео собеседников -->
@@ -374,7 +346,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             class="w-full h-full object-cover"
           ></video>
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
-            {{ peer.username || peer.peerId }}
+            Peer: {{ peer.peerId }}
           </div>
         </div>
       </div>
@@ -484,26 +456,6 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             </ul>
           </transition>
         </div>
-
-        <button
-          v-if="!isSharingScreen"
-          type="button"
-          class="p-4 flex items-center justify-center rounded-full bg-slate-700 hover:bg-slate-600 transition-colors"
-          @click="startScreenSharing"
-          title="Начать транслирование экрана"
-        >
-          <FontAwesomeIcon :icon="faDisplay" class="text-xl" />
-        </button>
-
-        <button
-          v-else
-          type="button"
-          class="p-4 flex items-center justify-center rounded-full bg-red-600 hover:bg-red-700 transition-colors"
-          @click="stopScreenSharing"
-          title="Остановить транслирование экрана"
-        >
-          <FontAwesomeIcon :icon="faXmark" class="text-xl" />
-        </button>
 
         <button
           type="button"
