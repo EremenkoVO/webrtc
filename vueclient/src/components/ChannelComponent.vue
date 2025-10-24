@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { SignalingService, type ErrorResponse, type RoomJoinResponse } from '@/api'
+import connectSound from '@/assets/sound/connect.wav'
 import { useWebRTC } from '@/composible/useWebRTC'
 import { useRoomStore } from '@/stores/roomStore'
 import { useSignalingStore } from '@/stores/signalingStore'
@@ -27,6 +28,7 @@ const {
   remotePeers,
   stopMedia,
   joinRoomWithMedia,
+  initializeMedia,
   leaveRoom,
   switchCamera,
   switchMicrophone,
@@ -40,7 +42,9 @@ const cameraMenuOpen = ref(false)
 const microphoneMenuOpen = ref(false)
 const videoDevices = ref<MediaDeviceInfo[]>([])
 const audioDevices = ref<MediaDeviceInfo[]>([])
+const audioElement = ref<HTMLAudioElement | null>(null)
 const currentDeviceId = ref<string | null>(null)
+const soundUrl = connectSound
 
 // Start call
 async function startCall() {
@@ -73,7 +77,11 @@ function endCall() {
 // Toggle video
 function toggleVideo() {
   if (localStream.value) {
-    console.log(localStream.value.getVideoTracks())
+    if (localStream.value.getVideoTracks().length === 0) {
+      initializeMedia({ video: true, audio: audioEnabled.value })
+      videoEnabled.value = true
+    }
+
     const videoTrack = localStream.value.getVideoTracks()[0]
     if (videoTrack) {
       videoTrack.enabled = !videoTrack.enabled
@@ -95,6 +103,11 @@ function toggleAudio() {
 
 // Toggle camera menu
 function toggleCameraMenu() {
+  if (localStream.value?.getVideoTracks().length === 0) {
+    initializeMedia({ video: true, audio: audioEnabled.value })
+    videoEnabled.value = true
+  }
+
   cameraMenuOpen.value = !cameraMenuOpen.value
   if (cameraMenuOpen.value) {
     // Fetch video input devices
@@ -182,6 +195,34 @@ watch(
   },
 )
 
+watch(
+  () => isInCall.value,
+  (inCall) => {
+    if (inCall) {
+      const audio = audioElement.value
+      if (audio) {
+        audio.play().catch((error) => {
+          console.error('Error playing audio:', error)
+        })
+      }
+    }
+  },
+)
+
+watch(
+  () => remotePeers.value.length,
+  (newLength, oldLength) => {
+    if (newLength > oldLength) {
+      const audio = audioElement.value
+      if (audio) {
+        audio.play().catch((error) => {
+          console.error('Error playing audio:', error)
+        })
+      }
+    }
+  },
+)
+
 // Setup video element refs
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function setupVideoElement(el: any, stream: MediaStream | null) {
@@ -215,6 +256,8 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
       </div>
     </div>
 
+    <audio ref="audioElement" :src="soundUrl"></audio>
+
     <!-- Video Grid -->
     <div class="flex-1 p-4 overflow-auto">
       <div v-if="!isInCall" class="flex items-center justify-center h-full">
@@ -234,7 +277,9 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
 
       <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 h-full">
         <!-- Local Video -->
-        <div class="relative bg-slate-800 rounded-lg overflow-hidden aspect-video">
+        <div
+          class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video"
+        >
           <video
             v-if="localStream"
             :ref="(el: any) => setupVideoElement(el, localStream)"
@@ -243,11 +288,14 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             playsinline
             class="w-full h-full object-cover"
           ></video>
-          <div v-else class="flex items-center justify-center h-full text-slate-400">
-            <FontAwesomeIcon :icon="faUser" class="text-4xl" />
+          <div
+            v-if="!videoEnabled"
+            class="absolute rounded-lg border border-slate-700 bottom-0 left-0 right-0 top-0 flex items-center justify-center px-2 py-1 text-sm"
+          >
+            <FontAwesomeIcon :icon="faUser" class="text-9xl" />
           </div>
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
-            Вы ({{ localStream?.id }})
+            Вы ({{ signalingStore.clientId }})
           </div>
         </div>
 
@@ -264,9 +312,14 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             playsinline
             class="w-full h-full object-cover"
           ></video>
-          <div v-else class="flex items-center justify-center h-full text-slate-400">
-            <FontAwesomeIcon :icon="faUser" class="text-4xl" />
+          <div
+            v-else
+            class="absolute rounded-lg border border-slate-700 bottom-0 left-0 right-0 top-0 flex items-center justify-center bg-slate-900/80 px-2 py-1 text-sm"
+          >
+            <FontAwesomeIcon :icon="faUser" class="text-9xl" />
           </div>
+
+          <!-- контроллер для управление громкостью собеседника -->
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
             Peer: {{ peer.peerId }}
           </div>
