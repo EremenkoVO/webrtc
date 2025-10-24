@@ -90,8 +90,8 @@ function selectChannel(id: string | undefined) {
 
 async function logout() {
   try {
-    await AuthService.logoutUser()
     await authStore.clearTokens()
+    await AuthService.logoutUser()
     router.push({ name: 'Login' })
   } catch (e) {
     console.error(e)

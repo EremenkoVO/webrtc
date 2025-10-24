@@ -58,16 +58,18 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center p-4">
-    <div class="h-full max-w-d bg-white rounded-xl shadow-2xl overflow-hidden">
+  <div
+    class="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 flex items-center justify-center p-4"
+  >
+    <div class="h-full max-w-d bg-slate-800 rounded-xl shadow-2xl overflow-hidden">
       <div class="p-8">
         <div class="mb-8 flex items-center justify-center w-full">
-          <h1 class="text-5xl items-center font-bold">WebRTC Client</h1>
+          <h1 class="text-5xl items-center text-white font-bold">WebRTC Client</h1>
         </div>
 
         <div
           v-if="hasErrors"
-          class="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded"
+          class="mb-4 p-4 bg-red-200 border border-red-400 text-red-700 rounded"
         >
           <ul>
             <li v-for="(error, index) in errorMessages" :key="index">{{ error }}</li>
@@ -77,11 +79,11 @@ onMounted(() => {
         <form @submit.prevent="handleLogin" class="space-y-6">
           <div class="relative">
             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <FontAwesomeIcon :icon="faUser"></FontAwesomeIcon>
+              <FontAwesomeIcon :icon="faUser" class="text-white"></FontAwesomeIcon>
             </div>
             <input
               v-model="username"
-              class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-500 focus:border-transparent outline-none transition"
+              class="w-full pl-10 pr-4 py-3 border text-white border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-500 focus:border-transparent outline-none transition"
               placeholder="Логин"
               autocomplete="on"
               required
@@ -91,12 +93,12 @@ onMounted(() => {
 
           <div class="relative">
             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <FontAwesomeIcon :icon="faLock"></FontAwesomeIcon>
+              <FontAwesomeIcon :icon="faLock" class="text-white"></FontAwesomeIcon>
             </div>
 
             <input
               v-model="password"
-              class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-500 focus:border-transparent outline-none transition"
+              class="w-full pl-10 pr-4 py-3 border text-white border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-500 focus:border-transparent outline-none transition"
               :type="showPassword ? 'text' : 'password'"
               autocomplete="current-password"
               placeholder="Пароль"
@@ -115,12 +117,12 @@ onMounted(() => {
 
           <div class="relative">
             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <FontAwesomeIcon :icon="faLock"></FontAwesomeIcon>
+              <FontAwesomeIcon :icon="faLock" class="text-white"></FontAwesomeIcon>
             </div>
 
             <input
               v-model="confirmPassword"
-              class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-500 focus:border-transparent outline-none transition"
+              class="w-full pl-10 pr-4 py-3 border text-white border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-500 focus:border-transparent outline-none transition"
               :type="showPassword ? 'text' : 'password'"
               autocomplete="current-password"
               placeholder="Повторите пароль"
@@ -139,7 +141,7 @@ onMounted(() => {
 
           <button
             type="submit"
-            class="w-full bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-600 active:bg-blue-400 transition-all duration-300 shadow-md hover:shadow-lg cursor-pointer disabled:cursor-not-allowed disabled:bg-blue-300"
+            class="w-full bg-indigo-500 text-white py-3 rounded-lg font-semibold hover:bg-indigo-600 active:bg-indigo-400 transition-all duration-300 shadow-md hover:shadow-lg cursor-pointer disabled:cursor-not-allowed disabled:bg-indigo-300"
             title="Авторизоваться"
             :disabled="isLoading"
           >
@@ -154,7 +156,7 @@ onMounted(() => {
             <RouterLink
               to="/auth/login"
               title="Авторизоваться"
-              class="text-blue-500 transition-all duration-300 hover:text-blue-800"
+              class="text-indigo-500 transition-all duration-300 hover:text-indigo-800"
               >Авторизоваться
             </RouterLink>
           </div>
