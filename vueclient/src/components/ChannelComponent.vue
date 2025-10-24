@@ -4,7 +4,6 @@ import connectSound from '@/assets/sound/connect.wav'
 import { useWebRTC } from '@/composible/useWebRTC'
 import { useRoomStore } from '@/stores/roomStore'
 import { useSignalingStore } from '@/stores/signalingStore'
-import { faUser } from '@fortawesome/free-regular-svg-icons'
 import {
   faChevronUp,
   faMicrophone,
@@ -78,7 +77,12 @@ function endCall() {
 function toggleVideo() {
   if (localStream.value) {
     if (localStream.value.getVideoTracks().length === 0) {
-      initializeMedia({ video: true, audio: audioEnabled.value })
+      initializeMedia({
+        video: true,
+        audio: audioEnabled.value
+          ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          : false,
+      })
       videoEnabled.value = true
     }
 
@@ -288,12 +292,6 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             playsinline
             class="w-full h-full object-cover"
           ></video>
-          <div
-            v-if="!videoEnabled"
-            class="absolute rounded-lg border border-slate-700 bottom-0 left-0 right-0 top-0 flex items-center justify-center px-2 py-1 text-sm"
-          >
-            <FontAwesomeIcon :icon="faUser" class="text-9xl" />
-          </div>
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
             Вы ({{ signalingStore.clientId }})
           </div>
@@ -303,7 +301,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
         <div
           v-for="peer in remotePeers"
           :key="peer.peerId"
-          class="relative bg-slate-800 rounded-lg overflow-hidden aspect-video"
+          class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video"
         >
           <video
             v-if="peer.remoteStream"
@@ -312,14 +310,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             playsinline
             class="w-full h-full object-cover"
           ></video>
-          <div
-            v-else
-            class="absolute rounded-lg border border-slate-700 bottom-0 left-0 right-0 top-0 flex items-center justify-center bg-slate-900/80 px-2 py-1 text-sm"
-          >
-            <FontAwesomeIcon :icon="faUser" class="text-9xl" />
-          </div>
 
-          <!-- контроллер для управление громкостью собеседника -->
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
             Peer: {{ peer.peerId }}
           </div>
@@ -355,7 +346,11 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
               @click="toggleCameraMenu"
               title="Выбрать камеру"
             >
-              <FontAwesomeIcon :icon="faChevronUp" class="text-xl text-white" />
+              <FontAwesomeIcon
+                :icon="faChevronUp"
+                class="text-xl text-white"
+                :class="{ 'rotate-180': cameraMenuOpen }"
+              />
             </button>
 
             <!-- Выпадающее меню для выбора камеры -->
@@ -378,11 +373,11 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
           </div>
         </div>
 
-        <div class="relative flex items-center">
+        <div class="relative flex justify-center items-center">
           <button
             type="button"
             :class="[
-              'p-4 rounded-l-full transition-colors',
+              'p-4 rounded-l-full transition-colors flex items-center justify-center',
               audioEnabled ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-600 hover:bg-red-700',
             ]"
             @click="toggleAudio"
@@ -397,11 +392,15 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
           <div class="relative">
             <button
               type="button"
-              class="p-4 rounded-r-full bg-slate-700 hover:bg-slate-600 transition-colors"
+              class="p-4 rounded-r-full bg-slate-700 hover:bg-slate-600 transition-colors flex items-center justify-center"
               @click="toggleMicrophoneMenu"
               title="Выбрать микрофон"
             >
-              <FontAwesomeIcon :icon="faChevronUp" class="text-xl text-white" />
+              <FontAwesomeIcon
+                :icon="faChevronUp"
+                class="text-xl text-white"
+                :class="{ 'rotate-180': microphoneMenuOpen }"
+              />
             </button>
           </div>
 
@@ -409,14 +408,14 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
           <transition name="fade">
             <ul
               v-if="microphoneMenuOpen"
-              class="absolute right-0 bottom-12 mt-2 w-56 bg-slate-800 text-white rounded-xl shadow-lg z-50"
+              class="absolute right-0 bottom-12 mt-2 w-56 bg-slate-800 text-white rounded-xl shadow-lg z-50 items-center justify-center"
               v-click-outside="() => (microphoneMenuOpen = false)"
             >
               <li
                 v-for="device in audioDevices"
                 :key="device.deviceId"
                 @click="selectMicrophone(device.deviceId)"
-                class="px-4 py-2 hover:bg-slate-700 cursor-pointer transition-colors"
+                class="px-4 py-2 rounded-xl hover:bg-slate-700 cursor-pointer transition-colors"
               >
                 {{ device.label || 'Камера ' + deviceAudioIndex(device) }}
               </li>
@@ -426,7 +425,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
 
         <button
           type="button"
-          class="p-4 rounded-full bg-red-600 hover:bg-red-700 transition-colors"
+          class="p-4 flex items-center justify-center rounded-full bg-red-600 hover:bg-red-700 transition-colors"
           @click="endCall"
           title="Завершить звонок"
         >
