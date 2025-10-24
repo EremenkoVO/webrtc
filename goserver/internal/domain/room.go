@@ -16,10 +16,11 @@ type Room struct {
 }
 
 type Client struct {
-	ID   string
-	Conn *websocket.Conn
-	Send chan SignalingMessage
-	Room *Room
+	ID       string
+	Username string
+	Conn     *websocket.Conn
+	Send     chan SignalingMessage
+	Room     *Room
 }
 
 type SignalingMessage struct {

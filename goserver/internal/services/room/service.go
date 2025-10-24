@@ -95,7 +95,24 @@ func (s *Service) readPump(client *domain.Client) {
 			room.Clients[client.ID] = client
 			room.Mu.Unlock()
 
-			client.Send <- domain.SignalingMessage{Type: "joined", From: client.ID, Username: msg.Username}
+			client.Send <- domain.SignalingMessage{
+				Type:     "joined",
+				From:     client.ID,
+				Username: msg.Username,
+				Payload: JoinPayload{
+					RoomMates: func(clients map[string]*domain.Client) map[string]string {
+						roommates := make(map[string]string, len(clients)-1)
+						for id, c := range clients {
+							if client.ID == c.ID {
+								continue
+							}
+
+							roommates[id] = c.Username
+						}
+						return roommates
+					}(room.Clients),
+				},
+			}
 			room.BroadcastExcept(
 				domain.SignalingMessage{Type: "peer-joined", From: client.ID, Username: msg.Username},
 				client.ID,
@@ -126,4 +143,8 @@ func (s *Service) writePump(client *domain.Client) {
 			return
 		}
 	}
+}
+
+type JoinPayload struct {
+	RoomMates map[string]string `json:"room_mates"`
 }
