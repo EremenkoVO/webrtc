@@ -3,6 +3,7 @@ import { AuthService, SignalingService, type Room, type UserProfile } from '@/ap
 import { useApiErrors } from '@/composible/useApiErrors'
 import router from '@/router'
 import { useAuthStore } from '@/stores/authStore'
+import { useCallStore } from '@/stores/callStore'
 import { faArrowAltCircleRight, faXmarkCircle } from '@fortawesome/free-regular-svg-icons'
 import { faCheck, faPlus, faSignOutAlt } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
@@ -10,6 +11,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 
 const { clearErrors, parseApiError } = useApiErrors()
 const authStore = useAuthStore()
+const callStore = useCallStore()
 
 const props = defineProps<{
   user: UserProfile
@@ -69,22 +71,16 @@ async function listChannels() {
   }
 }
 
-function removeChannel(id: string | undefined) {
-  if (typeof id === 'undefined') return
-  clearErrors()
-
-  try {
-    // await SignalingService.deleteRoom(id)
-    console.log('Room deleted:', id)
-  } catch (e) {
-    console.error(e)
-    parseApiError(e)
-    return
-  }
-}
-
 function selectChannel(id: string | undefined) {
   if (typeof id === 'undefined') return
+  if (id === selectedChannelId.value) return
+
+  if (callStore.isInCall) {
+    const result = confirm('Вы уверены, что хотите переключиться на другой канал')
+
+    if (!result) return
+  }
+
   selectedChannelId.value = id
 }
 
@@ -205,14 +201,6 @@ onMounted(() => {
                 ]"
               >
                 <span class="flex-1 truncate">{{ ch.name }}</span>
-                <button
-                  type="button"
-                  class="text-rose-400 px-2"
-                  @click.stop="removeChannel(ch.id)"
-                  title="Удалить канал"
-                >
-                  <i class="fa-solid fa-xmark"></i>
-                </button>
               </div>
             </li>
           </ul>

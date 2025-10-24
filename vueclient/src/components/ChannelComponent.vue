@@ -2,15 +2,18 @@
 import { SignalingService, type ErrorResponse, type RoomJoinResponse } from '@/api'
 import connectSound from '@/assets/sound/connect.wav'
 import { useWebRTC } from '@/composible/useWebRTC'
+import { useCallStore } from '@/stores/callStore'
 import { useRoomStore } from '@/stores/roomStore'
 import { useSignalingStore } from '@/stores/signalingStore'
 import {
   faChevronUp,
+  faDisplay,
   faMicrophone,
   faMicrophoneSlash,
   faPhoneSlash,
   faVideo,
   faVideoSlash,
+  faXmark,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { computed, ref, watch } from 'vue'
@@ -18,10 +21,13 @@ import { computed, ref, watch } from 'vue'
 const props = defineProps<{
   selectedChannelId: string | undefined
   selectedChannelName: string | undefined
+  userName: string | undefined
 }>()
 
 const roomStore = useRoomStore()
 const signalingStore = useSignalingStore()
+const callStore = useCallStore()
+
 const {
   localStream,
   remotePeers,
@@ -31,6 +37,8 @@ const {
   leaveRoom,
   switchCamera,
   switchMicrophone,
+  startScreenShare,
+  stopScreenShare,
 } = useWebRTC()
 
 const clientId = computed(() => roomStore.clientId)
@@ -39,11 +47,31 @@ const videoEnabled = ref(false)
 const audioEnabled = ref(true)
 const cameraMenuOpen = ref(false)
 const microphoneMenuOpen = ref(false)
+const isSharingScreen = ref(false)
 const videoDevices = ref<MediaDeviceInfo[]>([])
 const audioDevices = ref<MediaDeviceInfo[]>([])
 const audioElement = ref<HTMLAudioElement | null>(null)
 const currentDeviceId = ref<string | null>(null)
 const soundUrl = connectSound
+
+const totalPeers = computed(() => 1 + remotePeers.value.length)
+
+// динамический класс ширины
+const videoTileClass = computed(() => {
+  if (totalPeers.value <= 2) {
+    // 1–2 участника → большие окна
+    return 'w-full sm:w-[70%] md:w-[60%] max-w-[700px]'
+  } else if (totalPeers.value <= 4) {
+    // 3–4 участника → средние
+    return 'w-full sm:w-[48%] md:w-[45%] max-w-[500px]'
+  } else if (totalPeers.value <= 6) {
+    // 5–6 участников → поменьше
+    return 'w-full sm:w-[31%] md:w-[30%] max-w-[400px]'
+  } else {
+    // 7+ участников → маленькие плитки
+    return 'w-full sm:w-[23%] md:w-[22%] max-w-[320px]'
+  }
+})
 
 // Start call
 async function startCall() {
@@ -54,15 +82,44 @@ async function startCall() {
 
   await connectToRoom(props.selectedChannelId)
 
+  console.log(props.userName)
   try {
-    await joinRoomWithMedia(props.selectedChannelId, {
+    await joinRoomWithMedia(props.selectedChannelId, props.userName || 'Anonymous', {
       video: videoEnabled.value,
       audio: audioEnabled.value,
     })
     isInCall.value = true
+    callStore.setStateCall(true)
   } catch (error) {
     console.error('Failed to start call:', error)
     alert('Не удалось начать звонок. Проверьте разрешения на камеру и микрофон.')
+  }
+}
+
+// Start screen share
+async function startScreenSharing() {
+  if (!props.selectedChannelId) {
+    console.error('No channel selected')
+    return
+  }
+
+  try {
+    await startScreenShare().then(() => {
+      console.log('Screen sharing started')
+      isSharingScreen.value = true
+    })
+  } catch (error) {
+    console.error('Failed to start screen share:', error)
+  }
+}
+
+// Stop screen share
+async function stopScreenSharing() {
+  try {
+    await stopScreenShare()
+    isSharingScreen.value = false
+  } catch (error) {
+    console.error('Failed to stop screen share:', error)
   }
 }
 
@@ -71,6 +128,7 @@ function endCall() {
   leaveRoom()
   stopMedia()
   isInCall.value = false
+  callStore.setStateCall(false)
 }
 
 // Toggle video
@@ -264,6 +322,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
 
     <!-- Video Grid -->
     <div class="flex-1 p-4 overflow-auto">
+      <!-- Если не в звонке -->
       <div v-if="!isInCall" class="flex items-center justify-center h-full">
         <div class="text-center">
           <p class="text-slate-400 mb-4">Вы не в звонке</p>
@@ -279,10 +338,15 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
         </div>
       </div>
 
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 h-full">
-        <!-- Local Video -->
+      <!-- Если в звонке -->
+      <div
+        v-else
+        class="flex flex-wrap justify-center items-center gap-4 h-full content-center transition-all duration-300"
+      >
+        <!-- Локальное видео -->
         <div
-          class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video"
+          :class="videoTileClass"
+          class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300"
         >
           <video
             v-if="localStream"
@@ -292,16 +356,15 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             playsinline
             class="w-full h-full object-cover"
           ></video>
-          <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
-            Вы ({{ signalingStore.clientId }})
-          </div>
+          <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">Вы</div>
         </div>
 
-        <!-- Remote Videos -->
+        <!-- Видео собеседников -->
         <div
           v-for="peer in remotePeers"
           :key="peer.peerId"
-          class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video"
+          :class="videoTileClass"
+          class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300"
         >
           <video
             v-if="peer.remoteStream"
@@ -310,9 +373,8 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             playsinline
             class="w-full h-full object-cover"
           ></video>
-
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
-            Peer: {{ peer.peerId }}
+            {{ peer.username || peer.peerId }}
           </div>
         </div>
       </div>
@@ -422,6 +484,26 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             </ul>
           </transition>
         </div>
+
+        <button
+          v-if="!isSharingScreen"
+          type="button"
+          class="p-4 flex items-center justify-center rounded-full bg-slate-700 hover:bg-slate-600 transition-colors"
+          @click="startScreenSharing"
+          title="Начать транслирование экрана"
+        >
+          <FontAwesomeIcon :icon="faDisplay" class="text-xl" />
+        </button>
+
+        <button
+          v-else
+          type="button"
+          class="p-4 flex items-center justify-center rounded-full bg-red-600 hover:bg-red-700 transition-colors"
+          @click="stopScreenSharing"
+          title="Остановить транслирование экрана"
+        >
+          <FontAwesomeIcon :icon="faXmark" class="text-xl" />
+        </button>
 
         <button
           type="button"

@@ -47,12 +47,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex h-screen">
+  <div class="flex h-screen bg-gradient-to-b from-slate-900 to-slate-950">
     <SidebarComponent @channel-selected="selectChannel" :user="user" />
     <div class="flex-1 overflow-auto">
       <ChannelComponent
         :selectedChannelId="selectedChannelId"
         :selected-channel-name="selectedChannelName"
+        :user-name="user.username"
       />
     </div>
   </div>
