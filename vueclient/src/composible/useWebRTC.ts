@@ -5,12 +5,8 @@ import { computed, onUnmounted, ref } from 'vue'
 export interface PeerConnection {
   peerId: string
   connection: RTCPeerConnection
-  username?: string
   remoteStream: MediaStream | null
 }
-
-const isScreenSharing = ref(false)
-let previousVideoTrack: MediaStreamTrack | null = null
 
 export function useWebRTC() {
   const signalingStore = useSignalingStore()
@@ -25,6 +21,11 @@ export function useWebRTC() {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
+      {
+        urls: 'turn:176.108.251.198:3478?transport=udp',
+        username: 'webrtc',
+        credential: import.meta.env.VITE_TURN_CREDENTIAL as string,
+      },
     ],
   }
 
@@ -150,9 +151,8 @@ export function useWebRTC() {
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
 
-      signalingStore.sendAnswer(peerId, answer)
-
       console.log('Created answer for', peerId)
+      signalingStore.sendAnswer(peerId, answer)
     } catch (error) {
       console.error('Failed to handle offer:', error)
       throw error
@@ -212,13 +212,6 @@ export function useWebRTC() {
       if (message.from && message.from !== signalingStore.clientId) {
         // Только существующие участники создают offer
         console.log('Existing peer creating offer to new peer:', message.from)
-        const peer: PeerConnection = {
-          peerId: message.from,
-          connection: createPeerConnection(message.from),
-          username: message.username || 'Unknown user',
-          remoteStream: null,
-        }
-        peers.value.set(message.from, peer)
         createOffer(message.from)
       }
     })
@@ -264,29 +257,22 @@ export function useWebRTC() {
   }
 
   // Join a room with WebRTC
-  async function joinRoomWithMedia(
-    roomId: string,
-    userName: string,
-    mediaConstraints?: MediaStreamConstraints,
-  ) {
+  async function joinRoomWithMedia(roomId: string, mediaConstraints?: MediaStreamConstraints) {
     try {
-      // Initialize media if not already done
+      // Инициализируем медиа только если указаны ограничения (или по умолчанию)
+      // Если передан {}, или {video:false, audio:false} — initializeMedia обработает это
       if (!isMediaInitialized.value) {
         await initializeMedia(mediaConstraints)
       }
 
-      // Setup signaling handlers
       setupSignalingHandlers()
 
-      // Connect to signaling server if not connected
       if (!signalingStore.isConnected) {
-        await signalingStore.connect() // сделай connect() возвращающим Promise, когда socket открыт
+        await signalingStore.connect()
       }
 
-      // Join the room
-      signalingStore.joinRoom(roomId, userName)
-
-      console.log(`Joined room "${roomId}" as "${userName}"`)
+      signalingStore.joinRoom(roomId)
+      console.log('Joined room with WebRTC:', roomId)
     } catch (error) {
       console.error('Failed to join room with media:', error)
       throw error
@@ -313,6 +299,17 @@ export function useWebRTC() {
   // Смена видеокамеры
   async function switchCamera(deviceId: string) {
     try {
+      if (!localStream.value) {
+        console.warn('No local stream — cannot switch camera')
+        return
+      }
+
+      // Проверяем, есть ли вообще видео в текущем потоке
+      if (localStream.value.getVideoTracks().length === 0) {
+        console.warn('No video track in local stream — cannot switch camera')
+        return
+      }
+
       console.log('Switching camera to device:', deviceId)
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: { deviceId: { exact: deviceId } },
@@ -372,75 +369,6 @@ export function useWebRTC() {
     }
   }
 
-  async function startScreenShare() {
-    try {
-      if (isScreenSharing.value) {
-        console.warn('Already sharing screen')
-        return
-      }
-
-      console.log('Starting screen share...')
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      })
-      const screenTrack = screenStream.getVideoTracks()[0]
-      if (!screenTrack) throw new Error('No screen video track')
-
-      // Сохраняем текущий видеотрек для восстановления
-      previousVideoTrack = localStream.value?.getVideoTracks()[0] || null
-
-      // Заменяем видеотрек во всех соединениях
-      peers.value.forEach(({ connection }) => {
-        const sender = connection.getSenders().find((s) => s.track?.kind === 'video')
-        if (sender) sender.replaceTrack(screenTrack)
-      })
-
-      // Обновляем localStream
-      // const audioTrack = localStream.value?.getAudioTracks()[0]
-      // localStream.value = new MediaStream([screenTrack, ...(audioTrack ? [audioTrack] : [])])
-
-      isScreenSharing.value = true
-
-      // Когда пользователь остановит показ экрана
-      screenTrack.onended = () => {
-        console.log('Screen sharing stopped by user')
-        stopScreenShare()
-      }
-
-      console.log('Screen sharing started')
-    } catch (err) {
-      console.error('Failed to start screen share:', err)
-    }
-  }
-
-  async function stopScreenShare() {
-    try {
-      if (!isScreenSharing.value) return
-      console.log('Stopping screen share...')
-
-      // Возвращаем камеру, если она была
-      if (previousVideoTrack) {
-        peers.value.forEach(({ connection }) => {
-          const sender = connection.getSenders().find((s) => s.track?.kind === 'video')
-          if (sender) sender.replaceTrack(previousVideoTrack!)
-        })
-
-        const audioTrack = localStream.value?.getAudioTracks()[0]
-        localStream.value = new MediaStream([
-          previousVideoTrack,
-          ...(audioTrack ? [audioTrack] : []),
-        ])
-        previousVideoTrack = null
-      }
-
-      isScreenSharing.value = false
-      console.log('Screen share stopped and camera restored')
-    } catch (err) {
-      console.error('Failed to stop screen share:', err)
-    }
-  }
-
   // Cleanup on unmount
   onUnmounted(() => {
     leaveRoom()
@@ -464,9 +392,5 @@ export function useWebRTC() {
     // Switch devices
     switchCamera,
     switchMicrophone,
-
-    // Screen sharing
-    startScreenShare,
-    stopScreenShare,
   }
 }
