@@ -30,8 +30,6 @@ const {
   localStream,
   remotePeers,
   isScreenSharing,
-  speakingPeers,
-  isLocalSpeaking,
   stopMedia,
   joinRoomWithMedia,
   initializeMedia,
@@ -325,10 +323,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
       >
         <!-- Локальное видео -->
         <div
-          :class="[
-            videoTileClass,
-            isLocalSpeaking ? 'border-4 border-green-400 animate-pulse' : '',
-          ]"
+          :class="[videoTileClass]"
           class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300"
         >
           <video
@@ -345,14 +340,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
         </div>
 
         <!-- Видео собеседников -->
-        <div
-          v-for="peer in remotePeers"
-          :key="peer.peerId"
-          :class="[
-            videoTileClass,
-            speakingPeers[peer.peerId] ? 'border-4 border-green-400 animate-pulse' : '',
-          ]"
-        >
+        <div v-for="peer in remotePeers" :key="peer.peerId" :class="[videoTileClass]">
           <video
             v-if="peer.remoteStream"
             :ref="(el: any) => setupVideoElement(el, peer.remoteStream)"
@@ -500,20 +488,3 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
     </div>
   </div>
 </template>
-<style scoped>
-.animate-pulse {
-  animation: pulse-border 1s infinite;
-}
-
-@keyframes pulse-border {
-  0% {
-    box-shadow: 0 0 0px rgba(34, 197, 94, 0.7);
-  }
-  50% {
-    box-shadow: 0 0 15px rgba(34, 197, 94, 0.9);
-  }
-  100% {
-    box-shadow: 0 0 0px rgba(34, 197, 94, 0.7);
-  }
-}
-</style>
