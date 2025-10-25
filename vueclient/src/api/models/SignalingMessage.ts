@@ -32,7 +32,7 @@ export type SignalingMessage = {
     payload?: ({
         roomId: string;
     } | {
-        clientId: string;
+        room_mates: Record<string, string>;
     } | {
         /**
          * Session Description Protocol (SDP) string

@@ -17,8 +17,6 @@ import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps<{
-  selectedChannelId: string | undefined
-  selectedChannelName: string | undefined
   userName: string | undefined
 }>()
 
@@ -70,23 +68,24 @@ const videoTileClass = computed(() => {
 
 // Start call
 async function startCall() {
-  if (!props.selectedChannelId) {
+  if (!roomStore.selectedChannelId) {
     console.error('No channel selected')
     return
   }
 
-  await connectToRoom(props.selectedChannelId)
+  await connectToRoom(roomStore.selectedChannelId)
 
-  console.log(props.userName)
   try {
-    await joinRoomWithMedia(props.selectedChannelId, {
+    await joinRoomWithMedia(roomStore.selectedChannelId, props.userName, {
       video: videoEnabled.value,
       audio: audioEnabled.value
         ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         : false,
+    }).then(() => {
+      isInCall.value = true
+      callStore.setStateCall(true)
+      roomStore.getListChannels()
     })
-    isInCall.value = true
-    callStore.setStateCall(true)
   } catch (error) {
     console.error('Failed to start call:', error)
     alert('Не удалось начать звонок. Проверьте разрешения на камеру и микрофон.')
@@ -97,6 +96,7 @@ async function startCall() {
 function endCall() {
   leaveRoom()
   stopMedia()
+  roomStore.getListChannels()
   isInCall.value = false
   callStore.setStateCall(false)
 }
@@ -219,7 +219,7 @@ async function connectToRoom(id: string | undefined) {
 
 // Watch for channel changes and leave current call
 watch(
-  () => props.selectedChannelId,
+  () => roomStore.selectedChannelId,
   (newId, oldId) => {
     if (oldId && newId !== oldId && isInCall.value) {
       endCall()
@@ -266,12 +266,12 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
 
 <template>
   <div
-    v-if="selectedChannelId"
+    v-if="roomStore.selectedChannelId"
     class="flex flex-col h-full bg-gradient-to-b from-slate-900 to-slate-950 text-white"
   >
     <!-- Header -->
     <div class="p-4 border-b border-slate-800">
-      <h1 class="text-xl font-semibold">Канал: {{ selectedChannelName }}</h1>
+      <h1 class="text-xl font-semibold">Канал: {{ roomStore.selectedChannelName }}</h1>
       <p v-if="clientId" class="text-sm text-slate-400 mt-1">
         Client ID: {{ signalingStore.clientId || clientId }}
       </p>
@@ -295,12 +295,22 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
       <!-- Если не в звонке -->
       <div v-if="!isInCall" class="flex items-center justify-center h-full">
         <div class="text-center">
+          <div v-if="roomStore.roommates.length">
+            <p class="text-slate-400 mb-4">Список подключенных участников</p>
+            <ul class="text-slate-400 mb-4">
+              <li v-for="(user, index) in roomStore.roommates" :key="index">{{ user }}</li>
+            </ul>
+          </div>
+          <div v-else>
+            <p class="text-slate-400 mb-4">Нет подключенных участников</p>
+          </div>
+
           <p class="text-slate-400 mb-4">Вы не в звонке</p>
           <button
             type="button"
             class="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors"
             @click="startCall"
-            :disabled="!selectedChannelId"
+            :disabled="!roomStore.selectedChannelId"
           >
             <FontAwesomeIcon :icon="faVideo" class="mr-2" />
             Начать звонок
@@ -326,9 +336,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             playsinline
             class="w-full h-full object-cover"
           ></video>
-          <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
-            Вы ({{ signalingStore.clientId }})
-          </div>
+          <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">Вы</div>
         </div>
 
         <!-- Видео собеседников -->
@@ -346,7 +354,8 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             class="w-full h-full object-cover"
           ></video>
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
-            Peer: {{ peer.peerId }}
+            Peer:
+            {{ peer.room_mates?.[peer.peerId] || peer.peerId }}
           </div>
         </div>
       </div>

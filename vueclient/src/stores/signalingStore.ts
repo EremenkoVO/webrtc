@@ -2,6 +2,7 @@ import { OpenAPI } from '@/api/core/OpenAPI'
 import { SignalingMessage } from '@/api/models/SignalingMessage'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { useRoomStore } from './roomStore'
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 
@@ -11,8 +12,9 @@ export const useSignalingStore = defineStore('signaling', () => {
   const connectionState = ref<ConnectionState>('disconnected')
   const clientId = ref<string | null>(null)
   const username = ref<string | null>(null)
+  const room_mates = ref<Record<string, string>>({})
   const currentRoomId = ref<string | null>(null)
-  const connectedPeers = ref<Set<string>>(new Set())
+  const connectedPeers = ref<Map<string, string>>(new Map())
   const reconnectAttempts = ref(0)
   const maxReconnectAttempts = 5
   const reconnectTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
@@ -149,10 +151,19 @@ export const useSignalingStore = defineStore('signaling', () => {
     currentRoomId.value = roomId
     if (userName) username.value = userName
 
+    if (clientId.value && username.value) {
+      room_mates.value[clientId.value] = username.value
+    }
+
+    console.log('Joining room with mates:', room_mates.value)
+
     const message: SignalingMessage = {
       type: SignalingMessage.type.JOIN,
       room: roomId,
       username: userName || undefined,
+      payload: {
+        room_mates: room_mates.value,
+      },
     }
 
     return sendMessage(message)
@@ -245,22 +256,33 @@ export const useSignalingStore = defineStore('signaling', () => {
 
     switch (message.type) {
       case SignalingMessage.type.JOINED:
+        console.log('Handling JOINED message:', message)
         clientId.value = message.from || null
         username.value = message.username || username.value
+        if (message.payload && 'room_mates' in message.payload) {
+          room_mates.value = (message.payload as { room_mates: Record<string, string> }).room_mates
+        } else {
+          room_mates.value = {}
+        }
+        useRoomStore().getListChannels()
         console.log('Joined room as', username.value, 'with client ID:', clientId.value)
         break
 
       case SignalingMessage.type.PEER_JOINED:
         if (message.from) {
-          connectedPeers.value.add(message.from)
+          connectedPeers.value.set(message.from, message.username || 'Anonymous')
+          room_mates.value[message.from] = message.username || 'Anonymous'
           console.log('Peer joined:', message.from, 'username:', message?.username)
         }
+        useRoomStore().getListChannels()
         break
 
       case SignalingMessage.type.LEAVE:
         if (message.from) {
           connectedPeers.value.delete(message.from)
+          delete room_mates.value[message.from]
           console.log('Peer left:', message.from)
+          useRoomStore().getListChannels()
         }
         break
     }
@@ -303,6 +325,7 @@ export const useSignalingStore = defineStore('signaling', () => {
     clientId,
     currentRoomId,
     connectedPeers,
+    room_mates,
 
     // Computed
     isConnected,

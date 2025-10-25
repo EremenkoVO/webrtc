@@ -9,9 +9,6 @@ import { onMounted, ref, type Ref } from 'vue'
 
 const { parseApiError } = useApiErrors()
 const authStore = useAuthStore()
-
-const selectedChannelId = ref<string | undefined>(undefined)
-const selectedChannelName = ref<string | undefined>(undefined)
 const user: Ref<UserProfile> = ref({ id: '', username: '' })
 
 const getUser = async () => {
@@ -36,11 +33,6 @@ const getUser = async () => {
   }
 }
 
-function selectChannel(channel: { id: string; name: string }) {
-  selectedChannelId.value = channel.id
-  selectedChannelName.value = channel.name
-}
-
 onMounted(async () => {
   await getUser()
 })
@@ -48,13 +40,9 @@ onMounted(async () => {
 
 <template>
   <div class="flex h-screen bg-gradient-to-b from-slate-900 to-slate-950">
-    <SidebarComponent @channel-selected="selectChannel" :user="user" />
+    <SidebarComponent :user="user" />
     <div class="flex-1 overflow-auto">
-      <ChannelComponent
-        :selectedChannelId="selectedChannelId"
-        :selected-channel-name="selectedChannelName"
-        :user-name="user.username"
-      />
+      <ChannelComponent :user-name="user.username" />
     </div>
   </div>
 </template>
