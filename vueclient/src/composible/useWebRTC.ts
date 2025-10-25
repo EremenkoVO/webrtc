@@ -15,7 +15,10 @@ export function useWebRTC() {
   // State
   const localStream = ref<MediaStream | null>(null)
   const peers = ref<Map<string, PeerConnection>>(new Map())
+  const speakingPeers = ref<Record<string, boolean>>({})
   const isMediaInitialized = ref(false)
+  const isScreenSharing = ref(false)
+  const isLocalSpeaking = ref(false)
 
   // ICE configuration
   const iceConfiguration: RTCConfiguration = {
@@ -57,6 +60,7 @@ export function useWebRTC() {
       localStream.value.getTracks().forEach((track) => track.stop())
       localStream.value = null
       isMediaInitialized.value = false
+      monitorLocalSpeaking(localStream.value)
     }
   }
 
@@ -116,6 +120,8 @@ export function useWebRTC() {
           room_mates: signalingStore.room_mates,
         })
       }
+
+      monitorSpeaking(peerId, stream)
     }
 
     // Store the peer connection
@@ -379,6 +385,117 @@ export function useWebRTC() {
     }
   }
 
+  let previousVideoTrack: MediaStreamTrack | null = null
+
+  // Start screen sharing
+  async function startScreenShare() {
+    try {
+      if (isScreenSharing.value) {
+        console.warn('Already sharing screen')
+        return
+      }
+      console.log('Starting screen share...')
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      })
+      const screenTrack = screenStream.getVideoTracks()[0]
+      if (!screenTrack) throw new Error('No screen video track')
+
+      // Сохраняем текущий видеотрек для восстановления
+      previousVideoTrack = localStream.value?.getVideoTracks()[0] || null
+
+      // Заменяем видеотрек во всех соединениях
+      peers.value.forEach(({ connection }) => {
+        const sender = connection.getSenders().find((s) => s.track?.kind === 'video')
+        if (sender) sender.replaceTrack(screenTrack)
+      })
+
+      // Обновляем localStream
+      const audioTrack = localStream.value?.getAudioTracks()[0]
+      localStream.value = new MediaStream([screenTrack, ...(audioTrack ? [audioTrack] : [])])
+      isScreenSharing.value = true
+
+      // Когда пользователь остановит показ экрана
+      screenTrack.onended = () => {
+        console.log('Screen sharing stopped by user')
+        stopScreenShare()
+      }
+      console.log('Screen sharing started')
+    } catch (err) {
+      console.error('Failed to start screen share:', err)
+    }
+  }
+
+  async function stopScreenShare() {
+    try {
+      if (!isScreenSharing.value) return
+      console.log('Stopping screen share...')
+
+      // Возвращаем камеру, если она была
+      if (previousVideoTrack) {
+        peers.value.forEach(({ connection }) => {
+          const sender = connection.getSenders().find((s) => s.track?.kind === 'video')
+          if (sender) sender.replaceTrack(previousVideoTrack!)
+        })
+        const audioTrack = localStream.value?.getAudioTracks()[0]
+        localStream.value = new MediaStream([
+          previousVideoTrack,
+          ...(audioTrack ? [audioTrack] : []),
+        ])
+        previousVideoTrack = null
+      }
+      isScreenSharing.value = false
+      console.log('Screen share stopped and camera restored')
+    } catch (err) {
+      console.error('Failed to stop screen share:', err)
+    }
+  }
+
+  function monitorLocalSpeaking(stream: MediaStream | null) {
+    if (!stream) return
+
+    const audioContext = new AudioContext()
+    const source = audioContext.createMediaStreamSource(stream)
+    const analyser = audioContext.createAnalyser()
+    source.connect(analyser)
+
+    analyser.fftSize = 512
+    const dataArray = new Uint8Array(analyser.frequencyBinCount)
+
+    function checkSpeaking() {
+      analyser.getByteFrequencyData(dataArray)
+      const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
+
+      isLocalSpeaking.value = volume > 20 // порог для "говорящего"
+
+      requestAnimationFrame(checkSpeaking)
+    }
+
+    checkSpeaking()
+  }
+
+  function monitorSpeaking(peerId: string, stream: MediaStream) {
+    const audioContext = new AudioContext()
+    const source = audioContext.createMediaStreamSource(stream)
+    const analyser = audioContext.createAnalyser()
+    source.connect(analyser)
+
+    analyser.fftSize = 512
+    const dataArray = new Uint8Array(analyser.frequencyBinCount)
+
+    function checkSpeaking() {
+      analyser.getByteFrequencyData(dataArray)
+      const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
+
+      speakingPeers.value[peerId] = volume > 20 // порог для "говорящего"
+
+      requestAnimationFrame(checkSpeaking)
+    }
+
+    checkSpeaking()
+  }
+
   // Cleanup on unmount
   onUnmounted(() => {
     leaveRoom()
@@ -390,6 +507,9 @@ export function useWebRTC() {
     localStream,
     remotePeers,
     isMediaInitialized,
+    isScreenSharing,
+    speakingPeers,
+    isLocalSpeaking,
 
     // Actions
     initializeMedia,
@@ -398,9 +518,15 @@ export function useWebRTC() {
     leaveRoom,
     createOffer,
     removePeer,
+    monitorSpeaking,
+    monitorLocalSpeaking,
 
     // Switch devices
     switchCamera,
     switchMicrophone,
+
+    // Screen sharing
+    startScreenShare,
+    stopScreenShare,
   }
 }

@@ -7,9 +7,11 @@ import { useRoomStore } from '@/stores/roomStore'
 import { useSignalingStore } from '@/stores/signalingStore'
 import {
   faChevronUp,
+  faDisplay,
   faMicrophone,
   faMicrophoneSlash,
   faPhoneSlash,
+  faStop,
   faVideo,
   faVideoSlash,
 } from '@fortawesome/free-solid-svg-icons'
@@ -27,12 +29,17 @@ const callStore = useCallStore()
 const {
   localStream,
   remotePeers,
+  isScreenSharing,
+  speakingPeers,
+  isLocalSpeaking,
   stopMedia,
   joinRoomWithMedia,
   initializeMedia,
   leaveRoom,
   switchCamera,
   switchMicrophone,
+  startScreenShare,
+  stopScreenShare,
 } = useWebRTC()
 
 const clientId = computed(() => roomStore.clientId)
@@ -51,19 +58,12 @@ const totalPeers = computed(() => 1 + remotePeers.value.length)
 
 // динамический класс ширины
 const videoTileClass = computed(() => {
-  if (totalPeers.value <= 2) {
-    // 1–2 участника → большие окна
-    return 'w-full sm:w-[70%] md:w-[60%] max-w-[700px]'
-  } else if (totalPeers.value <= 4) {
-    // 3–4 участника → средние
-    return 'w-full sm:w-[48%] md:w-[45%] max-w-[500px]'
-  } else if (totalPeers.value <= 6) {
-    // 5–6 участников → поменьше
-    return 'w-full sm:w-[31%] md:w-[30%] max-w-[400px]'
-  } else {
-    // 7+ участников → маленькие плитки
-    return 'w-full sm:w-[23%] md:w-[22%] max-w-[320px]'
-  }
+  const base =
+    'relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300'
+  if (totalPeers.value <= 2) return base + ' w-full sm:w-[70%] md:w-[60%] max-w-[700px]'
+  if (totalPeers.value <= 4) return base + ' w-full sm:w-[48%] md:w-[45%] max-w-[500px]'
+  if (totalPeers.value <= 6) return base + ' w-full sm:w-[31%] md:w-[30%] max-w-[400px]'
+  return base + ' w-full sm:w-[23%] md:w-[22%] max-w-[320px]'
 })
 
 // Start call
@@ -325,7 +325,10 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
       >
         <!-- Локальное видео -->
         <div
-          :class="videoTileClass"
+          :class="[
+            videoTileClass,
+            isLocalSpeaking ? 'border-4 border-green-400 animate-pulse' : '',
+          ]"
           class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300"
         >
           <video
@@ -334,24 +337,28 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
             autoplay
             muted
             playsinline
-            class="w-full h-full object-cover"
+            class="w-full h-full object-contain rounded-lg shadow-lg border-2 border-slate-700"
           ></video>
-          <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">Вы</div>
+          <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
+            Вы ({{ props.userName }})
+          </div>
         </div>
 
         <!-- Видео собеседников -->
         <div
           v-for="peer in remotePeers"
           :key="peer.peerId"
-          :class="videoTileClass"
-          class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300"
+          :class="[
+            videoTileClass,
+            speakingPeers[peer.peerId] ? 'border-4 border-green-400 animate-pulse' : '',
+          ]"
         >
           <video
             v-if="peer.remoteStream"
             :ref="(el: any) => setupVideoElement(el, peer.remoteStream)"
             autoplay
             playsinline
-            class="w-full h-full object-cover"
+            class="w-full h-full object-contain rounded-lg shadow-lg border-2 border-slate-700"
           ></video>
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
             Peer:
@@ -468,6 +475,17 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
 
         <button
           type="button"
+          class="p-4 flex items-center justify-center rounded-full bg-slate-700 hover:bg-slate-600 transition-color"
+          @click="isScreenSharing ? stopScreenShare() : startScreenShare()"
+        >
+          <FontAwesomeIcon
+            :icon="isScreenSharing ? faStop : faDisplay"
+            class="text-xl"
+          ></FontAwesomeIcon>
+        </button>
+
+        <button
+          type="button"
           class="p-4 flex items-center justify-center rounded-full bg-red-600 hover:bg-red-700 transition-colors"
           @click="endCall"
           title="Завершить звонок"
@@ -482,3 +500,20 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
     </div>
   </div>
 </template>
+<style scoped>
+.animate-pulse {
+  animation: pulse-border 1s infinite;
+}
+
+@keyframes pulse-border {
+  0% {
+    box-shadow: 0 0 0px rgba(34, 197, 94, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.9);
+  }
+  100% {
+    box-shadow: 0 0 0px rgba(34, 197, 94, 0.7);
+  }
+}
+</style>
