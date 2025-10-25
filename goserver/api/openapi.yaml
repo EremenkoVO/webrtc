@@ -432,9 +432,11 @@ components:
             - description: Joined response payload
               type: object
               properties:
-                clientId:
-                  type: string
-              required: [clientId]
+                room_mates:
+                  type: object
+                  additionalProperties:
+                    type: string
+              required: [room_mates]
             - description: Offer/Answer payload
               type: object
               properties:
