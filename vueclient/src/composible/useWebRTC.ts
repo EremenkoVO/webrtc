@@ -4,6 +4,7 @@ import { computed, onUnmounted, ref } from 'vue'
 
 export interface PeerConnection {
   peerId: string
+  room_mates?: Record<string, string>
   connection: RTCPeerConnection
   remoteStream: MediaStream | null
 }
@@ -24,7 +25,7 @@ export function useWebRTC() {
       {
         urls: 'turn:176.108.251.198:3478?transport=udp',
         username: 'webrtc',
-        credential: import.meta.env.VITE_TURN_CREDENTIAL as string,
+        credential: import.meta.env.VITE_PASS_STUN_SERVERS as string,
       },
     ],
   }
@@ -102,6 +103,9 @@ export function useWebRTC() {
       if (!stream) return
 
       const peer = peers.value.get(peerId)
+
+      console.dir('signalingStore.connectedPeers', signalingStore.connectedPeers)
+
       if (peer) {
         peer.remoteStream = stream
       } else {
@@ -109,6 +113,7 @@ export function useWebRTC() {
           peerId,
           connection: pc,
           remoteStream: stream,
+          room_mates: signalingStore.room_mates,
         })
       }
     }
@@ -118,6 +123,7 @@ export function useWebRTC() {
       peerId,
       connection: pc,
       remoteStream,
+      room_mates: signalingStore.room_mates,
     })
 
     return pc
@@ -257,7 +263,11 @@ export function useWebRTC() {
   }
 
   // Join a room with WebRTC
-  async function joinRoomWithMedia(roomId: string, mediaConstraints?: MediaStreamConstraints) {
+  async function joinRoomWithMedia(
+    roomId: string,
+    username?: string,
+    mediaConstraints?: MediaStreamConstraints,
+  ) {
     try {
       // Инициализируем медиа только если указаны ограничения (или по умолчанию)
       // Если передан {}, или {video:false, audio:false} — initializeMedia обработает это
@@ -271,7 +281,7 @@ export function useWebRTC() {
         await signalingStore.connect()
       }
 
-      signalingStore.joinRoom(roomId)
+      signalingStore.joinRoom(roomId, username)
       console.log('Joined room with WebRTC:', roomId)
     } catch (error) {
       console.error('Failed to join room with media:', error)

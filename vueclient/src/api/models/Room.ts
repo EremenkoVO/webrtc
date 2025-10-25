@@ -6,5 +6,6 @@ export type Room = {
     id?: string;
     name?: string;
     created_at?: string;
+    roommates?: Array<string>;
 };
 

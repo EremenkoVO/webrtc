@@ -1,40 +1,31 @@
 <script setup lang="ts">
-import { AuthService, SignalingService, type Room, type UserProfile } from '@/api/index'
+import { AuthService, SignalingService, type UserProfile } from '@/api/index'
 import { useApiErrors } from '@/composible/useApiErrors'
 import router from '@/router'
 import { useAuthStore } from '@/stores/authStore'
-import { useCallStore } from '@/stores/callStore'
+import { useRoomStore } from '@/stores/roomStore'
 import { faArrowAltCircleRight, faXmarkCircle } from '@fortawesome/free-regular-svg-icons'
-import { faCheck, faPlus, faSignOutAlt } from '@fortawesome/free-solid-svg-icons'
+import { faCheck, faPlus, faSignOutAlt, faSync } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
-import { computed, onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 
 const { clearErrors, parseApiError } = useApiErrors()
 const authStore = useAuthStore()
-const callStore = useCallStore()
+const roomStore = useRoomStore()
 
 const props = defineProps<{
   user: UserProfile
 }>()
 
-const emit = defineEmits<{
-  (e: 'channelSelected', payload: { id: string; name: string }): void
-}>()
-
-const channels = ref<Room[]>([])
 const selectedChannelId = ref<string | undefined>(undefined)
 const showCreateInput = ref(false)
 const newChannelName = ref('')
 const showSidebar = ref(true)
-const serverName = ref('WebRTC App')
-
-const selectedChannelName = computed(() => {
-  return channels.value.find((ch) => ch.id === selectedChannelId.value)?.name || ''
-})
+const serverName = ref('WebRTC Client')
 
 watch(selectedChannelId, (newVal) => {
   if (newVal) {
-    emit('channelSelected', { id: newVal, name: selectedChannelName.value })
+    roomStore.selectChannel(newVal, roomStore.roommates)
   }
 })
 
@@ -43,7 +34,7 @@ async function addChannel() {
 
   try {
     await SignalingService.createRoom({ name: newChannelName.value })
-    await listChannels()
+    await roomStore.getListChannels()
   } catch (e) {
     parseApiError(e)
     return
@@ -51,37 +42,6 @@ async function addChannel() {
     newChannelName.value = ''
     showCreateInput.value = false
   }
-}
-
-async function listChannels() {
-  clearErrors()
-
-  try {
-    const response = await SignalingService.listRooms()
-
-    if (Array.isArray(response)) {
-      channels.value = response
-    } else {
-      throw { message: 'Invalid response from server' }
-    }
-  } catch (e) {
-    console.error(e)
-    parseApiError(e)
-    return
-  }
-}
-
-function selectChannel(id: string | undefined) {
-  if (typeof id === 'undefined') return
-  if (id === selectedChannelId.value) return
-
-  if (callStore.isInCall) {
-    const result = confirm('Вы уверены, что хотите переключиться на другой канал')
-
-    if (!result) return
-  }
-
-  selectedChannelId.value = id
 }
 
 async function logout() {
@@ -97,7 +57,7 @@ async function logout() {
 }
 
 onMounted(() => {
-  listChannels()
+  roomStore.getListChannels()
 })
 </script>
 
@@ -146,6 +106,14 @@ onMounted(() => {
             <button
               type="button"
               class="p-2 rounded-md text-slate-200 bg-slate-700/30 hover:bg-slate-700/50"
+              @click="roomStore.getListChannels"
+              title="Обновить список каналов"
+            >
+              <FontAwesomeIcon :icon="faSync" />
+            </button>
+            <button
+              type="button"
+              class="p-2 rounded-md text-slate-200 bg-slate-700/30 hover:bg-slate-700/50"
               @click="showCreateInput = !showCreateInput"
               :aria-pressed="showCreateInput"
               title="Создать канал"
@@ -187,20 +155,24 @@ onMounted(() => {
 
         <!-- channels list -->
         <div v-if="showSidebar" class="flex-1 overflow-auto px-2 py-3">
-          <div v-if="channels.length === 0" class="px-3 py-2 text-slate-400 text-sm">
+          <div v-if="!roomStore.channels.length" class="px-3 py-2 text-slate-400 text-sm">
             Нет каналов, создайте новый канал!
           </div>
 
           <ul class="space-y-1">
-            <li v-for="ch in channels" :key="ch.id" class="px-2">
+            <li v-for="ch in roomStore.channels" :key="ch.id" class="px-2">
               <div
-                @click="selectChannel(ch.id)"
+                @click="roomStore.selectChannel(ch.id, ch.roommates)"
                 :class="[
                   'w-full flex items-center cursor-pointer gap-3 px-3 py-2 rounded-md text-left hover:bg-slate-700/30',
-                  ch.id === selectedChannelId ? 'bg-indigo-600/20' : '',
+                  ch.id === roomStore.selectedChannelId ? 'bg-indigo-600/20' : '',
                 ]"
               >
                 <span class="flex-1 truncate">{{ ch.name }}</span>
+                <span v-if="ch.roommates?.length" class="text-xs text-slate-400"
+                  >{{ ch.roommates?.length }} участника</span
+                >
+                <span v-else class="text-xs text-slate-400">Нет участников</span>
               </div>
             </li>
           </ul>
