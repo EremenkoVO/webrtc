@@ -3,10 +3,14 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 
 	"github.com/gorilla/websocket"
+	"github.com/moeryomenko/xiter"
 
+	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
 	"github.com/EremenkoVO/webrtc/goserver/internal/gen/api"
 )
 
@@ -17,6 +21,10 @@ var upgrader = websocket.Upgrader{
 	// Read and write buffer sizes
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+}
+
+func ToPtr[T any](v T) *T {
+	return &v
 }
 
 // List available rooms
@@ -30,6 +38,9 @@ func (s *ServerWrapper) ListRooms(w http.ResponseWriter, r *http.Request) {
 			Id:        &room.ID,
 			Name:      &room.Name,
 			CreatedAt: &room.CreatedAt,
+			Roommates: ToPtr(slices.Collect(xiter.IterFunc(maps.Values(room.Clients), func(client *domain.Client) string {
+				return client.Username
+			}))),
 		}
 	}
 

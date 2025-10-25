@@ -532,6 +532,8 @@ github.com/moeryomenko/synx v0.14.0 h1:eTWeVpoOwPHutJO3/0y2QJQj6wd9UWl9V4DkaONm3
 github.com/moeryomenko/synx v0.14.0/go.mod h1:vgt7IJp85+8T7X6M7p64yNUmBMi6Yb+HoK7LH4r+fPE=
 github.com/moeryomenko/ttlcache v1.3.0 h1:OavxKkBfeqjJAJGumtdN36j2vMFGzsxyK0j9sQcDVOI=
 github.com/moeryomenko/ttlcache v1.3.0/go.mod h1:Y0nS9efzoa2MOAJCVFiEyuCTc3z8UAeG/VusJya2ZiE=
+github.com/moeryomenko/xiter v0.1.1 h1:mbnMp4TNq8wtzcj5uBbNBZIaR4ZShiuAAay0tXkqGMU=
+github.com/moeryomenko/xiter v0.1.1/go.mod h1:oh/daV4FksUcBN8kV7j9D03SjIw4upG/4okyvTPhhRw=
 github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 h1:RWengNIwukTxcDr9M+97sNutRR1RKhG96O6jWumTTnw=
 github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826/go.mod h1:TaXosZuwdSHYgviHp1DAtfrULt5eUgsSMsZf+YrPgl8=
 github.com/montanaflynn/stats v0.0.0-20171201202039-1bf9dbcd8cbe/go.mod h1:wL8QJuTMNUDYhXwkmfOly8iTdp5TEcJFWZD2D7SIkUc=

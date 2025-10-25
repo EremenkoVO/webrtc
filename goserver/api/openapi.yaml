@@ -377,6 +377,11 @@ components:
         created_at:
           type: string
           format: date-time
+        roommates:
+          type: array
+          items:
+            type: string
+            description: A list of participatns of room
     RoomJoinResponse:
       type: object
       properties:

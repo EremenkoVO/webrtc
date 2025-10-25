@@ -20,6 +20,7 @@ require (
 	github.com/moeryomenko/healing v1.18.0
 	github.com/moeryomenko/squad v1.15.0
 	github.com/moeryomenko/ttlcache v1.3.0
+	github.com/moeryomenko/xiter v0.1.1
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/pressly/goose/v3 v3.25.0
 	golang.org/x/crypto v0.42.0

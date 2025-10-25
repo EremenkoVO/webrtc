@@ -79,6 +79,7 @@ type Room struct {
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 	Id        *string    `json:"id,omitempty"`
 	Name      *string    `json:"name,omitempty"`
+	Roommates *[]string  `json:"roommates,omitempty"`
 }
 
 // RoomJoinResponse defines model for RoomJoinResponse.
