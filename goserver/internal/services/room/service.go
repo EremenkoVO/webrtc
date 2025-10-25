@@ -91,6 +91,7 @@ func (s *Service) readPump(client *domain.Client) {
 				continue
 			}
 			client.Room = room
+			client.Username = msg.Username
 			room.Mu.Lock()
 			room.Clients[client.ID] = client
 			room.Mu.Unlock()
