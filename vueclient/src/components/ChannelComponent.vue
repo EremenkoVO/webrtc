@@ -5,18 +5,11 @@ import { useWebRTC } from '@/composible/useWebRTC'
 import { useCallStore } from '@/stores/callStore'
 import { useRoomStore } from '@/stores/roomStore'
 import { useSignalingStore } from '@/stores/signalingStore'
-import {
-  faChevronUp,
-  faDisplay,
-  faMicrophone,
-  faMicrophoneSlash,
-  faPhoneSlash,
-  faStop,
-  faVideo,
-  faVideoSlash,
-} from '@fortawesome/free-solid-svg-icons'
+import { faUserAlt } from '@fortawesome/free-regular-svg-icons'
+import { faMicrophoneSlash, faVideo } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import ChannelControls from './ChannelControls.vue'
 
 const props = defineProps<{
   userName: string | undefined
@@ -29,30 +22,25 @@ const callStore = useCallStore()
 const {
   localStream,
   remotePeers,
-  isScreenSharing,
+  peerStates,
+  videoDevices,
+  fetchVideoDevices,
+  fetchAudioDevices,
   stopMedia,
   joinRoomWithMedia,
   initializeMedia,
-  leaveRoom,
   switchCamera,
-  switchMicrophone,
-  startScreenShare,
-  stopScreenShare,
+  toggleMedia,
+  leaveRoom,
 } = useWebRTC()
 
-const clientId = computed(() => roomStore.clientId)
-const isInCall = ref(false)
 const videoEnabled = ref(false)
 const audioEnabled = ref(true)
-const cameraMenuOpen = ref(false)
-const microphoneMenuOpen = ref(false)
-const videoDevices = ref<MediaDeviceInfo[]>([])
-const audioDevices = ref<MediaDeviceInfo[]>([])
 const audioElement = ref<HTMLAudioElement | null>(null)
-const currentDeviceId = ref<string | null>(null)
 const soundUrl = connectSound
-
 const totalPeers = computed(() => 1 + remotePeers.value.length)
+const videoStreamIndex = ref<number>(0)
+const currentCameraDeviceId = ref<string | null>(null)
 
 // динамический класс ширины
 const videoTileClass = computed(() => {
@@ -63,6 +51,50 @@ const videoTileClass = computed(() => {
   if (totalPeers.value <= 6) return base + ' w-full sm:w-[31%] md:w-[30%] max-w-[400px]'
   return base + ' w-full sm:w-[23%] md:w-[22%] max-w-[320px]'
 })
+
+function selectCamera(deviceId: string) {
+  initializeMedia({
+    video: { deviceId: { exact: deviceId } },
+    audio: audioEnabled.value
+      ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      : false,
+  }).then(() => {
+    currentCameraDeviceId.value = deviceId
+    videoEnabled.value = true
+    if (callStore.isInCall) {
+      switchCamera(deviceId)
+    }
+  })
+}
+
+function toggleVideo() {
+  if (!currentCameraDeviceId.value && localStream.value && !videoEnabled.value) {
+    selectCamera(videoDevices.value[0]?.deviceId || '')
+    videoEnabled.value = true
+  } else if (currentCameraDeviceId.value && localStream.value && !videoEnabled.value) {
+    selectCamera(currentCameraDeviceId.value)
+    videoEnabled.value = true
+  } else if (videoEnabled.value && localStream.value) {
+    // Disable video
+    localStream.value.getVideoTracks().forEach((track) => track.stop())
+    localStream.value.removeTrack(localStream.value.getVideoTracks()[0])
+    videoEnabled.value = false
+  }
+
+  toggleMedia(videoEnabled.value, audioEnabled.value)
+}
+
+async function updateAudioEnabled(value: boolean) {
+  if (localStream.value) {
+    const audioTrack = localStream.value.getAudioTracks()[0]
+    if (audioTrack) {
+      audioTrack.enabled = !audioTrack.enabled
+      audioEnabled.value = value
+    }
+  }
+
+  toggleMedia(videoEnabled.value, audioEnabled.value)
+}
 
 // Start call
 async function startCall() {
@@ -80,7 +112,6 @@ async function startCall() {
         ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         : false,
     }).then(() => {
-      isInCall.value = true
       callStore.setStateCall(true)
       roomStore.getListChannels()
     })
@@ -95,91 +126,9 @@ function endCall() {
   leaveRoom()
   stopMedia()
   roomStore.getListChannels()
-  isInCall.value = false
+  videoEnabled.value = false
+  audioEnabled.value = true
   callStore.setStateCall(false)
-}
-
-// Toggle video
-function toggleVideo() {
-  if (localStream.value) {
-    if (localStream.value.getVideoTracks().length === 0) {
-      initializeMedia({
-        video: true,
-        audio: audioEnabled.value
-          ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-          : false,
-      })
-      videoEnabled.value = true
-    }
-
-    const videoTrack = localStream.value.getVideoTracks()[0]
-    if (videoTrack) {
-      videoTrack.enabled = !videoTrack.enabled
-      videoEnabled.value = videoTrack.enabled
-    }
-  }
-}
-
-// Toggle audio
-function toggleAudio() {
-  if (localStream.value) {
-    const audioTrack = localStream.value.getAudioTracks()[0]
-    if (audioTrack) {
-      audioTrack.enabled = !audioTrack.enabled
-      audioEnabled.value = audioTrack.enabled
-    }
-  }
-}
-
-// Toggle camera menu
-function toggleCameraMenu() {
-  if (localStream.value?.getVideoTracks().length === 0) {
-    initializeMedia({ video: true, audio: audioEnabled.value })
-    videoEnabled.value = true
-  }
-
-  cameraMenuOpen.value = !cameraMenuOpen.value
-  if (cameraMenuOpen.value) {
-    // Fetch video input devices
-    navigator.mediaDevices.enumerateDevices().then((devices) => {
-      videoDevices.value = devices.filter((device) => device.kind === 'videoinput')
-    })
-  }
-}
-
-// Toggle microphone menu
-function toggleMicrophoneMenu() {
-  microphoneMenuOpen.value = !microphoneMenuOpen.value
-  if (microphoneMenuOpen.value) {
-    // Fetch audio input devices
-    navigator.mediaDevices.enumerateDevices().then((devices) => {
-      audioDevices.value = devices.filter((device) => device.kind === 'audioinput')
-    })
-  }
-}
-
-function deviceAudioIndex(device: MediaDeviceInfo) {
-  return audioDevices.value.indexOf(device) + 1
-}
-
-function deviceVideoIndex(device: MediaDeviceInfo) {
-  return videoDevices.value.indexOf(device) + 1
-}
-
-function selectCamera(deviceId: string) {
-  currentDeviceId.value = deviceId
-  cameraMenuOpen.value = false
-  if (isInCall.value) {
-    switchCamera(deviceId)
-  }
-}
-
-function selectMicrophone(deviceId: string) {
-  currentDeviceId.value = deviceId
-  microphoneMenuOpen.value = false
-  if (isInCall.value) {
-    switchMicrophone(deviceId)
-  }
 }
 
 function isErrorResponse(response: RoomJoinResponse | ErrorResponse): response is ErrorResponse {
@@ -219,14 +168,14 @@ async function connectToRoom(id: string | undefined) {
 watch(
   () => roomStore.selectedChannelId,
   (newId, oldId) => {
-    if (oldId && newId !== oldId && isInCall.value) {
+    if (oldId && newId !== oldId && callStore.isInCall) {
       endCall()
     }
   },
 )
 
 watch(
-  () => isInCall.value,
+  () => callStore.isInCall,
   (inCall) => {
     if (inCall) {
       const audio = audioElement.value
@@ -253,13 +202,26 @@ watch(
   },
 )
 
+watch(
+  () => remotePeers.value,
+  (newStream) => {
+    console.log('Remote stream changed:', newStream)
+  },
+)
+
 // Setup video element refs
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function setupVideoElement(el: any, stream: MediaStream | null) {
+  console.log('Setting up video element', el, stream)
   if (el && stream && el instanceof HTMLVideoElement) {
     el.srcObject = stream
   }
 }
+
+onMounted(() => {
+  fetchVideoDevices()
+  fetchAudioDevices()
+})
 </script>
 
 <template>
@@ -270,9 +232,6 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
     <!-- Header -->
     <div class="p-4 border-b border-slate-800">
       <h1 class="text-xl font-semibold">Канал: {{ roomStore.selectedChannelName }}</h1>
-      <p v-if="clientId" class="text-sm text-slate-400 mt-1">
-        Client ID: {{ signalingStore.clientId || clientId }}
-      </p>
       <div class="flex items-center gap-2 mt-2">
         <div
           :class="[
@@ -281,7 +240,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
           ]"
         ></div>
         <span class="text-sm">
-          {{ signalingStore.isConnected ? 'Подключено' : 'Отключено' }}
+          {{ signalingStore.isConnected ? 'Сервер подключен' : 'Сервер отключен' }}
         </span>
       </div>
     </div>
@@ -291,7 +250,7 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
     <!-- Video Grid -->
     <div class="flex-1 p-4 overflow-auto">
       <!-- Если не в звонке -->
-      <div v-if="!isInCall" class="flex items-center justify-center h-full">
+      <div v-if="!callStore.isInCall" class="flex items-center justify-center h-full">
         <div class="text-center">
           <div v-if="roomStore.roommates.length">
             <p class="text-slate-400 mb-4">Список подключенных участников</p>
@@ -327,14 +286,22 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
           class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300"
         >
           <video
-            v-if="localStream"
+            v-if="localStream?.getVideoTracks().length"
+            :key="localStream.id"
             :ref="(el: any) => setupVideoElement(el, localStream)"
             autoplay
             muted
             playsinline
-            class="w-full h-full object-contain rounded-lg shadow-lg border-2 border-slate-700"
+            class="z-10 w-full h-full object-contain rounded-lg shadow-lg border-2 border-slate-700"
           ></video>
+          <div
+            v-else
+            class="absolute inset-0 flex items-center justify-center border-2 border-slate-700"
+          >
+            <FontAwesomeIcon :icon="faUserAlt" class="z-0 text-9xl text-white/50" />
+          </div>
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
+            <FontAwesomeIcon v-show="!audioEnabled" :icon="faMicrophoneSlash" class="mr-1" />
             Вы ({{ props.userName }})
           </div>
         </div>
@@ -342,14 +309,20 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
         <!-- Видео собеседников -->
         <div v-for="peer in remotePeers" :key="peer.peerId" :class="[videoTileClass]">
           <video
-            v-if="peer.remoteStream"
+            v-if="peer.remoteStream?.getVideoTracks().length && peerStates[peer.peerId]?.video"
             :ref="(el: any) => setupVideoElement(el, peer.remoteStream)"
             autoplay
             playsinline
-            class="w-full h-full object-contain rounded-lg shadow-lg border-2 border-slate-700"
+            class="z-10 w-full h-full object-contain rounded-lg shadow-lg border-2 border-slate-700"
           ></video>
+          <div v-else class="z-0 absolute inset-0 flex items-center justify-center">
+            <FontAwesomeIcon :icon="faUserAlt" class="text-9xl text-white/50" />
+          </div>
           <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
-            Peer:
+            <FontAwesomeIcon
+              v-if="!peerStates[peer.peerId]?.microphone"
+              :icon="faMicrophoneSlash"
+            />
             {{ peer.room_mates?.[peer.peerId] || peer.peerId }}
           </div>
         </div>
@@ -357,134 +330,19 @@ function setupVideoElement(el: any, stream: MediaStream | null) {
     </div>
 
     <!-- Call Controls -->
-    <div v-if="isInCall" class="p-4">
-      <div class="flex items-center justify-center gap-4">
-        <div class="relative flex items-center">
-          <!-- Основная кнопка включения/выключения видео -->
-          <button
-            type="button"
-            :class="[
-              'p-4 rounded-l-full transition-colors flex items-center justify-center',
-              videoEnabled ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-600 hover:bg-red-700',
-            ]"
-            @click="toggleVideo"
-            :title="videoEnabled ? 'Отключить видео' : 'Включить видео'"
-          >
-            <FontAwesomeIcon
-              :icon="videoEnabled ? faVideo : faVideoSlash"
-              class="text-xl text-white"
-            />
-          </button>
-
-          <!-- Кнопка выбора камеры -->
-          <div class="relative">
-            <button
-              type="button"
-              class="p-4 rounded-r-full bg-slate-700 hover:bg-slate-600 transition-colors flex items-center justify-center"
-              @click="toggleCameraMenu"
-              title="Выбрать камеру"
-            >
-              <FontAwesomeIcon
-                :icon="faChevronUp"
-                class="text-xl text-white"
-                :class="{ 'rotate-180': cameraMenuOpen }"
-              />
-            </button>
-
-            <!-- Выпадающее меню для выбора камеры -->
-            <transition name="fade">
-              <ul
-                v-if="cameraMenuOpen"
-                class="absolute right-0 bottom-12 mt-2 w-56 bg-slate-800 text-white rounded-xl shadow-lg z-50"
-                v-click-outside="() => (cameraMenuOpen = false)"
-              >
-                <li
-                  v-for="device in videoDevices"
-                  :key="device.deviceId"
-                  @click="selectCamera(device.deviceId)"
-                  class="px-4 py-2 hover:bg-slate-700 cursor-pointer transition-colors"
-                >
-                  {{ device.label || 'Камера ' + deviceVideoIndex(device) }}
-                </li>
-              </ul>
-            </transition>
-          </div>
-        </div>
-
-        <div class="relative flex justify-center items-center">
-          <button
-            type="button"
-            :class="[
-              'p-4 rounded-l-full transition-colors flex items-center justify-center',
-              audioEnabled ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-600 hover:bg-red-700',
-            ]"
-            @click="toggleAudio"
-            :title="audioEnabled ? 'Отключить микрофон' : 'Включить микрофон'"
-          >
-            <FontAwesomeIcon
-              :icon="audioEnabled ? faMicrophone : faMicrophoneSlash"
-              class="text-xl"
-            />
-          </button>
-
-          <div class="relative">
-            <button
-              type="button"
-              class="p-4 rounded-r-full bg-slate-700 hover:bg-slate-600 transition-colors flex items-center justify-center"
-              @click="toggleMicrophoneMenu"
-              title="Выбрать микрофон"
-            >
-              <FontAwesomeIcon
-                :icon="faChevronUp"
-                class="text-xl text-white"
-                :class="{ 'rotate-180': microphoneMenuOpen }"
-              />
-            </button>
-          </div>
-
-          <!-- Выпадающее меню -->
-          <transition name="fade">
-            <ul
-              v-if="microphoneMenuOpen"
-              class="absolute right-0 bottom-12 mt-2 w-56 bg-slate-800 text-white rounded-xl shadow-lg z-50 items-center justify-center"
-              v-click-outside="() => (microphoneMenuOpen = false)"
-            >
-              <li
-                v-for="device in audioDevices"
-                :key="device.deviceId"
-                @click="selectMicrophone(device.deviceId)"
-                class="px-4 py-2 rounded-xl hover:bg-slate-700 cursor-pointer transition-colors"
-              >
-                {{ device.label || 'Камера ' + deviceAudioIndex(device) }}
-              </li>
-            </ul>
-          </transition>
-        </div>
-
-        <button
-          type="button"
-          class="p-4 flex items-center justify-center rounded-full bg-slate-700 hover:bg-slate-600 transition-color"
-          @click="isScreenSharing ? stopScreenShare() : startScreenShare()"
-        >
-          <FontAwesomeIcon
-            :icon="isScreenSharing ? faStop : faDisplay"
-            class="text-xl"
-          ></FontAwesomeIcon>
-        </button>
-
-        <button
-          type="button"
-          class="p-4 flex items-center justify-center rounded-full bg-red-600 hover:bg-red-700 transition-colors"
-          @click="endCall"
-          title="Завершить звонок"
-        >
-          <FontAwesomeIcon :icon="faPhoneSlash" class="text-xl" />
-        </button>
-      </div>
-
-      <div class="mt-4 text-center text-sm text-slate-400">
-        <p>Подключенных участников: {{ remotePeers.length + 1 }}</p>
-      </div>
-    </div>
+    <ChannelControls
+      v-if="callStore.isInCall"
+      :local-stream="localStream"
+      :remote-peers="remotePeers"
+      :videoEnabled="videoEnabled"
+      :audioEnabled="audioEnabled"
+      :videoStreamIndex="videoStreamIndex"
+      :currentCameraDeviceId="currentCameraDeviceId"
+      @endCall="endCall"
+      @update:toggleVideo="toggleVideo"
+      @update:videoEnabled="(value: boolean) => (videoEnabled = value)"
+      @update:audioEnabled="updateAudioEnabled"
+      @update:videoStreamIndex="(value: number) => (videoStreamIndex = value)"
+    />
   </div>
 </template>

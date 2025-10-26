@@ -40,8 +40,10 @@ export const useRoomStore = defineStore('room', {
         if (!result) return
       }
 
+      const channel = this.channels.find((ch) => ch.id == id)
+
       this.selectedChannelId = id
-      this.selectedChannelName = roommates?.[0] || ''
+      this.selectedChannelName = channel?.name || ''
       this.setRoommates(roommates)
     },
     setRoommates(roommates: string[] | undefined) {
