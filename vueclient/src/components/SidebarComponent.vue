@@ -47,8 +47,8 @@ async function addChannel() {
 async function logout() {
   try {
     await authStore.clearTokens()
+    await router.push({ name: 'Login' })
     await AuthService.logoutUser()
-    router.push({ name: 'Login' })
   } catch (e) {
     console.error(e)
     parseApiError(e)

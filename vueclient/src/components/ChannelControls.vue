@@ -1,6 +1,6 @@
+<!-- eslint-disable @typescript-eslint/no-explicit-any -->
 <script setup lang="ts">
 import { useWebRTC, type PeerConnection } from '@/composible/useWebRTC'
-import { useCallStore } from '@/stores/callStore'
 import {
   faChevronUp,
   faDisplay,
@@ -17,9 +17,13 @@ import { ref } from 'vue'
 const props = defineProps<{
   videoEnabled: boolean
   audioEnabled: boolean
+  isScreenSharing: boolean
+  startScreenShare: any
+  stopScreenShare: any
   videoStreamIndex: number
   localStream: MediaStream | null
   currentCameraDeviceId: string | null
+  currentMicrophoneDeviceId: string | null
   remotePeers: PeerConnection[]
 }>()
 
@@ -30,26 +34,14 @@ const emits = defineEmits<{
   (e: 'update:videoStreamIndex', value: number): void
   (e: 'update:selectCamera', value: string): void
   (e: 'update:currentCameraDeviceId', value: string): void
+  (e: 'update:selectMicrophone', value: string): void
   (e: 'update:toggleVideo'): void
 }>()
 
-const callStore = useCallStore()
-
-const {
-  isScreenSharing,
-  videoDevices,
-  audioDevices,
-  fetchVideoDevices,
-  fetchAudioDevices,
-  switchMicrophone,
-  startScreenShare,
-  stopScreenShare,
-} = useWebRTC()
+const { videoDevices, audioDevices, fetchVideoDevices, fetchAudioDevices } = useWebRTC()
 
 const cameraMenuOpen = ref(false)
 const microphoneMenuOpen = ref(false)
-
-const currentMicrophoneDeviceId = ref<string | null>(null)
 
 // Toggle video
 function toggleVideo() {
@@ -64,13 +56,7 @@ function selectCamera(deviceId: string) {
 
 // Toggle audio
 function toggleAudio() {
-  if (props.localStream) {
-    const audioTrack = props.localStream.getAudioTracks()[0]
-    if (audioTrack) {
-      audioTrack.enabled = !audioTrack.enabled
-      emits('update:audioEnabled', audioTrack.enabled)
-    }
-  }
+  emits('update:audioEnabled', !props.audioEnabled)
 }
 
 // Toggle camera menu
@@ -100,11 +86,8 @@ function deviceVideoIndex(device: MediaDeviceInfo) {
 }
 
 function selectMicrophone(deviceId: string) {
-  currentMicrophoneDeviceId.value = deviceId
+  emits('update:selectMicrophone', deviceId)
   microphoneMenuOpen.value = false
-  if (callStore.isInCall) {
-    switchMicrophone(deviceId)
-  }
 }
 </script>
 

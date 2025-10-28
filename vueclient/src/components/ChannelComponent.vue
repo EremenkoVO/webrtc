@@ -5,11 +5,12 @@ import { useWebRTC } from '@/composible/useWebRTC'
 import { useCallStore } from '@/stores/callStore'
 import { useRoomStore } from '@/stores/roomStore'
 import { useSignalingStore } from '@/stores/signalingStore'
-import { faUserAlt } from '@fortawesome/free-regular-svg-icons'
-import { faMicrophoneSlash, faVideo } from '@fortawesome/free-solid-svg-icons'
+import { faVideo } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { computed, onMounted, ref, watch } from 'vue'
+import BadgeComponent from './BadgeComponent.vue'
 import ChannelControls from './ChannelControls.vue'
+import VideoTile from './VideoTile.vue'
 
 const props = defineProps<{
   userName: string | undefined
@@ -27,8 +28,14 @@ const {
   fetchVideoDevices,
   fetchAudioDevices,
   stopMedia,
+  switchMicrophone,
+  isScreenSharing,
+  startScreenShare,
+  stopScreenShare,
   joinRoomWithMedia,
   initializeMedia,
+  speakingPeers,
+  isLocalSpeaking,
   switchCamera,
   toggleMedia,
   leaveRoom,
@@ -39,6 +46,7 @@ const audioEnabled = ref(true)
 const audioElement = ref<HTMLAudioElement | null>(null)
 const soundUrl = connectSound
 const totalPeers = computed(() => 1 + remotePeers.value.length)
+const currentMicrophoneDeviceId = ref<string | null>(null)
 const videoStreamIndex = ref<number>(0)
 const currentCameraDeviceId = ref<string | null>(null)
 
@@ -67,6 +75,13 @@ function selectCamera(deviceId: string) {
   })
 }
 
+function selectMicrophone(deviceId: string) {
+  currentMicrophoneDeviceId.value = deviceId
+  if (callStore.isInCall) {
+    switchMicrophone(deviceId)
+  }
+}
+
 function toggleVideo() {
   if (!currentCameraDeviceId.value && localStream.value && !videoEnabled.value) {
     selectCamera(videoDevices.value[0]?.deviceId || '')
@@ -84,12 +99,11 @@ function toggleVideo() {
   toggleMedia(videoEnabled.value, audioEnabled.value)
 }
 
-async function updateAudioEnabled(value: boolean) {
+async function toggleMicrophone() {
   if (localStream.value) {
     const audioTrack = localStream.value.getAudioTracks()[0]
     if (audioTrack) {
       audioTrack.enabled = !audioTrack.enabled
-      audioEnabled.value = value
     }
   }
 
@@ -205,18 +219,10 @@ watch(
 watch(
   () => remotePeers.value,
   (newStream) => {
-    console.log('Remote stream changed:', newStream)
+    console.log('Remote stream changed:', newStream.values)
   },
+  { deep: true },
 )
-
-// Setup video element refs
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function setupVideoElement(el: any, stream: MediaStream | null) {
-  console.log('Setting up video element', el, stream)
-  if (el && stream && el instanceof HTMLVideoElement) {
-    el.srcObject = stream
-  }
-}
 
 onMounted(() => {
   fetchVideoDevices()
@@ -285,46 +291,32 @@ onMounted(() => {
           :class="[videoTileClass]"
           class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300"
         >
-          <video
-            v-if="localStream?.getVideoTracks().length"
-            :key="localStream.id"
-            :ref="(el: any) => setupVideoElement(el, localStream)"
-            autoplay
-            muted
-            playsinline
-            class="z-10 w-full h-full object-contain rounded-lg shadow-lg border-2 border-slate-700"
-          ></video>
-          <div
-            v-else
-            class="absolute inset-0 flex items-center justify-center border-2 border-slate-700"
-          >
-            <FontAwesomeIcon :icon="faUserAlt" class="z-0 text-9xl text-white/50" />
+          <div v-if="localStream">
+            <VideoTile
+              :condition="localStream?.getVideoTracks().length > 0"
+              :stream="localStream"
+              :key-id="localStream.id"
+            />
           </div>
-          <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
-            <FontAwesomeIcon v-show="!audioEnabled" :icon="faMicrophoneSlash" class="mr-1" />
-            Вы ({{ props.userName }})
-          </div>
+          <BadgeComponent
+            :condition-show="!audioEnabled"
+            :name="`Вы (${props.userName})`"
+            :speaking="isLocalSpeaking"
+          />
         </div>
 
         <!-- Видео собеседников -->
         <div v-for="peer in remotePeers" :key="peer.peerId" :class="[videoTileClass]">
-          <video
-            v-if="peer.remoteStream?.getVideoTracks().length && peerStates[peer.peerId]?.video"
-            :ref="(el: any) => setupVideoElement(el, peer.remoteStream)"
-            autoplay
-            playsinline
-            class="z-10 w-full h-full object-contain rounded-lg shadow-lg border-2 border-slate-700"
-          ></video>
-          <div v-else class="z-0 absolute inset-0 flex items-center justify-center">
-            <FontAwesomeIcon :icon="faUserAlt" class="text-9xl text-white/50" />
-          </div>
-          <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm">
-            <FontAwesomeIcon
-              v-if="!peerStates[peer.peerId]?.microphone"
-              :icon="faMicrophoneSlash"
-            />
-            {{ peer.room_mates?.[peer.peerId] || peer.peerId }}
-          </div>
+          <VideoTile
+            :condition="peerStates[peer.peerId]?.video"
+            :stream="peer.remoteStream"
+            :key-id="`${peer.peerId}-${peerStates[peer.peerId]?.video}`"
+          />
+          <BadgeComponent
+            :condition-show="peerStates[peer.peerId] && !peerStates[peer.peerId]?.microphone"
+            :name="peer.room_mates?.[peer.peerId] || peer.peerId"
+            :speaking="speakingPeers[peer.peerId]"
+          />
         </div>
       </div>
     </div>
@@ -338,10 +330,17 @@ onMounted(() => {
       :audioEnabled="audioEnabled"
       :videoStreamIndex="videoStreamIndex"
       :currentCameraDeviceId="currentCameraDeviceId"
+      :currentMicrophoneDeviceId="currentMicrophoneDeviceId"
+      :isScreenSharing="isScreenSharing"
+      :startScreenShare="startScreenShare"
+      :stopScreenShare="stopScreenShare"
       @endCall="endCall"
       @update:toggleVideo="toggleVideo"
+      @update:toggleMicrophone="toggleMicrophone"
       @update:videoEnabled="(value: boolean) => (videoEnabled = value)"
-      @update:audioEnabled="updateAudioEnabled"
+      @update:audioEnabled="(value: boolean) => (audioEnabled = value)"
+      @update:selectCamera="selectCamera"
+      @update:selectMicrophone="selectMicrophone"
       @update:videoStreamIndex="(value: number) => (videoStreamIndex = value)"
     />
   </div>
