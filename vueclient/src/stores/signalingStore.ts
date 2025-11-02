@@ -7,7 +7,7 @@ import { useRoomStore } from './roomStore'
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 
 export const useSignalingStore = defineStore('signaling', () => {
-  // State
+  // Состояние
   const ws = ref<WebSocket | null>(null)
   const connectionState = ref<ConnectionState>('disconnected')
   const clientId = ref<string | null>(null)
@@ -19,36 +19,36 @@ export const useSignalingStore = defineStore('signaling', () => {
   const maxReconnectAttempts = 5
   const reconnectTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
 
-  // Message handlers
+  // Обработчики сообщений
   const messageHandlers = ref<Map<string, Array<(message: SignalingMessage) => void>>>(new Map())
 
-  // Computed
+  // Вычисляемые значения
   const isConnected = computed(() => connectionState.value === 'connected')
   const isInRoom = computed(() => currentRoomId.value !== null)
 
-  // Connect to WebSocket
+  // Подключение к WebSocket
   function connect() {
     if (ws.value && ws.value.readyState === WebSocket.OPEN) {
-      console.log('WebSocket already connected')
+      console.log('WebSocket уже подключён')
       return
     }
 
     connectionState.value = 'connecting'
 
     try {
-      // Convert HTTP base URL to WebSocket URL
+      // Преобразуем HTTP базовый адрес в WebSocket URL
       const wsUrl = OpenAPI.BASE.replace(/^http/, 'ws') + '/api/v1/ws'
 
-      // Get token if available
+      // Получаем токен, если он доступен
       const token = typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : undefined
 
-      // Add token as query parameter if available
+      // Добавляем токен в параметры запроса при наличии
       const url = token ? `${wsUrl}?token=${token}` : wsUrl
 
       ws.value = new WebSocket(url)
 
       ws.value.onopen = () => {
-        console.log('WebSocket connected')
+        console.log('WebSocket подключён')
         connectionState.value = 'connected'
         reconnectAttempts.value = 0
       }
@@ -58,43 +58,43 @@ export const useSignalingStore = defineStore('signaling', () => {
           const message: SignalingMessage = JSON.parse(event.data)
           handleMessage(message)
         } catch (error) {
-          console.error('Failed to parse WebSocket message:', error)
+          console.error('Не удалось разобрать сообщение WebSocket:', error)
         }
       }
 
       ws.value.onerror = (error) => {
-        console.error('WebSocket error:', error)
+        console.error('Ошибка WebSocket:', error)
       }
 
       ws.value.onclose = () => {
-        console.log('WebSocket connection closed')
+        console.log('WebSocket соединение закрыто')
         connectionState.value = 'disconnected'
         ws.value = null
 
-        // Attempt to reconnect if we were in a room
+        // Пытаемся переподключиться, если мы находились в комнате
         if (currentRoomId.value && reconnectAttempts.value < maxReconnectAttempts) {
           attemptReconnect()
         }
       }
     } catch (error) {
-      console.error('Failed to connect to WebSocket:', error)
+      console.error('Не удалось подключиться к WebSocket:', error)
       connectionState.value = 'disconnected'
     }
   }
 
-  // Attempt to reconnect
+  // Попытка переподключения
   function attemptReconnect() {
     connectionState.value = 'reconnecting'
     reconnectAttempts.value++
 
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.value), 30000)
     console.log(
-      `Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts.value}/${maxReconnectAttempts})`,
+      `Пытаемся переподключиться через ${delay} мс (попытка ${reconnectAttempts.value}/${maxReconnectAttempts})`,
     )
 
     reconnectTimeout.value = setTimeout(() => {
       connect()
-      // If connection is successful and we had a room, rejoin it
+      // Если подключение успешно и у нас была комната, повторно входим в неё
       if (currentRoomId.value) {
         setTimeout(() => {
           if (isConnected.value) {
@@ -105,7 +105,7 @@ export const useSignalingStore = defineStore('signaling', () => {
     }, delay)
   }
 
-  // Disconnect from WebSocket
+  // Отключение от WebSocket
   function disconnect() {
     if (reconnectTimeout.value) {
       clearTimeout(reconnectTimeout.value)
@@ -125,10 +125,10 @@ export const useSignalingStore = defineStore('signaling', () => {
     reconnectAttempts.value = 0
   }
 
-  // Send a message through WebSocket
+  // Отправка сообщения через WebSocket
   function sendMessage(message: SignalingMessage) {
     if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
-      console.error('WebSocket is not connected')
+      console.error('WebSocket не подключён')
       return false
     }
 
@@ -136,15 +136,15 @@ export const useSignalingStore = defineStore('signaling', () => {
       ws.value.send(JSON.stringify(message))
       return true
     } catch (error) {
-      console.error('Failed to send message:', error)
+      console.error('Не удалось отправить сообщение:', error)
       return false
     }
   }
 
-  // Join a room
+  // Вход в комнату
   function joinRoom(roomId: string, userName?: string) {
     if (!isConnected.value) {
-      console.error('Cannot join room: WebSocket not connected')
+      console.error('Невозможно войти в комнату: WebSocket не подключён')
       return false
     }
 
@@ -155,7 +155,7 @@ export const useSignalingStore = defineStore('signaling', () => {
       room_mates.value[clientId.value] = username.value
     }
 
-    console.log('Joining room with mates:', room_mates.value)
+    console.log('Входим в комнату с участниками:', room_mates.value)
 
     const message: SignalingMessage = {
       type: SignalingMessage.type.JOIN,
@@ -169,7 +169,7 @@ export const useSignalingStore = defineStore('signaling', () => {
     return sendMessage(message)
   }
 
-  // Leave the current room
+  // Выход из текущей комнаты
   function leaveRoom() {
     if (!currentRoomId.value) {
       return false
@@ -189,10 +189,10 @@ export const useSignalingStore = defineStore('signaling', () => {
     return success
   }
 
-  // Send WebRTC offer
+  // Отправка WebRTC offer
   function sendOffer(to: string, sdp: RTCSessionDescriptionInit) {
     if (!currentRoomId.value) {
-      console.error('Cannot send offer: not in a room')
+      console.error('Невозможно отправить offer: нет активной комнаты')
       return false
     }
 
@@ -209,10 +209,10 @@ export const useSignalingStore = defineStore('signaling', () => {
     return sendMessage(message)
   }
 
-  // Send WebRTC answer
+  // Отправка WebRTC answer
   function sendAnswer(to: string, sdp: RTCSessionDescriptionInit) {
     if (!currentRoomId.value) {
-      console.error('Cannot send answer: not in a room')
+      console.error('Невозможно отправить answer: нет активной комнаты')
       return false
     }
 
@@ -229,10 +229,10 @@ export const useSignalingStore = defineStore('signaling', () => {
     return sendMessage(message)
   }
 
-  // Send ICE candidate
+  // Отправка ICE-кандидата
   function sendIceCandidate(to: string, candidate: RTCIceCandidateInit) {
     if (!currentRoomId.value) {
-      console.error('Cannot send ICE candidate: not in a room')
+      console.error('Невозможно отправить ICE-кандидата: нет активной комнаты')
       return false
     }
 
@@ -250,13 +250,13 @@ export const useSignalingStore = defineStore('signaling', () => {
     return sendMessage(message)
   }
 
-  // Handle incoming messages
+  // Обработка входящих сообщений
   function handleMessage(message: SignalingMessage) {
-    console.log('Received signaling message:', message)
+    console.log('Получено сигнализационное сообщение:', message)
 
     switch (message.type) {
       case SignalingMessage.type.JOINED:
-        console.log('Handling JOINED message:', message)
+        console.log('Обрабатываем сообщение JOINED:', message)
         clientId.value = message.from || null
         username.value = message.username || username.value
         if (message.payload && 'room_mates' in message.payload) {
@@ -265,14 +265,24 @@ export const useSignalingStore = defineStore('signaling', () => {
           room_mates.value = {}
         }
         useRoomStore().getListChannels()
-        console.log('Joined room as', username.value, 'with client ID:', clientId.value)
+        console.log(
+          'Вошли в комнату как',
+          username.value,
+          'с идентификатором клиента:',
+          clientId.value,
+        )
         break
 
       case SignalingMessage.type.PEER_JOINED:
         if (message.from) {
           connectedPeers.value.set(message.from, message.username || 'Anonymous')
           room_mates.value[message.from] = message.username || 'Anonymous'
-          console.log('Peer joined:', message.from, 'username:', message?.username)
+          console.log(
+            'К беседе присоединился пир:',
+            message.from,
+            'имя пользователя:',
+            message?.username,
+          )
         }
         useRoomStore().getListChannels()
         break
@@ -281,13 +291,13 @@ export const useSignalingStore = defineStore('signaling', () => {
         if (message.from) {
           connectedPeers.value.delete(message.from)
           delete room_mates.value[message.from]
-          console.log('Peer left:', message.from)
+          console.log('Пир покинул комнату:', message.from)
           useRoomStore().getListChannels()
         }
         break
     }
 
-    // Call registered handlers for this message type
+    // Вызываем зарегистрированные обработчики для данного типа сообщений
     const handlers = messageHandlers.value.get(message.type)
     if (handlers) handlers.forEach((handler) => handler(message))
 
@@ -295,14 +305,14 @@ export const useSignalingStore = defineStore('signaling', () => {
     if (allHandlers) allHandlers.forEach((handler) => handler(message))
   }
 
-  // Register a message handler
+  // Регистрация обработчика сообщений
   function onMessage(messageType: string, handler: (message: SignalingMessage) => void) {
     if (!messageHandlers.value.has(messageType)) {
       messageHandlers.value.set(messageType, [])
     }
     messageHandlers.value.get(messageType)!.push(handler)
 
-    // Return unsubscribe function
+    // Возвращаем функцию отписки
     return () => {
       const handlers = messageHandlers.value.get(messageType)
       if (handlers) {
@@ -314,24 +324,24 @@ export const useSignalingStore = defineStore('signaling', () => {
     }
   }
 
-  // Clear all message handlers
+  // Очистка всех обработчиков сообщений
   function clearHandlers() {
     messageHandlers.value.clear()
   }
 
   return {
-    // State
+    // Состояние
     connectionState,
     clientId,
     currentRoomId,
     connectedPeers,
     room_mates,
 
-    // Computed
+    // Вычисляемые значения
     isConnected,
     isInRoom,
 
-    // Actions
+    // Действия
     connect,
     disconnect,
     joinRoom,
