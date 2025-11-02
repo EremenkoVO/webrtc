@@ -35,6 +35,7 @@ const emits = defineEmits<{
   (e: 'update:selectCamera', value: string): void
   (e: 'update:currentCameraDeviceId', value: string): void
   (e: 'update:selectMicrophone', value: string): void
+  (e: 'update:toggleMicrophone'): void
   (e: 'update:toggleVideo'): void
 }>()
 
@@ -56,6 +57,9 @@ function selectCamera(deviceId: string) {
 
 // Toggle audio
 function toggleAudio() {
+  // Ask parent to perform the actual microphone toggle (it manages tracks/state)
+  emits('update:toggleMicrophone')
+  // Also update the parent-bound boolean so UI stays in sync (optional)
   emits('update:audioEnabled', !props.audioEnabled)
 }
 
@@ -158,7 +162,7 @@ function selectMicrophone(deviceId: string) {
           :title="props.audioEnabled ? 'Отключить микрофон' : 'Включить микрофон'"
         >
           <FontAwesomeIcon
-            :icon="audioEnabled ? faMicrophone : faMicrophoneSlash"
+            :icon="props.audioEnabled ? faMicrophone : faMicrophoneSlash"
             class="text-xl"
           />
         </button>

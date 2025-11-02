@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { SignalingMessage } from '@/api/models/SignalingMessage'
 import { useSignalingStore } from '@/stores/signalingStore'
-import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 
 export interface PeerConnection {
   peerId: string
@@ -23,8 +23,8 @@ export function useWebRTC() {
 
   // State
   const localStream = ref<MediaStream | null>(null)
-  const localState = ref({ video: true, microphone: true })
-  let peers = reactive<Record<string, PeerConnection>>({})
+  const localState = ref({ video: false, microphone: true })
+  const peers = ref<Map<string, PeerConnection>>(new Map())
   const speakingPeers = ref<Record<string, boolean>>({})
   const isMediaInitialized = ref(false)
   const isScreenSharing = ref(false)
@@ -44,7 +44,7 @@ export function useWebRTC() {
   }
 
   // Computed
-  const remotePeers = computed(() => Object.values(peers))
+  const remotePeers = computed(() => Array.from(peers.value.values()))
 
   const videoDevices = ref<MediaDeviceInfo[]>([])
   const audioDevices = ref<MediaDeviceInfo[]>([])
@@ -84,7 +84,9 @@ export function useWebRTC() {
 
       localStream.value = await navigator.mediaDevices.getUserMedia(constraints)
       isMediaInitialized.value = true
-      monitorLocalSpeaking(localStream.value)
+
+      if (constraints.audio) monitorLocalSpeaking(localStream.value)
+
       console.log('Local media initialized:', localStream.value)
       return localStream.value
     } catch (error) {
@@ -146,6 +148,10 @@ export function useWebRTC() {
     }
 
     // Handle ICE connection state changes
+    // После добавления видео-трека инициируем renegotiation для всех пиров
+    peers.value.forEach((_, peerId) => {
+      createOffer(peerId)
+    })
     pc.oniceconnectionstatechange = () => {
       console.log(`ICE connection state with ${peerId}:`, pc.iceConnectionState)
     }
@@ -153,48 +159,49 @@ export function useWebRTC() {
     // Handle remote stream
     const remoteStream = new MediaStream()
     pc.ontrack = (event) => {
-      console.log('Received remote track from', peerId, event.track.kind)
+      console.log('📡 Received track from', peerId, event.track.kind)
       const [stream] = event.streams
       if (!stream) return
 
-      if (!peers[peerId]) {
-        // Если пира еще нет, создаем его с новым потоком
-        peers[peerId] = {
-          peerId,
-          connection: pc,
-          remoteStream: stream, // <-- Это может быть поток с 1 или 2 треками
-          room_mates: signalingStore.room_mates,
-          dataChannel, // dataChannel должен быть доступен здесь
-        }
-        console.log(
-          `New peer ${peerId} added with stream. Video tracks: ${stream.getVideoTracks().length}`,
-        )
-      } else {
-        // Пир уже существует. Нам нужно обновить его поток, добавив *новый* трек.
-        const existingPeer = peers[peerId]
-        const existingStream = existingPeer.remoteStream
-
-        if (existingStream) {
-          // Добавляем *новый* трек к *существующему* потоку
-          existingStream.addTrack(event.track)
-          // Но Vue не отследит изменение *внутри* existingStream.
-          // Нам нужно "сообщить" Vue, что remoteStream изменился.
-          // Это можно сделать, создав *новый* MediaStream с обновленными треками и заменив ссылку.
-          // Это гарантирует реактивность.
-
-          // Получаем все треки из обновленного потока
-          const allTracks = existingStream.getTracks()
-          // Создаем новый поток с этими треками
-          const updatedStream = new MediaStream(allTracks)
-          // Реактивно обновляем remoteStream
-          updatePeerRemoteStream(peerId, updatedStream)
+      const updateStream = () => {
+        const existingPeer = peers.value.get(peerId)
+        if (!existingPeer) {
+          peers.value.set(peerId, {
+            peerId,
+            connection: pc,
+            remoteStream: stream,
+            room_mates: signalingStore.room_mates,
+            dataChannel,
+          })
+          console.log(`👤 New peer ${peerId} with stream`, stream)
         } else {
-          // Если remoteStream был null, просто присваиваем новый поток
-          updatePeerRemoteStream(peerId, stream)
+          // После удаления видео-трека инициируем renegotiation для всех пиров
+          peers.value.forEach((_, peerId) => {
+            createOffer(peerId)
+          })
+          // добавляем трек, если его нет
+          const existingStream = existingPeer.remoteStream || new MediaStream()
+          if (!existingStream.getTracks().includes(event.track)) {
+            existingStream.addTrack(event.track)
+          }
+          // принудительно обновляем ссылку, чтобы Vue отреагировал
+          const updatedStream = new MediaStream(existingStream.getTracks())
+          updatePeerRemoteStream(peerId, updatedStream)
         }
+
+        monitorSpeaking(peerId, stream)
       }
 
-      monitorSpeaking(peerId, stream) // Обновляем мониторинг с новым потоком
+      // вызывать при "размьюте" — когда пир включает видео без renegotiation
+      event.track.onunmute = () => {
+        console.log(`🔊 Track ${event.track.kind} for ${peerId} unmuted, refreshing`)
+        updateStream()
+      }
+
+      // и сразу при первом включении
+      if (!event.track.muted) {
+        updateStream()
+      }
     }
 
     pc.ondatachannel = (event) => {
@@ -211,7 +218,7 @@ export function useWebRTC() {
       dataChannel,
     }
 
-    peers[peerId] = newPeer
+    peers.value.set(peerId, newPeer)
 
     return pc
   }
@@ -232,12 +239,12 @@ export function useWebRTC() {
   }
 
   function updatePeerRemoteStream(peerId: string, newStream: MediaStream) {
-    const peer = peers[peerId]
+    const peer = peers.value.get(peerId)
     if (peer) {
       // Прямое присваивание свойства объекта, отслеживаемого реактивно
       peer.remoteStream = newStream
       // Если используете ref для peers, то:
-      // peers.value[peerId].remoteStream = newStream;
+      peers.value.set(peerId, peer)
       console.log(
         `Peer ${peerId} remote stream updated. Video tracks: ${newStream.getVideoTracks().length}`,
       )
@@ -245,7 +252,7 @@ export function useWebRTC() {
   }
 
   function updateRemoteVideo(peerId: string, enabled: boolean) {
-    const peer = peers[peerId]
+    const peer = peers.value.get(peerId)
     if (!peer || !peer.remoteStream) {
       console.warn(`Peer ${peerId} or remoteStream not found for video update.`)
       return
@@ -255,27 +262,17 @@ export function useWebRTC() {
     const hasVideoTrack = currentVideoTracks.length > 0
 
     if (enabled && !hasVideoTrack) {
-      // Видео будет автоматически обновлено, если peer заменил трек через replaceTrack
-      console.log(`Peer ${peerId} включил видео — оно отобразится автоматически`)
-    } else if (!enabled && hasVideoTrack) {
-      // Удаляем видео трек из потока
-      const videoTrack = currentVideoTracks[0]
-      peer.remoteStream.removeTrack(videoTrack)
-      videoTrack.stop() // Опционально, но рекомендуется останавливать треки
-
-      // Создаем *новый* MediaStream, исключая удаленный трек, и обновляем реактивно
-      const audioTracks = peer.remoteStream.getAudioTracks()
-      const newStream = new MediaStream(audioTracks) // Только аудио
-      updatePeerRemoteStream(peerId, newStream)
-
-      console.log(`Peer ${peerId} выключил видео. Remote stream updated (audio only).`)
-    } else {
-      console.log(`Peer ${peerId} video state (${enabled}) is already correct or no action needed.`)
+      console.log(`Requesting renegotiation to add video track for peer ${peerId}`)
+      createOffer(peerId)
     }
   }
 
   function setupDataChannel(peerId: string, channel: RTCDataChannel) {
-    channel.onopen = () => console.log('DataChannel open with', peerId)
+    channel.onopen = () => {
+      console.log('DataChannel open with', peerId)
+      // Отправляем своё состояние при открытии канала
+      broadcastStateTo(peerId, localState.value)
+    }
     channel.onclose = () => console.log('DataChannel closed with', peerId)
     channel.onerror = (err) => console.error('DataChannel error', err)
     channel.onmessage = (event) => {
@@ -292,13 +289,28 @@ export function useWebRTC() {
   // Create and send offer to a peer
   async function createOffer(peerId: string) {
     try {
-      const pc = peers[peerId]?.connection || createPeerConnection(peerId)
+      const pc = peers.value.get(peerId)?.connection || createPeerConnection(peerId)
 
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
 
       console.log('Created offer for', peerId)
       signalingStore.sendOffer(peerId, offer)
+
+      // Update peer object in Map to ensure reactivity and latest local stream
+      const peer = peers.value.get(peerId)
+
+      if (peer) {
+        console.log('Creating offer, updating peer:', peer.remoteStream?.getVideoTracks())
+
+        peers.value.set(peerId, {
+          ...peer,
+          connection: pc,
+          remoteStream: peer.remoteStream,
+        })
+
+        console.log('Updated peer after creating offer:', peers.value.get(peerId))
+      }
     } catch (error) {
       console.error('Failed to create offer:', error)
       throw error
@@ -310,7 +322,7 @@ export function useWebRTC() {
     try {
       console.log('Handling offer from', peerId)
 
-      const pc = peers[peerId]?.connection || createPeerConnection(peerId)
+      const pc = peers.value.get(peerId)?.connection || createPeerConnection(peerId)
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer))
 
@@ -330,13 +342,20 @@ export function useWebRTC() {
     try {
       console.log('Handling answer from', peerId)
 
-      const peer = peers[peerId]
+      const peer = peers.value.get(peerId)
       if (!peer) {
         console.error('No peer connection found for', peerId)
         return
       }
 
-      await peer.connection.setRemoteDescription(new RTCSessionDescription(answer))
+      // Only set remote answer if signalingState is 'have-local-offer'
+      if (peer.connection.signalingState === 'have-local-offer') {
+        await peer.connection.setRemoteDescription(new RTCSessionDescription(answer))
+      } else {
+        console.warn(
+          `Peer ${peerId} signalingState is '${peer.connection.signalingState}', not expecting answer. Skipping setRemoteDescription.`,
+        )
+      }
     } catch (error) {
       console.error('Failed to handle answer:', error)
       throw error
@@ -348,7 +367,7 @@ export function useWebRTC() {
     try {
       console.log('Handling ICE candidate from', peerId)
 
-      const peer = peers[peerId]
+      const peer = peers.value.get(peerId)
       if (!peer) {
         console.error('No peer connection found for', peerId)
         return
@@ -363,10 +382,10 @@ export function useWebRTC() {
 
   // Remove a peer connection
   function removePeer(peerId: string) {
-    const peer = peers[peerId]
+    const peer = peers.value.get(peerId)
     if (peer) {
       peer.connection.close()
-      delete peers[peerId]
+      peers.value.delete(peerId)
       delete speakingPeers.value[peerId]
       delete peerStates.value[peerId]
 
@@ -384,9 +403,12 @@ export function useWebRTC() {
     // Handle peer joined - initiate connection
     signalingStore.onMessage(SignalingMessage.type.PEER_JOINED, (message) => {
       if (message.from && message.from !== signalingStore.clientId) {
-        // Only existing participants create offers
         console.log('Existing peer creating offer to new peer:', message.from)
         createOffer(message.from)
+        // сразу отправим своё текущее состояние
+        setTimeout(() => {
+          if (message.from) broadcastStateTo(message.from, localState.value)
+        }, 1000)
       }
     })
 
@@ -459,12 +481,13 @@ export function useWebRTC() {
   // Leave room and cleanup
   function leaveRoom() {
     // Close all peer connections
-    Object.values(peers).forEach((peer) => {
-      peer.connection.close()
+    peers.value.forEach(({ connection }, peerId) => {
+      connection.close()
+      console.log('Closed connection with peer:', peerId)
     })
 
     // Очистить объект
-    peers = {}
+    peers.value.clear()
 
     // Leave signaling room
     signalingStore.leaveRoom()
@@ -476,12 +499,13 @@ export function useWebRTC() {
     speakingPeers.value = {}
     peerStates.value = {}
 
+    localState.value = { video: false, microphone: true }
+
     console.log('Left room')
   }
 
   // Switch camera
   async function switchCamera(deviceId: string) {
-    debugger
     try {
       if (!localStream.value) {
         console.warn('No local stream — cannot switch camera')
@@ -496,22 +520,20 @@ export function useWebRTC() {
       const newVideoTrack = newStream.getVideoTracks()[0]
       if (!newVideoTrack) return
 
-      const oldVideoTrack = localStream.value.getVideoTracks()[0]
+      const oldVideoTrack = localStream.value.getVideoTracks()[0] || null
 
-      Object.values(peers).forEach(({ connection }) => {
-        const sender = connection.getSenders().find((s) => s.track?.kind === 'video')
-        if (sender) {
-          sender.replaceTrack(newVideoTrack)
-        }
+      peers.value.forEach(({ connection }, peerId) => {
+        const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'video')
+        if (sender) sender.replaceTrack(newVideoTrack)
+        createOffer(peerId)
       })
 
       if (oldVideoTrack) {
         oldVideoTrack.stop()
       }
 
-      const audioTracks = localStream.value.getAudioTracks()
-      localStream.value = new MediaStream([newVideoTrack, ...audioTracks])
-
+      const audioTrack = localStream.value?.getAudioTracks()[0]
+      localStream.value = new MediaStream([newVideoTrack, ...(audioTrack ? [audioTrack] : [])])
       console.log('Camera switched successfully')
     } catch (error) {
       console.error('Failed to switch camera:', error)
@@ -536,12 +558,9 @@ export function useWebRTC() {
 
       const oldAudioTrack = localStream.value.getAudioTracks()[0]
 
-      // ✅ Исправлено: Object.values
-      Object.values(peers).forEach(({ connection }) => {
-        const sender = connection.getSenders().find((s) => s.track?.kind === 'audio')
-        if (sender) {
-          sender.replaceTrack(newAudioTrack)
-        }
+      peers.value.forEach(({ connection }) => {
+        const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'audio')
+        if (sender) sender.replaceTrack(newAudioTrack)
       })
 
       if (oldAudioTrack) {
@@ -558,7 +577,7 @@ export function useWebRTC() {
   }
 
   async function replaceVideoTrackInPeers(newTrack: MediaStreamTrack | null) {
-    Object.values(peers).forEach(({ connection }) => {
+    peers.value.forEach(({ connection }) => {
       const videoSenders = connection.getSenders().filter((s) => s.track?.kind === 'video')
       if (videoSenders.length > 0) {
         const sender = videoSenders[0]
@@ -573,22 +592,56 @@ export function useWebRTC() {
     })
   }
 
+  function broadcastStateTo(peerId: string, state: Record<string, any>) {
+    const peer = peers.value.get(peerId)
+    const json = JSON.stringify(state)
+    if (peer?.dataChannel?.readyState === 'open') {
+      peer.dataChannel.send(json)
+    } else {
+      console.warn(`Cannot send state to ${peerId}, dataChannel not open`)
+    }
+  }
+
   function broadcastState(state: Record<string, any>) {
     const json = JSON.stringify(state)
-    Object.values(peers).forEach(({ dataChannel }) => {
+    peers.value.forEach(({ dataChannel }) => {
       if (dataChannel?.readyState === 'open') {
         dataChannel.send(json)
       }
     })
   }
 
-  async function toggleMedia(videoEnable: boolean, microphoneEnable: boolean) {
+  async function toggleMedia(videoEnable: boolean, microphoneEnable: boolean, deviceId: string) {
     try {
       localState.value = { video: videoEnable, microphone: microphoneEnable }
+
+      // Если видео включено, но нет videoTrack — создаём его
+      if (videoEnable && localStream.value?.getVideoTracks().length === 0) {
+        const newVideoStream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: deviceId } },
+          audio: false,
+        })
+        const newVideoTrack = newVideoStream.getVideoTracks()[0]
+
+        console.log('Adding new video track to peers', newVideoTrack)
+
+        if (newVideoTrack) {
+          const audioTrack = localStream.value?.getAudioTracks()[0]
+          localStream.value = new MediaStream([newVideoTrack, ...(audioTrack ? [audioTrack] : [])])
+          await replaceVideoTrackInPeers(newVideoTrack)
+          // обязательно вызвать renegotiation
+          peers.value.forEach((_, peerId) => createOffer(peerId))
+        }
+      }
+
+      // обновляем enable для треков, если они есть
+      localStream.value?.getVideoTracks().forEach((track) => (track.enabled = videoEnable))
+      localStream.value?.getAudioTracks().forEach((track) => (track.enabled = microphoneEnable))
+
       broadcastState({ video: videoEnable, microphone: microphoneEnable })
-      console.log('Toggling media - Video:', videoEnable, 'Microphone:', microphoneEnable)
+      console.log('Toggled media - Video:', videoEnable, 'Microphone:', microphoneEnable)
     } catch (err) {
-      console.error('Failed to enable camera:', err)
+      console.error('Failed to toggle media:', err)
     }
   }
 
@@ -610,9 +663,8 @@ export function useWebRTC() {
       // Save current video track for restoration
       previousVideoTrack = localStream.value?.getVideoTracks()[0] || null
 
-      // ✅ Исправлено: Object.values
-      Object.values(peers).forEach(({ connection }) => {
-        const sender = connection.getSenders().find((s) => s.track?.kind === 'video')
+      peers.value.forEach(({ connection }) => {
+        const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'video')
         if (sender) sender.replaceTrack(screenTrack)
       })
 
@@ -639,9 +691,9 @@ export function useWebRTC() {
 
       // Restore previous video track if available
       if (previousVideoTrack) {
-        Object.values(peers).forEach(({ connection }) => {
-          const sender = connection.getSenders().find((s) => s.track?.kind === 'video')
-          if (sender) sender.replaceTrack(previousVideoTrack!)
+        peers.value.forEach(({ connection }) => {
+          const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'video')
+          if (sender) sender.replaceTrack(previousVideoTrack)
         })
 
         const audioTrack = localStream.value?.getAudioTracks()[0]
@@ -661,44 +713,9 @@ export function useWebRTC() {
   function monitorLocalSpeaking(stream: MediaStream | null) {
     if (!stream) return
 
-    // Clean up previous monitoring if any
-    if (animationFrameId.value) {
-      cancelAnimationFrame(animationFrameId.value)
-    }
-    if (audioContextRef.value) {
-      audioContextRef.value.close()
-    }
-
-    audioContextRef.value = new AudioContext()
-    const source = audioContextRef.value.createMediaStreamSource(stream)
-    analyserRef.value = audioContextRef.value.createAnalyser()
-    source.connect(analyserRef.value)
-
-    analyserRef.value.fftSize = 512
-    const dataArray = new Uint8Array(analyserRef.value.frequencyBinCount)
-
-    function checkSpeaking() {
-      if (!analyserRef.value) return
-
-      analyserRef.value.getByteFrequencyData(dataArray)
-      const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
-
-      isLocalSpeaking.value = volume > 20 // threshold for "speaking"
-
-      animationFrameId.value = requestAnimationFrame(checkSpeaking)
-    }
-
-    checkSpeaking()
-  }
-
-  const peerAudioContexts: Record<string, AudioContext> = {}
-
-  function monitorSpeaking(peerId: string, stream: MediaStream) {
-    // Create a separate audio context for each peer to avoid conflicts
     const audioContext = new AudioContext()
-    peerAudioContexts[peerId] = audioContext
-    const source = audioContext.createMediaStreamSource(stream)
-    const analyser = audioContext.createAnalyser()
+    const source = audioContext?.createMediaStreamSource(stream)
+    const analyser = audioContext?.createAnalyser()
     source.connect(analyser)
 
     analyser.fftSize = 512
@@ -708,7 +725,30 @@ export function useWebRTC() {
       analyser.getByteFrequencyData(dataArray)
       const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
 
-      speakingPeers.value[peerId] = volume > 20 // threshold for "speaking"
+      isLocalSpeaking.value = volume > 5 // порог для "говорящего"
+
+      requestAnimationFrame(checkSpeaking)
+    }
+
+    checkSpeaking()
+  }
+
+  const peerAudioContexts: Record<string, AudioContext> = {}
+
+  function monitorSpeaking(peerId: string, stream: MediaStream) {
+    const audioContext = new AudioContext()
+    const source = audioContext?.createMediaStreamSource(stream)
+    const analyser = audioContext?.createAnalyser()
+    source.connect(analyser)
+
+    analyser.fftSize = 512
+    const dataArray = new Uint8Array(analyser.frequencyBinCount)
+
+    function checkSpeaking() {
+      analyser.getByteFrequencyData(dataArray)
+      const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
+
+      speakingPeers.value[peerId] = volume > 5 // порог для "говорящего"
 
       requestAnimationFrame(checkSpeaking)
     }
@@ -720,13 +760,6 @@ export function useWebRTC() {
   onUnmounted(() => {
     leaveRoom()
     stopMedia()
-  })
-
-  // Watch for changes in local stream to update monitoring
-  watch(localStream, (newStream) => {
-    if (newStream) {
-      monitorLocalSpeaking(newStream)
-    }
   })
 
   return {

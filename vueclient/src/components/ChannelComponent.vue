@@ -33,7 +33,6 @@ const {
   startScreenShare,
   stopScreenShare,
   joinRoomWithMedia,
-  initializeMedia,
   speakingPeers,
   isLocalSpeaking,
   switchCamera,
@@ -46,9 +45,9 @@ const audioEnabled = ref(true)
 const audioElement = ref<HTMLAudioElement | null>(null)
 const soundUrl = connectSound
 const totalPeers = computed(() => 1 + remotePeers.value.length)
+const currentCameraDeviceId = ref<string | null>(null)
 const currentMicrophoneDeviceId = ref<string | null>(null)
 const videoStreamIndex = ref<number>(0)
-const currentCameraDeviceId = ref<string | null>(null)
 
 // динамический класс ширины
 const videoTileClass = computed(() => {
@@ -61,18 +60,13 @@ const videoTileClass = computed(() => {
 })
 
 function selectCamera(deviceId: string) {
-  initializeMedia({
-    video: { deviceId: { exact: deviceId } },
-    audio: audioEnabled.value
-      ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-      : false,
-  }).then(() => {
-    currentCameraDeviceId.value = deviceId
-    videoEnabled.value = true
-    if (callStore.isInCall) {
-      switchCamera(deviceId)
-    }
-  })
+  currentCameraDeviceId.value = deviceId
+  videoEnabled.value = true
+  if (callStore.isInCall) {
+    switchCamera(deviceId)
+  }
+
+  toggleMedia(videoEnabled.value, audioEnabled.value, deviceId)
 }
 
 function selectMicrophone(deviceId: string) {
@@ -96,7 +90,7 @@ function toggleVideo() {
     videoEnabled.value = false
   }
 
-  toggleMedia(videoEnabled.value, audioEnabled.value)
+  toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
 }
 
 async function toggleMicrophone() {
@@ -104,10 +98,11 @@ async function toggleMicrophone() {
     const audioTrack = localStream.value.getAudioTracks()[0]
     if (audioTrack) {
       audioTrack.enabled = !audioTrack.enabled
+      audioEnabled.value = audioTrack.enabled
     }
   }
 
-  toggleMedia(videoEnabled.value, audioEnabled.value)
+  toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
 }
 
 // Start call
@@ -219,7 +214,9 @@ watch(
 watch(
   () => remotePeers.value,
   (newStream) => {
-    console.log('Remote stream changed:', newStream.values)
+    Array.from(newStream.values()).forEach((peer) => {
+      console.log('Remote stream changed:', peer?.remoteStream?.getVideoTracks())
+    })
   },
   { deep: true },
 )
@@ -288,16 +285,17 @@ onMounted(() => {
       >
         <!-- Локальное видео -->
         <div
+          v-if="localStream"
           :class="[videoTileClass]"
           class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300"
         >
-          <div v-if="localStream">
-            <VideoTile
-              :condition="localStream?.getVideoTracks().length > 0"
-              :stream="localStream"
-              :key-id="localStream.id"
-            />
-          </div>
+          <VideoTile
+            :condition-video="localStream?.getVideoTracks().length > 0"
+            :condition-audio="localStream?.getAudioTracks().length > 0"
+            :stream="localStream"
+            :key-id="localStream.id"
+            :muted="true"
+          />
           <BadgeComponent
             :condition-show="!audioEnabled"
             :name="`Вы (${props.userName})`"
@@ -308,9 +306,11 @@ onMounted(() => {
         <!-- Видео собеседников -->
         <div v-for="peer in remotePeers" :key="peer.peerId" :class="[videoTileClass]">
           <VideoTile
-            :condition="peerStates[peer.peerId]?.video"
+            :condition-video="peer.remoteStream?.getVideoTracks().length"
+            :condition-audio="peer.remoteStream?.getAudioTracks().length"
             :stream="peer.remoteStream"
-            :key-id="`${peer.peerId}-${peerStates[peer.peerId]?.video}`"
+            :key-id="peer.peerId"
+            :muted="false"
           />
           <BadgeComponent
             :condition-show="peerStates[peer.peerId] && !peerStates[peer.peerId]?.microphone"

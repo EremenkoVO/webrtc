@@ -13,10 +13,10 @@ defineProps<{
   <div
     class="absolute flex flex-row items-center bottom-2 left-2 bg-slate-900/80 px-2 py-1 rounded text-sm"
   >
-    <FontAwesomeIcon v-show="conditionShow" :icon="faMicrophoneSlash" class="mr-1" />
+    <FontAwesomeIcon v-show="conditionShow" :icon="faMicrophoneSlash" class="mr-1 text-red-500" />
     {{ name }}
     <FontAwesomeIcon
-      v-if="speaking"
+      v-show="speaking"
       :icon="faMicrophone"
       class="ml-2 text-green-500"
     ></FontAwesomeIcon>
