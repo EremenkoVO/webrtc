@@ -84,7 +84,7 @@ function toggleVideo() {
     selectCamera(currentCameraDeviceId.value)
     videoEnabled.value = true
   } else if (videoEnabled.value && localStream.value) {
-    // Disable video
+    // Отключаем видео
     localStream.value.getVideoTracks().forEach((track) => track.stop())
     localStream.value.removeTrack(localStream.value.getVideoTracks()[0])
     videoEnabled.value = false
@@ -105,10 +105,10 @@ async function toggleMicrophone() {
   toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
 }
 
-// Start call
+// Запуск звонка
 async function startCall() {
   if (!roomStore.selectedChannelId) {
-    console.error('No channel selected')
+    console.error('Не выбран канал')
     return
   }
 
@@ -125,12 +125,12 @@ async function startCall() {
       roomStore.getListChannels()
     })
   } catch (error) {
-    console.error('Failed to start call:', error)
+    console.error('Не удалось начать звонок:', error)
     alert('Не удалось начать звонок. Проверьте разрешения на камеру и микрофон.')
   }
 }
 
-// End call
+// Завершение звонка
 function endCall() {
   leaveRoom()
   stopMedia()
@@ -157,15 +157,15 @@ async function connectToRoom(id: string | undefined) {
     if (response.client_id && response.room_id) {
       await roomStore.setClientAndRoomId(response.client_id, id)
 
-      // Join the signaling room via WebSocket
+      // Подключаемся к комнате сигнализации через WebSocket
       if (!signalingStore.isConnected) {
         signalingStore.connect()
-        // Wait for connection to establish
+        // Ждём установления соединения
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
 
       signalingStore.joinRoom(id)
-      console.log('Connected to room:', id)
+      console.log('Подключились к комнате:', id)
     }
   } catch (e) {
     console.error(e)
@@ -173,7 +173,7 @@ async function connectToRoom(id: string | undefined) {
   }
 }
 
-// Watch for channel changes and leave current call
+// Следим за сменой канала и выходим из текущего звонка
 watch(
   () => roomStore.selectedChannelId,
   (newId, oldId) => {
@@ -190,7 +190,7 @@ watch(
       const audio = audioElement.value
       if (audio) {
         audio.play().catch((error) => {
-          console.error('Error playing audio:', error)
+          console.error('Ошибка воспроизведения звука:', error)
         })
       }
     }
@@ -204,7 +204,7 @@ watch(
       const audio = audioElement.value
       if (audio) {
         audio.play().catch((error) => {
-          console.error('Error playing audio:', error)
+          console.error('Ошибка воспроизведения звука:', error)
         })
       }
     }
@@ -215,7 +215,7 @@ watch(
   () => remotePeers.value,
   (newStream) => {
     Array.from(newStream.values()).forEach((peer) => {
-      console.log('Remote stream changed:', peer?.remoteStream?.getVideoTracks())
+      console.log('Удалённый поток изменился:', peer?.remoteStream?.getVideoTracks())
     })
   },
   { deep: true },
@@ -232,7 +232,7 @@ onMounted(() => {
     v-if="roomStore.selectedChannelId"
     class="flex flex-col h-full bg-gradient-to-b from-slate-900 to-slate-950 text-white"
   >
-    <!-- Header -->
+    <!-- Заголовок -->
     <div class="p-4 border-b border-slate-800">
       <h1 class="text-xl font-semibold">Канал: {{ roomStore.selectedChannelName }}</h1>
       <div class="flex items-center gap-2 mt-2">
@@ -250,9 +250,9 @@ onMounted(() => {
 
     <audio ref="audioElement" :src="soundUrl"></audio>
 
-    <!-- Video Grid -->
+    <!-- Сетка видео -->
     <div class="flex-1 p-4 overflow-auto">
-      <!-- Если не в звонке -->
+      <!-- Если не на линии -->
       <div v-if="!callStore.isInCall" class="flex items-center justify-center h-full">
         <div class="text-center">
           <div v-if="roomStore.roommates.length">

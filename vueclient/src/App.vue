@@ -5,12 +5,12 @@ import { onMounted, onUnmounted } from 'vue'
 const signalingStore = useSignalingStore()
 
 onMounted(() => {
-  // Connect to signaling server on app mount
+  // Подключаемся к серверу сигнализации при монтировании приложения
   signalingStore.connect()
 })
 
 onUnmounted(() => {
-  // Disconnect on app unmount
+  // Отключаемся при размонтировании приложения
   signalingStore.disconnect()
 })
 </script>

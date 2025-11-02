@@ -44,7 +44,7 @@ const { videoDevices, audioDevices, fetchVideoDevices, fetchAudioDevices } = use
 const cameraMenuOpen = ref(false)
 const microphoneMenuOpen = ref(false)
 
-// Toggle video
+// Переключение состояния видео
 function toggleVideo() {
   emits('update:toggleVideo')
 }
@@ -55,28 +55,28 @@ function selectCamera(deviceId: string) {
   cameraMenuOpen.value = false
 }
 
-// Toggle audio
+// Переключение состояния микрофона
 function toggleAudio() {
-  // Ask parent to perform the actual microphone toggle (it manages tracks/state)
+  // Просим родительский компонент выполнить фактическое переключение микрофона (он управляет треками и состоянием)
   emits('update:toggleMicrophone')
-  // Also update the parent-bound boolean so UI stays in sync (optional)
+  // Обновляем булево значение в родителе, чтобы интерфейс оставался синхронизирован
   emits('update:audioEnabled', !props.audioEnabled)
 }
 
-// Toggle camera menu
+// Переключение меню выбора камеры
 async function toggleCameraMenu() {
   cameraMenuOpen.value = !cameraMenuOpen.value
   if (cameraMenuOpen.value) {
-    // Fetch video input devices
+    // Загружаем список видеоустройств
     fetchVideoDevices()
   }
 }
 
-// Toggle microphone menu
+// Переключение меню выбора микрофона
 function toggleMicrophoneMenu() {
   microphoneMenuOpen.value = !microphoneMenuOpen.value
   if (microphoneMenuOpen.value) {
-    // Fetch audio input devices
+    // Загружаем список аудиоустройств
     fetchAudioDevices()
   }
 }
