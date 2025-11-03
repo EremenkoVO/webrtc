@@ -109,6 +109,9 @@ export function useWebRTC() {
       }
 
       localStream.value = await navigator.mediaDevices.getUserMedia(constraints)
+      localStream.value
+        .getAudioTracks()
+        .forEach((track) => (track.contentHint = track.contentHint || 'speech'))
       isMediaInitialized.value = true
 
       if (constraints.audio) monitorLocalSpeaking(localStream.value)
@@ -594,6 +597,7 @@ export function useWebRTC() {
 
       const newAudioTrack = newStream.getAudioTracks()[0]
       if (!newAudioTrack) return
+      newAudioTrack.contentHint = 'speech'
 
       const oldAudioTrack = localStream.value.getAudioTracks()[0]
 
@@ -720,6 +724,10 @@ export function useWebRTC() {
         screenVideoTrack,
         ...(previousAudioTrack ? [previousAudioTrack] : []),
       ])
+      composedStream
+        .getAudioTracks()
+        .filter((track) => track !== screenAudioTrack)
+        .forEach((track) => (track.contentHint = 'speech'))
       localStream.value = composedStream
       localStream.value.getVideoTracks().forEach((track) => (track.enabled = true))
       localStream.value
@@ -800,6 +808,7 @@ export function useWebRTC() {
       if (previousAudioTrack) restoredTracks.push(previousAudioTrack)
 
       const restoredStream = new MediaStream(restoredTracks)
+      restoredStream.getAudioTracks().forEach((track) => (track.contentHint = 'speech'))
       localStream.value = restoredStream
       localStream.value
         .getVideoTracks()

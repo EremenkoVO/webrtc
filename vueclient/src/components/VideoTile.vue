@@ -32,7 +32,9 @@ const audioContextRef = ref<AudioContext | null>(null)
 const micGainNode = ref<GainNode | null>(null)
 const screenGainNode = ref<GainNode | null>(null)
 const processedAudioStream = ref<MediaStream | null>(null)
+const needsActivation = ref(false)
 let resumePlaybackHandler: ((event: Event) => void) | null = null
+let resumePromise: Promise<void> | null = null
 
 const volumeIcon = computed(() => {
   const effectiveMic = hasMicAudio.value ? micVolume.value : 0
@@ -124,6 +126,7 @@ function teardownAudioGraph() {
   micGainNode.value = null
   screenGainNode.value = null
   cleanupResumeHandler()
+  needsActivation.value = false
 
   if (audioRef.value) {
     audioRef.value.pause()
@@ -209,6 +212,10 @@ function applyMuteState() {
   if (audioRef.value) {
     audioRef.value.muted = muted
     audioRef.value.volume = 1
+  }
+
+  if (!muted) {
+    ensureAudioPlayback()
   }
 }
 
@@ -310,26 +317,46 @@ function adjustMenuPosition() {
   }
 }
 
-function attemptResumePlayback() {
-  const context = audioContextRef.value
-  if (context && context.state === 'suspended') {
-    context.resume().catch((error) => {
-      console.warn('Не удалось активировать аудиоконтекст:', error)
-    })
-  }
+async function attemptResumePlayback() {
+  if (resumePromise) return resumePromise
 
-  const element = audioRef.value
-  if (element) {
-    element.play().catch(() => undefined)
-  }
+  resumePromise = (async () => {
+    const context = audioContextRef.value
+    if (context && context.state === 'suspended') {
+      try {
+        await context.resume()
+      } catch (error) {
+        console.warn('Не удалось активировать аудиоконтекст:', error)
+      }
+    }
 
-  if (!audioContextRef.value || audioContextRef.value.state === 'running') {
-    cleanupResumeHandler()
+    const element = audioRef.value
+    if (element) {
+      try {
+        await element.play()
+      } catch (error) {
+        console.warn('Воспроизведение аудио заблокировано браузером:', error)
+      }
+    }
+
+    const contextRunning = !audioContextRef.value || audioContextRef.value.state === 'running'
+    const elementActive = !audioRef.value || !audioRef.value.paused || audioRef.value.muted
+    needsActivation.value = !(contextRunning && elementActive)
+
+    if (!needsActivation.value) {
+      cleanupResumeHandler()
+    }
+  })()
+
+  try {
+    await resumePromise
+  } finally {
+    resumePromise = null
   }
 }
 
 function ensureAudioPlayback() {
-  attemptResumePlayback()
+  attemptResumePlayback().catch(() => undefined)
 
   const context = audioContextRef.value
   if (context && context.state !== 'running' && !resumePlaybackHandler) {
@@ -358,6 +385,10 @@ function syncAudioElement() {
   }
 
   ensureAudioPlayback()
+}
+
+function handleManualActivation() {
+  attemptResumePlayback().catch(() => undefined)
 }
 
 onMounted(() => {
@@ -453,6 +484,19 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </transition>
+
+    <div
+      v-if="needsActivation && !isMuted"
+      class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30"
+    >
+      <button
+        type="button"
+        class="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors text-sm font-medium shadow-lg"
+        @click.stop="handleManualActivation"
+      >
+        Включить звук
+      </button>
+    </div>
   </div>
 </template>
 
