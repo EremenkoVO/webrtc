@@ -243,6 +243,7 @@ export function useWebRTC() {
 
     if (isScreenSharing.value && activeScreenAudioTrack && !screenAudioSenders.has(peerId)) {
       const clonedTrack = activeScreenAudioTrack.clone()
+      clonedTrack.contentHint = 'screen'
       const senderStream = new MediaStream([clonedTrack])
       const sender = pc.addTrack(clonedTrack, senderStream)
       screenAudioSenders.set(peerId, { sender, track: clonedTrack })
@@ -705,6 +706,9 @@ export function useWebRTC() {
       const screenVideoTrack = screenStream.getVideoTracks()[0]
       if (!screenVideoTrack) throw new Error('Нет видеотрека для экрана')
       const screenAudioTrack = screenStream.getAudioTracks()[0] || null
+      if (screenAudioTrack) {
+        screenAudioTrack.contentHint = 'screen'
+      }
 
       // Сохраняем текущие локальные треки для восстановления
       previousVideoTrack = localStream.value?.getVideoTracks()[0] || null
@@ -742,6 +746,7 @@ export function useWebRTC() {
           }
 
           const clonedTrack = screenAudioTrack.clone()
+          clonedTrack.contentHint = 'screen'
           const senderStream = new MediaStream([clonedTrack])
           const sender = connection.addTrack(clonedTrack, senderStream)
           screenAudioSenders.set(peerId, { sender, track: clonedTrack })

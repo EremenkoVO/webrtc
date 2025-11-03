@@ -23,7 +23,7 @@ const videoRef = ref<HTMLVideoElement | null>(null)
 const audioRef = ref<HTMLAudioElement | null>(null)
 const isMuted = ref(Boolean(props.muted))
 const micVolume = ref(1)
-const screenVolume = ref(1)
+const screenVolume = ref(0)
 const hasMicAudio = ref(false)
 const hasScreenAudio = ref(false)
 const contextMenu = ref({ visible: false, x: 0, y: 0 })
@@ -32,6 +32,7 @@ const audioContextRef = ref<AudioContext | null>(null)
 const micGainNode = ref<GainNode | null>(null)
 const screenGainNode = ref<GainNode | null>(null)
 const processedAudioStream = ref<MediaStream | null>(null)
+let resumePlaybackHandler: ((event: Event) => void) | null = null
 
 const volumeIcon = computed(() => {
   const effectiveMic = hasMicAudio.value ? micVolume.value : 0
@@ -102,14 +103,30 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => processedAudioStream.value,
+  () => {
+    syncAudioElement()
+  },
+)
+
+watch(
+  () => audioRef.value,
+  () => {
+    syncAudioElement()
+  },
+)
+
 function teardownAudioGraph() {
   processedAudioStream.value = null
   hasScreenAudio.value = false
   hasMicAudio.value = false
   micGainNode.value = null
   screenGainNode.value = null
+  cleanupResumeHandler()
 
   if (audioRef.value) {
+    audioRef.value.pause()
     audioRef.value.srcObject = null
   }
 
@@ -123,6 +140,8 @@ function teardownAudioGraph() {
 
 // Простая эвристика помогает отличить звук экрана от микрофона
 function isScreenAudioTrack(track: MediaStreamTrack) {
+  const hint = track.contentHint?.toLowerCase() ?? ''
+  if (hint.includes('screen') || hint.includes('presentation')) return true
   const label = track.label.toLowerCase()
   return label.includes('screen') || label.includes('system') || label.includes('tab')
 }
@@ -148,10 +167,11 @@ function rebuildAudioGraph() {
   let screenTrackPresent = false
   let micTrackPresent = false
 
-  audioTracks.forEach((track) => {
+  audioTracks.forEach((track, index) => {
     const sourceStream = new MediaStream([track])
     const source = context.createMediaStreamSource(sourceStream)
-    if (isScreenAudioTrack(track)) {
+    const treatAsScreen = isScreenAudioTrack(track) || (audioTracks.length > 1 && index > 0)
+    if (treatAsScreen) {
       screenTrackPresent = true
       source.connect(screenGain)
     } else {
@@ -170,15 +190,7 @@ function rebuildAudioGraph() {
   hasScreenAudio.value = screenTrackPresent
   processedAudioStream.value = destination.stream
 
-  if (audioRef.value && processedAudioStream.value) {
-    audioRef.value.srcObject = processedAudioStream.value
-    const playPromise = audioRef.value.play()
-    if (playPromise) {
-      playPromise.catch((error) => {
-        console.warn('Не удалось воспроизвести аудио поток:', error)
-      })
-    }
-  }
+  syncAudioElement()
 
   applyMuteState()
 }
@@ -296,6 +308,56 @@ function adjustMenuPosition() {
       y,
     }
   }
+}
+
+function attemptResumePlayback() {
+  const context = audioContextRef.value
+  if (context && context.state === 'suspended') {
+    context.resume().catch((error) => {
+      console.warn('Не удалось активировать аудиоконтекст:', error)
+    })
+  }
+
+  const element = audioRef.value
+  if (element) {
+    element.play().catch(() => undefined)
+  }
+
+  if (!audioContextRef.value || audioContextRef.value.state === 'running') {
+    cleanupResumeHandler()
+  }
+}
+
+function ensureAudioPlayback() {
+  attemptResumePlayback()
+
+  const context = audioContextRef.value
+  if (context && context.state !== 'running' && !resumePlaybackHandler) {
+    // Chrome блокирует AudioContext до первого взаимодействия, поэтому подписываемся на жесты.
+    resumePlaybackHandler = () => attemptResumePlayback()
+    document.addEventListener('pointerdown', resumePlaybackHandler)
+    document.addEventListener('keydown', resumePlaybackHandler)
+  }
+}
+
+function cleanupResumeHandler() {
+  if (resumePlaybackHandler) {
+    document.removeEventListener('pointerdown', resumePlaybackHandler)
+    document.removeEventListener('keydown', resumePlaybackHandler)
+    resumePlaybackHandler = null
+  }
+}
+
+function syncAudioElement() {
+  const audioEl = audioRef.value
+  const stream = processedAudioStream.value
+  if (!audioEl || !stream) return
+
+  if (audioEl.srcObject !== stream) {
+    audioEl.srcObject = stream
+  }
+
+  ensureAudioPlayback()
 }
 
 onMounted(() => {
