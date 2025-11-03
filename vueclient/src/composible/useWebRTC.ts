@@ -18,6 +18,11 @@ interface PeerState {
   [key: string]: any
 }
 
+interface PeerPlaybackSettings {
+  volume: number
+  muted: boolean
+}
+
 export function useWebRTC() {
   const signalingStore = useSignalingStore()
 
@@ -30,6 +35,8 @@ export function useWebRTC() {
   const isScreenSharing = ref(false)
   const isLocalSpeaking = ref(false)
   const peerStates = ref<Record<string, PeerState>>({})
+  const peerPlayback = ref<Record<string, PeerPlaybackSettings>>({})
+  const peerAudioStreams = ref<Record<string, MediaStream>>({})
   const audioContextRef = ref<AudioContext | null>(null)
   const analyserRef = ref<AnalyserNode | null>(null)
   const animationFrameId = ref<number | null>(null)
@@ -52,6 +59,70 @@ export function useWebRTC() {
   let screenShareStream: MediaStream | null = null
   let activeScreenAudioTrack: MediaStreamTrack | null = null
   const screenAudioSenders = new Map<string, { sender: RTCRtpSender; track: MediaStreamTrack }>()
+
+  function ensurePeerPlayback(peerId: string) {
+    if (!peerPlayback.value[peerId]) {
+      peerPlayback.value = {
+        ...peerPlayback.value,
+        [peerId]: {
+          volume: 1,
+          muted: false,
+        },
+      }
+    }
+  }
+
+  function updatePeerAudioStream(peerId: string, stream: MediaStream | null) {
+    if (!stream) {
+      if (peerAudioStreams.value[peerId]) {
+        const updated = { ...peerAudioStreams.value }
+        delete updated[peerId]
+        peerAudioStreams.value = updated
+      }
+      return
+    }
+
+    const audioTracks = stream.getAudioTracks()
+    if (audioTracks.length === 0) {
+      if (peerAudioStreams.value[peerId]) {
+        const updated = { ...peerAudioStreams.value }
+        delete updated[peerId]
+        peerAudioStreams.value = updated
+      }
+      return
+    }
+
+    const audioStream = new MediaStream()
+    audioTracks.forEach((track) => audioStream.addTrack(track))
+
+    peerAudioStreams.value = {
+      ...peerAudioStreams.value,
+      [peerId]: audioStream,
+    }
+  }
+
+  function setPeerVolume(peerId: string, rawVolume: number) {
+    ensurePeerPlayback(peerId)
+    const volume = Math.min(Math.max(rawVolume, 0), 1)
+    peerPlayback.value = {
+      ...peerPlayback.value,
+      [peerId]: {
+        ...peerPlayback.value[peerId],
+        volume,
+      },
+    }
+  }
+
+  function setPeerMuted(peerId: string, muted: boolean) {
+    ensurePeerPlayback(peerId)
+    peerPlayback.value = {
+      ...peerPlayback.value,
+      [peerId]: {
+        ...peerPlayback.value[peerId],
+        muted,
+      },
+    }
+  }
 
   // Вызывает createOffer только если signallingState === 'stable'
   async function createOfferSafe(peerId: string) {
@@ -197,6 +268,8 @@ export function useWebRTC() {
             room_mates: signalingStore.room_mates,
             dataChannel,
           })
+          ensurePeerPlayback(peerId)
+          updatePeerAudioStream(peerId, stream)
           console.log(`👤 Новый пир ${peerId} с потоком`, stream)
         } else {
           // После удаления видео-трека инициируем renegotiation для всех пиров
@@ -243,6 +316,7 @@ export function useWebRTC() {
     }
 
     peers.value.set(peerId, newPeer)
+    ensurePeerPlayback(peerId)
 
     if (isScreenSharing.value && activeScreenAudioTrack && !screenAudioSenders.has(peerId)) {
       const clonedTrack = activeScreenAudioTrack.clone()
@@ -280,6 +354,8 @@ export function useWebRTC() {
       console.log(
         `Удалённый поток пира ${peerId} обновлён. Количество видеотреков: ${newStream.getVideoTracks().length}`,
       )
+      ensurePeerPlayback(peerId)
+      updatePeerAudioStream(peerId, newStream)
     }
   }
 
@@ -421,6 +497,18 @@ export function useWebRTC() {
       delete speakingPeers.value[peerId]
       delete peerStates.value[peerId]
 
+      if (peerPlayback.value[peerId]) {
+        const playbackCopy = { ...peerPlayback.value }
+        delete playbackCopy[peerId]
+        peerPlayback.value = playbackCopy
+      }
+
+      if (peerAudioStreams.value[peerId]) {
+        const audioCopy = { ...peerAudioStreams.value }
+        delete audioCopy[peerId]
+        peerAudioStreams.value = audioCopy
+      }
+
       if (peerAudioContexts[peerId]) {
         peerAudioContexts[peerId].close()
         delete peerAudioContexts[peerId]
@@ -536,6 +624,8 @@ export function useWebRTC() {
     // Сбрасываем состояния "говорит"
     speakingPeers.value = {}
     peerStates.value = {}
+    peerPlayback.value = {}
+    peerAudioStreams.value = {}
 
     localState.value = { video: false, microphone: true }
 
@@ -896,6 +986,8 @@ export function useWebRTC() {
     remotePeers,
     peers,
     peerStates,
+    peerPlayback,
+    peerAudioStreams,
     videoDevices,
     audioDevices,
     isMediaInitialized,
@@ -913,6 +1005,8 @@ export function useWebRTC() {
     leaveRoom,
     createOffer,
     removePeer,
+    setPeerVolume,
+    setPeerMuted,
 
     // Переключение устройств
     switchCamera,
