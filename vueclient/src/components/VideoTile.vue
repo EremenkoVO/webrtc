@@ -21,9 +21,10 @@ const props = defineProps<{
 const containerRef = ref<HTMLElement | null>(null)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const audioRef = ref<HTMLAudioElement | null>(null)
+const audioStreamRef = ref<HTMLAudioElement | null>(null)
 const isMuted = ref(Boolean(props.muted))
 const micVolume = ref(1)
-const screenVolume = ref(0)
+const screenVolume = ref(1)
 const hasMicAudio = ref(false)
 const hasScreenAudio = ref(false)
 const contextMenu = ref({ visible: false, x: 0, y: 0 })
@@ -46,8 +47,18 @@ watchEffect(() => {
   const stream = (props.stream as MediaStream | null) ?? null
   if (videoRef.value && videoRef.value.srcObject !== stream) {
     videoRef.value.srcObject = stream
-    if (videoRef.value) {
-      videoRef.value.muted = true
+    videoRef.value.muted = true
+  }
+  // Separate audio tracks for stream and peers
+  if (audioStreamRef.value && stream) {
+    const audioTracks = stream.getAudioTracks()
+    if (audioTracks.length > 0) {
+      const audioOnlyStream = new MediaStream(audioTracks)
+      audioStreamRef.value.srcObject = audioOnlyStream
+      audioStreamRef.value.muted = true
+      audioStreamRef.value.volume = 0
+    } else {
+      audioStreamRef.value.srcObject = null
     }
   }
 })
@@ -159,25 +170,27 @@ function rebuildAudioGraph() {
   const audioTracks = stream.getAudioTracks()
   if (audioTracks.length === 0) return
 
+  // Separate mic and screen tracks
+  const micTracks = audioTracks.filter((track, idx) => !isScreenAudioTrack(track) && idx === 0)
+  const screenTracks = audioTracks.filter((track, idx) => isScreenAudioTrack(track) || idx > 0)
+
   const context = new AudioContext()
   const destination = context.createMediaStreamDestination()
 
   const micGain = context.createGain()
   const screenGain = context.createGain()
-  let screenTrackPresent = false
-  let micTrackPresent = false
+  const micTrackPresent = micTracks.length > 0
+  const screenTrackPresent = screenTracks.length > 0
 
-  audioTracks.forEach((track, index) => {
+  micTracks.forEach((track) => {
     const sourceStream = new MediaStream([track])
     const source = context.createMediaStreamSource(sourceStream)
-    const treatAsScreen = isScreenAudioTrack(track) || (audioTracks.length > 1 && index > 0)
-    if (treatAsScreen) {
-      screenTrackPresent = true
-      source.connect(screenGain)
-    } else {
-      micTrackPresent = true
-      source.connect(micGain)
-    }
+    source.connect(micGain)
+  })
+  screenTracks.forEach((track) => {
+    const sourceStream = new MediaStream([track])
+    const source = context.createMediaStreamSource(sourceStream)
+    source.connect(screenGain)
   })
 
   micGain.connect(destination)
@@ -191,7 +204,6 @@ function rebuildAudioGraph() {
   processedAudioStream.value = destination.stream
 
   syncAudioElement()
-
   applyMuteState()
 }
 
@@ -395,6 +407,7 @@ onBeforeUnmount(() => {
     </div>
 
     <audio ref="audioRef" autoplay playsinline class="hidden"></audio>
+    <audio ref="audioStreamRef" autoplay playsinline class="hidden"></audio>
 
     <transition name="fade">
       <div

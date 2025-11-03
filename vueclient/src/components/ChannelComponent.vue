@@ -24,6 +24,8 @@ const {
   localStream,
   remotePeers,
   peerStates,
+  peerPlayback,
+  peerAudioStreams,
   videoDevices,
   fetchVideoDevices,
   fetchAudioDevices,
@@ -38,6 +40,8 @@ const {
   switchCamera,
   toggleMedia,
   leaveRoom,
+  setPeerVolume,
+  setPeerMuted,
 } = useWebRTC()
 
 const videoEnabled = ref(false)
@@ -74,6 +78,14 @@ function selectMicrophone(deviceId: string) {
   if (callStore.isInCall) {
     switchMicrophone(deviceId)
   }
+}
+
+function handlePeerMuteChange(peerId: string, muted: boolean) {
+  setPeerMuted(peerId, muted)
+}
+
+function handlePeerVolumeChange(peerId: string, volume: number) {
+  setPeerVolume(peerId, volume)
 }
 
 function toggleVideo() {
@@ -310,7 +322,11 @@ onMounted(() => {
             :condition-audio="peer.remoteStream?.getAudioTracks().length"
             :stream="peer.remoteStream"
             :key-id="peer.peerId"
-            :muted="false"
+            :muted="peerPlayback[peer.peerId]?.muted ?? false"
+            :volume="peerPlayback[peer.peerId]?.volume ?? 1"
+            :audio-stream="peerAudioStreams[peer.peerId]"
+            @update:muted="handlePeerMuteChange(peer.peerId, $event)"
+            @update:volume="handlePeerVolumeChange(peer.peerId, $event)"
           />
           <BadgeComponent
             :condition-show="peerStates[peer.peerId] && !peerStates[peer.peerId]?.microphone"
