@@ -50,6 +50,8 @@ export function useWebRTC() {
   let previousVideoTrack: MediaStreamTrack | null = null
   let previousAudioTrack: MediaStreamTrack | null = null
   let screenShareStream: MediaStream | null = null
+  let activeScreenAudioTrack: MediaStreamTrack | null = null
+  const screenAudioSenders = new Map<string, { sender: RTCRtpSender; track: MediaStreamTrack }>()
 
   // Вызывает createOffer только если signallingState === 'stable'
   async function createOfferSafe(peerId: string) {
@@ -239,6 +241,13 @@ export function useWebRTC() {
 
     peers.value.set(peerId, newPeer)
 
+    if (isScreenSharing.value && activeScreenAudioTrack && !screenAudioSenders.has(peerId)) {
+      const clonedTrack = activeScreenAudioTrack.clone()
+      const senderStream = new MediaStream([clonedTrack])
+      const sender = pc.addTrack(clonedTrack, senderStream)
+      screenAudioSenders.set(peerId, { sender, track: clonedTrack })
+    }
+
     return pc
   }
 
@@ -411,6 +420,12 @@ export function useWebRTC() {
       if (peerAudioContexts[peerId]) {
         peerAudioContexts[peerId].close()
         delete peerAudioContexts[peerId]
+      }
+
+      const screenSender = screenAudioSenders.get(peerId)
+      if (screenSender) {
+        screenSender.track.stop()
+        screenAudioSenders.delete(peerId)
       }
 
       console.log('Пир удалён:', peerId)
@@ -684,26 +699,28 @@ export function useWebRTC() {
       // Получаем экран
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
-        audio: false, // не берём аудио экрана, используем микрофон
+        audio: true,
       })
 
       const screenVideoTrack = screenStream.getVideoTracks()[0]
       if (!screenVideoTrack) throw new Error('Нет видеотрека для экрана')
+      const screenAudioTrack = screenStream.getAudioTracks()[0] || null
 
       // Сохраняем текущие локальные треки для восстановления
       previousVideoTrack = localStream.value?.getVideoTracks()[0] || null
       previousAudioTrack = localStream.value?.getAudioTracks()[0] || null
       screenShareStream = screenStream
+      activeScreenAudioTrack = screenAudioTrack
 
-      // Используем текущий микрофон или аудио из экрана, если есть
-      const audioTrack = previousAudioTrack ? previousAudioTrack : screenStream.getAudioTracks()[0]
-
-      // Создаем поток для локального видео (для <video> компонента)
       const composedStream = new MediaStream([
         screenVideoTrack,
-        ...(audioTrack ? [audioTrack] : []),
+        ...(previousAudioTrack ? [previousAudioTrack] : []),
       ])
       localStream.value = composedStream
+      localStream.value.getVideoTracks().forEach((track) => (track.enabled = true))
+      localStream.value
+        .getAudioTracks()
+        .forEach((track) => (track.enabled = localState.value.microphone))
 
       // Обновляем треки у всех пиров
       peers.value.forEach(({ connection }, peerId) => {
@@ -712,11 +729,22 @@ export function useWebRTC() {
         if (videoSender) videoSender.replaceTrack(screenVideoTrack)
         else connection.addTrack(screenVideoTrack, composedStream)
 
-        // Аудио
-        if (audioTrack) {
-          const audioSender = connection.getSenders().find((s) => s.track?.kind === 'audio')
-          if (audioSender) audioSender.replaceTrack(audioTrack)
-          else connection.addTrack(audioTrack, composedStream)
+        if (screenAudioTrack) {
+          const existingSender = screenAudioSenders.get(peerId)
+          if (existingSender) {
+            try {
+              connection.removeTrack(existingSender.sender)
+            } catch (error) {
+              console.warn('Не удалось удалить предыдущий аудио-сендер экрана:', error)
+            }
+            existingSender.track.stop()
+            screenAudioSenders.delete(peerId)
+          }
+
+          const clonedTrack = screenAudioTrack.clone()
+          const senderStream = new MediaStream([clonedTrack])
+          const sender = connection.addTrack(clonedTrack, senderStream)
+          screenAudioSenders.set(peerId, { sender, track: clonedTrack })
         }
 
         createOfferSafe(peerId)
@@ -724,6 +752,9 @@ export function useWebRTC() {
 
       // Обработчик окончания демонстрации экрана
       screenVideoTrack.onended = stopScreenShare
+      if (screenAudioTrack) {
+        screenAudioTrack.onended = stopScreenShare
+      }
 
       isScreenSharing.value = true
       console.log('Демонстрация экрана запущена')
@@ -743,6 +774,20 @@ export function useWebRTC() {
         screenShareStream.getTracks().forEach((track) => track.stop())
         screenShareStream = null
       }
+      activeScreenAudioTrack = null
+
+      screenAudioSenders.forEach(({ sender, track }, peerId) => {
+        const peer = peers.value.get(peerId)
+        if (peer) {
+          try {
+            peer.connection.removeTrack(sender)
+          } catch (error) {
+            console.warn('Не удалось удалить аудио-сендер экрана при остановке:', error)
+          }
+        }
+        track.stop()
+      })
+      screenAudioSenders.clear()
 
       // Восстанавливаем камеру
       const restoredTracks: MediaStreamTrack[] = []
@@ -751,16 +796,18 @@ export function useWebRTC() {
 
       const restoredStream = new MediaStream(restoredTracks)
       localStream.value = restoredStream
+      localStream.value
+        .getVideoTracks()
+        .forEach((track) => (track.enabled = localState.value.video))
+      localStream.value
+        .getAudioTracks()
+        .forEach((track) => (track.enabled = localState.value.microphone))
 
       // Заменяем треки у всех пиров обратно
       peers.value.forEach(({ connection }, peerId) => {
         // Видео
         const videoSender = connection.getSenders().find((s) => s.track?.kind === 'video')
         if (videoSender && previousVideoTrack) videoSender.replaceTrack(previousVideoTrack)
-
-        // Аудио
-        const audioSender = connection.getSenders().find((s) => s.track?.kind === 'audio')
-        if (audioSender && previousAudioTrack) audioSender.replaceTrack(previousAudioTrack)
 
         createOfferSafe(peerId)
       })

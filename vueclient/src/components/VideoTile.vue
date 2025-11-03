@@ -22,34 +22,33 @@ const containerRef = ref<HTMLElement | null>(null)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const audioRef = ref<HTMLAudioElement | null>(null)
 const isMuted = ref(Boolean(props.muted))
-const volume = ref(1)
+const micVolume = ref(1)
+const screenVolume = ref(1)
+const hasMicAudio = ref(false)
+const hasScreenAudio = ref(false)
 const contextMenu = ref({ visible: false, x: 0, y: 0 })
 const menuRef = ref<HTMLElement | null>(null)
-
-const activeMediaElement = computed<HTMLVideoElement | HTMLAudioElement | null>(
-  () => videoRef.value ?? audioRef.value ?? null,
-)
+const audioContextRef = ref<AudioContext | null>(null)
+const micGainNode = ref<GainNode | null>(null)
+const screenGainNode = ref<GainNode | null>(null)
+const processedAudioStream = ref<MediaStream | null>(null)
 
 const volumeIcon = computed(() => {
-  if (isMuted.value || volume.value === 0) return faVolumeXmark
-  return volume.value < 0.5 ? faVolumeLow : faVolumeHigh
+  const effectiveMic = hasMicAudio.value ? micVolume.value : 0
+  const effectiveScreen = hasScreenAudio.value ? screenVolume.value : 0
+  const level = isMuted.value ? 0 : Math.max(effectiveMic, effectiveScreen)
+  if (level === 0) return faVolumeXmark
+  return level < 0.5 ? faVolumeLow : faVolumeHigh
 })
 
 watchEffect(() => {
   const stream = (props.stream as MediaStream | null) ?? null
   if (videoRef.value && videoRef.value.srcObject !== stream) {
     videoRef.value.srcObject = stream
+    if (videoRef.value) {
+      videoRef.value.muted = true
+    }
   }
-  if (audioRef.value && audioRef.value.srcObject !== stream) {
-    audioRef.value.srcObject = stream
-  }
-})
-
-watchEffect(() => {
-  const el = activeMediaElement.value
-  if (!el) return
-  el.muted = isMuted.value
-  el.volume = volume.value
 })
 
 watch(
@@ -57,20 +56,171 @@ watch(
   (value) => {
     if (typeof value === 'boolean') {
       isMuted.value = value
+      applyMuteState()
     }
   },
 )
+
+watch(
+  () => micVolume.value,
+  () => {
+    applyMuteState()
+  },
+)
+
+watch(
+  () => screenVolume.value,
+  () => {
+    applyMuteState()
+  },
+)
+
+watch(
+  () => isMuted.value,
+  () => {
+    applyMuteState()
+  },
+)
+
+watch(
+  () =>
+    (props.stream as MediaStream | null)
+      ?.getAudioTracks()
+      .map((track) => track.id)
+      .join(',') ?? '',
+  () => {
+    rebuildAudioGraph()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.stream,
+  () => {
+    rebuildAudioGraph()
+  },
+  { immediate: true },
+)
+
+function teardownAudioGraph() {
+  processedAudioStream.value = null
+  hasScreenAudio.value = false
+  hasMicAudio.value = false
+  micGainNode.value = null
+  screenGainNode.value = null
+
+  if (audioRef.value) {
+    audioRef.value.srcObject = null
+  }
+
+  if (audioContextRef.value) {
+    audioContextRef.value.close().catch(() => undefined)
+    audioContextRef.value = null
+  }
+
+  applyMuteState()
+}
+
+// Простая эвристика помогает отличить звук экрана от микрофона
+function isScreenAudioTrack(track: MediaStreamTrack) {
+  const label = track.label.toLowerCase()
+  return label.includes('screen') || label.includes('system') || label.includes('tab')
+}
+
+function rebuildAudioGraph() {
+  teardownAudioGraph()
+
+  if (props.muted) {
+    return
+  }
+
+  const stream = props.stream as MediaStream | null
+  if (!stream) return
+
+  const audioTracks = stream.getAudioTracks()
+  if (audioTracks.length === 0) return
+
+  const context = new AudioContext()
+  const destination = context.createMediaStreamDestination()
+
+  const micGain = context.createGain()
+  const screenGain = context.createGain()
+  let screenTrackPresent = false
+  let micTrackPresent = false
+
+  audioTracks.forEach((track) => {
+    const sourceStream = new MediaStream([track])
+    const source = context.createMediaStreamSource(sourceStream)
+    if (isScreenAudioTrack(track)) {
+      screenTrackPresent = true
+      source.connect(screenGain)
+    } else {
+      micTrackPresent = true
+      source.connect(micGain)
+    }
+  })
+
+  micGain.connect(destination)
+  screenGain.connect(destination)
+
+  audioContextRef.value = context
+  micGainNode.value = micTrackPresent ? micGain : null
+  screenGainNode.value = screenTrackPresent ? screenGain : null
+  hasMicAudio.value = micTrackPresent
+  hasScreenAudio.value = screenTrackPresent
+  processedAudioStream.value = destination.stream
+
+  if (audioRef.value && processedAudioStream.value) {
+    audioRef.value.srcObject = processedAudioStream.value
+    const playPromise = audioRef.value.play()
+    if (playPromise) {
+      playPromise.catch((error) => {
+        console.warn('Не удалось воспроизвести аудио поток:', error)
+      })
+    }
+  }
+
+  applyMuteState()
+}
+
+function applyMuteState() {
+  const muted = isMuted.value
+  if (micGainNode.value) {
+    micGainNode.value.gain.value = muted ? 0 : micVolume.value
+  }
+  if (screenGainNode.value) {
+    screenGainNode.value.gain.value = muted ? 0 : screenVolume.value
+  }
+  if (videoRef.value) {
+    videoRef.value.muted = true
+  }
+  if (audioRef.value) {
+    audioRef.value.muted = muted
+    audioRef.value.volume = 1
+  }
+}
 
 function toggleMute() {
   isMuted.value = !isMuted.value
   hideContextMenu()
 }
 
-function handleVolumeInput(event: Event) {
+function handleMicVolumeInput(event: Event) {
   const target = event.target as HTMLInputElement
   const normalized = Number(target.value) / 100
-  volume.value = Number.isFinite(normalized) ? Math.min(Math.max(normalized, 0), 1) : 0
-  if (volume.value > 0 && isMuted.value) {
+  const value = Number.isFinite(normalized) ? Math.min(Math.max(normalized, 0), 1) : 0
+  micVolume.value = value
+  if (micVolume.value > 0 && isMuted.value) {
+    isMuted.value = false
+  }
+}
+
+function handleScreenVolumeInput(event: Event) {
+  const target = event.target as HTMLInputElement
+  const normalized = Number(target.value) / 100
+  const value = Number.isFinite(normalized) ? Math.min(Math.max(normalized, 0), 1) : 0
+  screenVolume.value = value
+  if (screenVolume.value > 0 && isMuted.value) {
     isMuted.value = false
   }
 }
@@ -158,6 +308,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', handleOutsideClick)
   document.removeEventListener('contextmenu', handleOutsideClick)
   window.removeEventListener('resize', adjustMenuPosition)
+  teardownAudioGraph()
 })
 </script>
 
@@ -172,7 +323,6 @@ onBeforeUnmount(() => {
     <video
       v-if="conditionVideo"
       ref="videoRef"
-      :muted="isMuted"
       autoplay
       playsinline
       class="w-full h-full object-contain"
@@ -180,8 +330,9 @@ onBeforeUnmount(() => {
     ></video>
     <div v-else class="flex flex-col items-center justify-center gap-4">
       <FontAwesomeIcon :icon="faUserAlt" class="text-slate-400 text-9xl" />
-      <audio ref="audioRef" autoplay playsinline class="hidden"></audio>
     </div>
+
+    <audio ref="audioRef" autoplay playsinline class="hidden"></audio>
 
     <transition name="fade">
       <div
@@ -202,16 +353,30 @@ onBeforeUnmount(() => {
           }}</span>
         </button>
 
-        <div class="flex flex-col gap-2 text-slate-100">
-          <span class="text-xs uppercase tracking-wide">Громкость</span>
+        <div v-if="hasMicAudio" class="flex flex-col gap-2 text-slate-100">
+          <span class="text-xs uppercase tracking-wide">Громкость собеседника</span>
           <input
             type="range"
             min="0"
             max="100"
             step="1"
-            :value="Math.round(volume * 100)"
+            :value="Math.round(micVolume * 100)"
             class="accent-indigo-400 cursor-pointer"
-            @input="handleVolumeInput"
+            @input="handleMicVolumeInput"
+            @click.stop
+          />
+        </div>
+
+        <div v-if="hasScreenAudio" class="flex flex-col gap-2 text-slate-100">
+          <span class="text-xs uppercase tracking-wide">Громкость стрима</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            :value="Math.round(screenVolume * 100)"
+            class="accent-indigo-400 cursor-pointer"
+            @input="handleScreenVolumeInput"
             @click.stop
           />
         </div>
