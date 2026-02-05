@@ -294,12 +294,23 @@ const groupedMessages = computed(() => {
 
 // Получить инициалы пользователя
 function getInitials(username: string): string {
-  return username
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+  if (!username || username.trim().length === 0) {
+    return '?'
+  }
+  
+  const parts = username.trim().split(' ').filter(p => p.length > 0)
+  
+  if (parts.length === 0) {
+    return username[0]?.toUpperCase() || '?'
+  }
+  
+  if (parts.length === 1) {
+    // Если одно слово, берем первые две буквы
+    return parts[0].substring(0, 2).toUpperCase()
+  }
+  
+  // Если несколько слов, берем первые буквы первых двух слов
+  return (parts[0][0] + parts[1][0]).toUpperCase()
 }
 
 // Получить цвет для аватара на основе имени
@@ -313,10 +324,18 @@ function getAvatarColor(username: string): string {
     'bg-indigo-500',
     'bg-red-500',
     'bg-teal-500',
+    'bg-cyan-500',
+    'bg-orange-500',
   ]
+  
+  if (!username || username.trim().length === 0) {
+    return colors[0]
+  }
+  
   let hash = 0
-  for (let i = 0; i < username.length; i++) {
-    hash = username.charCodeAt(i) + ((hash << 5) - hash)
+  const normalizedUsername = username.trim().toLowerCase()
+  for (let i = 0; i < normalizedUsername.length; i++) {
+    hash = normalizedUsername.charCodeAt(i) + ((hash << 5) - hash)
   }
   return colors[Math.abs(hash) % colors.length]
 }
@@ -459,26 +478,23 @@ watch(
           class="flex gap-2 sm:gap-3"
           :class="group.from === chatStore.clientId ? 'flex-row-reverse' : 'flex-row'"
         >
-          <!-- Аватар (только для чужих сообщений или первое сообщение в группе) -->
+          <!-- Аватар -->
           <div
-            v-if="group.from !== chatStore.clientId"
             class="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white shadow-lg"
             :class="getAvatarColor(group.username)"
           >
             {{ getInitials(group.username) }}
           </div>
-          <div v-else class="flex-shrink-0 w-7 sm:w-8"></div>
 
           <!-- Группа сообщений -->
           <div
-            class="flex flex-col gap-0.5 sm:gap-1"
+            class="flex flex-col gap-0.5 sm:gap-1 flex-1 min-w-0"
             :class="group.from === chatStore.clientId ? 'items-end' : 'items-start'"
-            :style="{ maxWidth: group.from === chatStore.clientId ? 'calc(100% - 1.75rem)' : 'calc(100% - 2rem)' }"
           >
-            <!-- Имя пользователя и время (только для чужих сообщений) -->
+            <!-- Имя пользователя и время -->
             <div
-              v-if="group.from !== chatStore.clientId"
               class="flex items-center gap-1.5 sm:gap-2 px-1 mb-0.5"
+              :class="group.from === chatStore.clientId ? 'flex-row-reverse' : 'flex-row'"
             >
               <span class="text-xs sm:text-sm font-semibold text-slate-300 truncate">{{ group.username }}</span>
               <span class="text-xs text-slate-500 flex-shrink-0">{{ formatTime(group.timestamp, true) }}</span>
@@ -504,14 +520,6 @@ watch(
               </div>
             </div>
 
-            <!-- Время для своих сообщений -->
-            <div
-              v-if="group.from === chatStore.clientId"
-              class="flex items-center gap-1 px-1 text-xs text-slate-500 mt-0.5"
-            >
-              <span class="flex-shrink-0">{{ formatTime(group.timestamp, true) }}</span>
-              <FontAwesomeIcon :icon="faCircle" class="w-1 h-1 text-blue-500 flex-shrink-0" />
-            </div>
           </div>
         </div>
       </div>

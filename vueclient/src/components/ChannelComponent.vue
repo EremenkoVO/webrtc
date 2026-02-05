@@ -241,9 +241,35 @@ watch(
   { deep: true },
 )
 
+// Отслеживание изменений участников в реальном времени
+watch(
+  () => signalingStore.room_mates,
+  (newRoomMates) => {
+    // Обновляем список участников в roomStore при изменении room_mates
+    const roommatesArray = Object.values(newRoomMates)
+    roomStore.setRoommates(roommatesArray)
+  },
+  { deep: true, immediate: true }
+)
+
+// Отслеживание смены канала для очистки списка участников
+watch(
+  () => roomStore.selectedChannelId,
+  (newChannelId, oldChannelId) => {
+    if (newChannelId !== oldChannelId) {
+      // Очищаем список участников при смене канала
+      roomStore.setRoommates([])
+    }
+  }
+)
+
 onMounted(() => {
   fetchVideoDevices()
   fetchAudioDevices()
+  
+  // Инициализируем список участников при монтировании
+  const roommatesArray = Object.values(signalingStore.room_mates)
+  roomStore.setRoommates(roommatesArray)
 })
 </script>
 

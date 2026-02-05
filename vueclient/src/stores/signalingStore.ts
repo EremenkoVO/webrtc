@@ -131,8 +131,12 @@ export const useSignalingStore = defineStore('signaling', () => {
     currentRoomId.value = null
     clientId.value = null
     username.value = null
+    room_mates.value = {}
     connectedPeers.value.clear()
     reconnectAttempts.value = 0
+    
+    // Очищаем список участников в roomStore
+    updateRoomStoreRoommates()
   }
 
   // Отправка сообщения через WebSocket
@@ -193,7 +197,10 @@ export const useSignalingStore = defineStore('signaling', () => {
     const success = sendMessage(message)
     if (success) {
       currentRoomId.value = null
+      room_mates.value = {}
       connectedPeers.value.clear()
+      // Очищаем список участников в roomStore
+      updateRoomStoreRoommates()
     }
 
     return success
@@ -274,6 +281,8 @@ export const useSignalingStore = defineStore('signaling', () => {
         } else {
           room_mates.value = {}
         }
+        // Обновляем список участников в roomStore
+        updateRoomStoreRoommates()
         useRoomStore().getListChannels()
         console.log(
           'Вошли в комнату как',
@@ -287,6 +296,8 @@ export const useSignalingStore = defineStore('signaling', () => {
         if (message.from) {
           connectedPeers.value.set(message.from, message.username || 'Anonymous')
           room_mates.value[message.from] = message.username || 'Anonymous'
+          // Обновляем список участников в roomStore
+          updateRoomStoreRoommates()
           console.log(
             'К беседе присоединился пир:',
             message.from,
@@ -301,6 +312,8 @@ export const useSignalingStore = defineStore('signaling', () => {
         if (message.from) {
           connectedPeers.value.delete(message.from)
           delete room_mates.value[message.from]
+          // Обновляем список участников в roomStore
+          updateRoomStoreRoommates()
           console.log('Пир покинул комнату:', message.from)
           useRoomStore().getListChannels()
         }
@@ -313,6 +326,14 @@ export const useSignalingStore = defineStore('signaling', () => {
 
     const allHandlers = messageHandlers.value.get('*')
     if (allHandlers) allHandlers.forEach((handler) => handler(message))
+  }
+
+  // Функция для обновления списка участников в roomStore
+  function updateRoomStoreRoommates() {
+    const roomStore = useRoomStore()
+    // Преобразуем объект room_mates в массив имен пользователей
+    const roommatesArray = Object.values(room_mates.value)
+    roomStore.setRoommates(roommatesArray)
   }
 
   // Регистрация обработчика сообщений
