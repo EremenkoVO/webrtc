@@ -28,12 +28,21 @@ cd webrtc
 
 ### 3. Запуск через Docker Compose
 
+**Для localhost разработки:**
+```sh
+./generate-ssl-localhost.sh
+docker-compose -f docker-compose.localhost.yml up --build
+```
+
+**Для стандартной конфигурации:**
 ```sh
 docker-compose up --build
 ```
 
-- Frontend: https://localhost:5000
-- Backend API: https://localhost:5000/api/v1
+- Frontend: https://localhost:5001
+- Backend API: https://localhost:5001/api/v1
+
+> **Примечание**: Для localhost используйте `docker-compose.localhost.yml` (см. [README.localhost.md](README.localhost.md))
 
 ## Backend (Go)
 

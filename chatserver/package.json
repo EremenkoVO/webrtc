@@ -1,0 +1,23 @@
+{
+  "name": "webrtc-chat-server",
+  "version": "1.0.0",
+  "description": "WebSocket chat server for WebRTC platform",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "websocket",
+    "chat",
+    "webrtc"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.18.0",
+    "express": "^4.21.1",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

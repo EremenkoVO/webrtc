@@ -96,14 +96,14 @@ function selectMicrophone(deviceId: string) {
 </script>
 
 <template>
-  <div class="p-4">
-    <div class="flex items-center justify-center gap-4">
+  <div class="p-2 sm:p-4 bg-slate-900/50 border-t border-slate-800">
+    <div class="flex items-center justify-center gap-2 sm:gap-4 flex-wrap">
       <div class="relative flex items-center">
         <!-- Основная кнопка включения/выключения видео -->
         <button
           type="button"
           :class="[
-            'p-4 rounded-l-full transition-colors flex items-center justify-center',
+            'p-3 sm:p-4 rounded-l-full transition-all flex items-center justify-center touch-manipulation active:scale-95',
             props.videoEnabled ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-600 hover:bg-red-700',
           ]"
           @click="toggleVideo"
@@ -111,7 +111,7 @@ function selectMicrophone(deviceId: string) {
         >
           <FontAwesomeIcon
             :icon="props.videoEnabled ? faVideo : faVideoSlash"
-            class="text-xl text-white"
+            class="text-lg sm:text-xl text-white"
           />
         </button>
 
@@ -119,13 +119,13 @@ function selectMicrophone(deviceId: string) {
         <div class="relative">
           <button
             type="button"
-            class="p-4 rounded-r-full bg-slate-700 hover:bg-slate-600 transition-colors flex items-center justify-center"
+            class="p-3 sm:p-4 rounded-r-full bg-slate-700 hover:bg-slate-600 active:bg-slate-500 transition-all flex items-center justify-center touch-manipulation active:scale-95"
             @click="toggleCameraMenu"
             title="Выбрать камеру"
           >
             <FontAwesomeIcon
               :icon="faChevronUp"
-              class="text-xl text-white"
+              class="text-lg sm:text-xl text-white"
               :class="{ 'rotate-180': cameraMenuOpen }"
             />
           </button>
@@ -134,13 +134,13 @@ function selectMicrophone(deviceId: string) {
           <transition name="fade">
             <ul
               v-if="cameraMenuOpen"
-              class="absolute right-0 bottom-12 mt-2 w-56 bg-slate-800 text-white rounded-xl shadow-lg z-50"
+              class="absolute right-0 bottom-12 mt-2 w-48 sm:w-56 bg-slate-800 text-white rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto"
               v-click-outside="() => (cameraMenuOpen = false)"
             >
               <li
                 v-for="device in videoDevices"
                 :key="device.deviceId"
-                class="px-4 py-2 rounded-xl hover:bg-slate-700 cursor-pointer transition-colors"
+                class="px-3 sm:px-4 py-2 text-sm sm:text-base rounded-xl hover:bg-slate-700 active:bg-slate-600 cursor-pointer transition-colors touch-manipulation"
                 :class="{ 'bg-slate-600': currentCameraDeviceId === device.deviceId }"
                 @click="selectCamera(device.deviceId)"
               >
@@ -155,7 +155,7 @@ function selectMicrophone(deviceId: string) {
         <button
           type="button"
           :class="[
-            'p-4 rounded-l-full transition-colors flex items-center justify-center',
+            'p-3 sm:p-4 rounded-l-full transition-all flex items-center justify-center touch-manipulation active:scale-95',
             props.audioEnabled ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-600 hover:bg-red-700',
           ]"
           @click="toggleAudio"
@@ -163,20 +163,20 @@ function selectMicrophone(deviceId: string) {
         >
           <FontAwesomeIcon
             :icon="props.audioEnabled ? faMicrophone : faMicrophoneSlash"
-            class="text-xl"
+            class="text-lg sm:text-xl text-white"
           />
         </button>
 
         <div class="relative">
           <button
             type="button"
-            class="p-4 rounded-r-full bg-slate-700 hover:bg-slate-600 transition-colors flex items-center justify-center"
+            class="p-3 sm:p-4 rounded-r-full bg-slate-700 hover:bg-slate-600 active:bg-slate-500 transition-all flex items-center justify-center touch-manipulation active:scale-95"
             @click="toggleMicrophoneMenu"
             title="Выбрать микрофон"
           >
             <FontAwesomeIcon
               :icon="faChevronUp"
-              class="text-xl text-white"
+              class="text-lg sm:text-xl text-white"
               :class="{ 'rotate-180': microphoneMenuOpen }"
             />
           </button>
@@ -186,7 +186,7 @@ function selectMicrophone(deviceId: string) {
         <transition name="fade">
           <ul
             v-if="microphoneMenuOpen"
-            class="absolute right-0 bottom-12 mt-2 w-56 bg-slate-800 text-white rounded-xl shadow-lg z-50 items-center justify-center"
+            class="absolute right-0 bottom-12 mt-2 w-48 sm:w-56 bg-slate-800 text-white rounded-xl shadow-lg z-50 items-center justify-center max-h-48 overflow-y-auto"
             v-click-outside="() => (microphoneMenuOpen = false)"
           >
             <li
@@ -194,9 +194,9 @@ function selectMicrophone(deviceId: string) {
               :key="device.deviceId"
               :class="{ 'bg-slate-600': currentMicrophoneDeviceId === device.deviceId }"
               @click="selectMicrophone(device.deviceId)"
-              class="px-4 py-2 rounded-xl hover:bg-slate-700 cursor-pointer transition-colors"
+              class="px-3 sm:px-4 py-2 text-sm sm:text-base rounded-xl hover:bg-slate-700 active:bg-slate-600 cursor-pointer transition-colors touch-manipulation"
             >
-              {{ device.label || 'Камера ' + deviceAudioIndex(device) }}
+              {{ device.label || 'Микрофон ' + deviceAudioIndex(device) }}
             </li>
           </ul>
         </transition>
@@ -204,27 +204,28 @@ function selectMicrophone(deviceId: string) {
 
       <button
         type="button"
-        class="p-4 flex items-center justify-center rounded-full bg-slate-700 hover:bg-slate-600 transition-color"
+        class="p-3 sm:p-4 flex items-center justify-center rounded-full bg-slate-700 hover:bg-slate-600 active:bg-slate-500 transition-all touch-manipulation active:scale-95"
         @click="isScreenSharing ? stopScreenShare() : startScreenShare()"
+        :title="isScreenSharing ? 'Остановить демонстрацию экрана' : 'Начать демонстрацию экрана'"
       >
         <FontAwesomeIcon
           :icon="isScreenSharing ? faStop : faDisplay"
-          class="text-xl"
+          class="text-lg sm:text-xl text-white"
         ></FontAwesomeIcon>
       </button>
 
       <button
         type="button"
-        class="p-4 flex items-center justify-center rounded-full bg-red-600 hover:bg-red-700 transition-colors"
+        class="p-3 sm:p-4 flex items-center justify-center rounded-full bg-red-600 hover:bg-red-700 active:bg-red-800 transition-all touch-manipulation active:scale-95 shadow-lg"
         @click="emits('endCall')"
         title="Завершить звонок"
       >
-        <FontAwesomeIcon :icon="faPhoneSlash" class="text-xl" />
+        <FontAwesomeIcon :icon="faPhoneSlash" class="text-lg sm:text-xl text-white" />
       </button>
     </div>
 
-    <div class="mt-4 text-center text-sm text-slate-400">
-      <p>Подключенных участников: {{ remotePeers.length + 1 }}</p>
+    <div class="mt-2 sm:mt-4 text-center text-xs sm:text-sm text-slate-400 px-2">
+      <p>Участников: {{ remotePeers.length + 1 }}</p>
     </div>
   </div>
 </template>

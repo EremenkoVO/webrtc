@@ -36,14 +36,24 @@ export const useSignalingStore = defineStore('signaling', () => {
     connectionState.value = 'connecting'
 
     try {
-      // Преобразуем HTTP базовый адрес в WebSocket URL
-      const wsUrl = OpenAPI.BASE.replace(/^http/, 'ws') + '/api/v1/ws'
+      // Получаем базовый URL
+      let baseUrl = OpenAPI.BASE
+      if (!baseUrl || baseUrl === '') {
+        // Если BASE не установлен, используем текущий протокол и хост
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+        baseUrl = `${protocol}//${window.location.host}`
+      } else {
+        // Преобразуем HTTP базовый адрес в WebSocket URL
+        baseUrl = baseUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+      }
+
+      const wsUrl = `${baseUrl}/api/v1/ws`
 
       // Получаем токен, если он доступен
-      const token = typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : undefined
+      const token = typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : localStorage.getItem('token') || ''
 
       // Добавляем токен в параметры запроса при наличии
-      const url = token ? `${wsUrl}?token=${token}` : wsUrl
+      const url = token ? `${wsUrl}?token=${encodeURIComponent(token)}` : wsUrl
 
       ws.value = new WebSocket(url)
 

@@ -3,14 +3,18 @@ import { SignalingService, type ErrorResponse, type RoomJoinResponse } from '@/a
 import connectSound from '@/assets/sound/connect.wav'
 import { useWebRTC } from '@/composible/useWebRTC'
 import { useCallStore } from '@/stores/callStore'
+import { useChatStore } from '@/stores/chatStore'
 import { useRoomStore } from '@/stores/roomStore'
+import { useSidebarStore } from '@/stores/sidebarStore'
 import { useSignalingStore } from '@/stores/signalingStore'
-import { faVideo } from '@fortawesome/free-solid-svg-icons'
+import { faVideo, faBars } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { computed, onMounted, ref, watch } from 'vue'
 import BadgeComponent from './BadgeComponent.vue'
 import ChannelControls from './ChannelControls.vue'
+import ChatComponent from './ChatComponent.vue'
 import VideoTile from './VideoTile.vue'
+import { faComments, faTimes } from '@fortawesome/free-solid-svg-icons'
 
 const props = defineProps<{
   userName: string | undefined
@@ -19,6 +23,8 @@ const props = defineProps<{
 const roomStore = useRoomStore()
 const signalingStore = useSignalingStore()
 const callStore = useCallStore()
+const chatStore = useChatStore()
+const sidebarStore = useSidebarStore()
 
 const {
   localStream,
@@ -52,11 +58,13 @@ const totalPeers = computed(() => 1 + remotePeers.value.length)
 const currentCameraDeviceId = ref<string | null>(null)
 const currentMicrophoneDeviceId = ref<string | null>(null)
 const videoStreamIndex = ref<number>(0)
+const showChatMobile = ref(false)
 
 // динамический класс ширины
 const videoTileClass = computed(() => {
   const base =
     'relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300'
+  // Mobile-first: full width on mobile, then responsive
   if (totalPeers.value <= 2) return base + ' w-full sm:w-[70%] md:w-[60%] max-w-[700px]'
   if (totalPeers.value <= 4) return base + ' w-full sm:w-[48%] md:w-[45%] max-w-[500px]'
   if (totalPeers.value <= 6) return base + ' w-full sm:w-[31%] md:w-[30%] max-w-[400px]'
@@ -240,52 +248,109 @@ onMounted(() => {
 </script>
 
 <template>
-  <div
-    v-if="roomStore.selectedChannelId"
-    class="flex flex-col h-full bg-gradient-to-b from-slate-900 to-slate-950 text-white"
-  >
-    <!-- Заголовок -->
-    <div class="p-4 border-b border-slate-800">
-      <h1 class="text-xl font-semibold">Канал: {{ roomStore.selectedChannelName }}</h1>
-      <div class="flex items-center gap-2 mt-2">
-        <div
-          :class="[
-            'w-2 h-2 rounded-full',
-            signalingStore.isConnected ? 'bg-green-500' : 'bg-red-500',
-          ]"
-        ></div>
-        <span class="text-sm">
-          {{ signalingStore.isConnected ? 'Сервер подключен' : 'Сервер отключен' }}
-        </span>
+  <div class="flex h-full text-white">
+    <!-- Основная область с видео -->
+    <div class="flex flex-col flex-1 min-w-0">
+      <!-- Заголовок -->
+      <div class="p-3 sm:p-4 border-b border-slate-800/50 bg-slate-900/30 backdrop-blur-sm sticky top-0 z-10">
+        <div class="flex items-center gap-3">
+          <!-- Кнопка меню (мобильная) -->
+          <button
+            v-if="sidebarStore.isMobile"
+            data-sidebar-toggle
+            @click="sidebarStore.toggle"
+            class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 transition-all touch-manipulation flex-shrink-0"
+            :aria-label="sidebarStore.isOpen ? 'Закрыть меню' : 'Открыть меню'"
+            title="Меню"
+          >
+            <FontAwesomeIcon :icon="faBars" class="text-lg" />
+          </button>
+
+          <div class="flex-1 min-w-0">
+            <h1 class="text-lg sm:text-xl font-semibold truncate">
+              {{ roomStore.selectedChannelName || 'Выберите канал' }}
+            </h1>
+            <div v-if="roomStore.selectedChannelId" class="flex items-center gap-2 mt-1">
+              <div
+                :class="[
+                  'w-2 h-2 rounded-full flex-shrink-0',
+                  signalingStore.isConnected ? 'bg-green-500' : 'bg-red-500',
+                ]"
+              ></div>
+              <span class="text-xs sm:text-sm text-slate-400">
+                {{ signalingStore.isConnected ? 'Подключено' : 'Отключено' }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Мобильная кнопка чата -->
+          <button
+            v-if="roomStore.selectedChannelId && !showChatMobile"
+            @click="showChatMobile = true"
+            class="lg:hidden p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 transition-all touch-manipulation relative flex-shrink-0"
+            title="Открыть чат"
+          >
+            <FontAwesomeIcon :icon="faComments" />
+            <span
+              v-if="chatStore.messages.length > 0"
+              class="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 text-white text-xs rounded-full flex items-center justify-center font-semibold"
+            >
+              {{ chatStore.messages.length > 9 ? '9+' : chatStore.messages.length }}
+            </span>
+          </button>
+        </div>
       </div>
-    </div>
 
-    <audio ref="audioElement" :src="soundUrl"></audio>
+      <!-- Empty State - No Channel Selected -->
+      <div
+        v-if="!roomStore.selectedChannelId"
+        class="flex-1 flex items-center justify-center p-8"
+      >
+        <div class="text-center max-w-md">
+          <div class="w-20 h-20 rounded-full bg-slate-800/50 flex items-center justify-center mx-auto mb-4">
+            <FontAwesomeIcon :icon="faBars" class="text-3xl text-slate-400" />
+          </div>
+          <h2 class="text-xl font-semibold text-white mb-2">Выберите канал</h2>
+          <p class="text-slate-400 text-sm">
+            {{ sidebarStore.isMobile ? 'Нажмите на кнопку меню, чтобы выбрать канал' : 'Выберите канал из списка слева' }}
+          </p>
+        </div>
+      </div>
 
-    <!-- Сетка видео -->
-    <div class="flex-1 p-4 overflow-auto">
+      <!-- Channel Content -->
+      <template v-else>
+        <audio ref="audioElement" :src="soundUrl"></audio>
+
+        <!-- Сетка видео -->
+        <div class="flex-1 p-2 sm:p-4 overflow-auto">
       <!-- Если не на линии -->
-      <div v-if="!callStore.isInCall" class="flex items-center justify-center h-full">
-        <div class="text-center">
+      <div v-if="!callStore.isInCall" class="flex items-center justify-center h-full min-h-[200px]">
+        <div class="text-center px-4 max-w-md">
           <div v-if="roomStore.roommates.length">
-            <p class="text-slate-400 mb-4">Список подключенных участников</p>
-            <ul class="text-slate-400 mb-4">
-              <li v-for="(user, index) in roomStore.roommates" :key="index">{{ user }}</li>
+            <p class="text-slate-400 mb-3 text-sm sm:text-base">Подключенные участники</p>
+            <ul class="text-slate-400 mb-4 space-y-1">
+              <li
+                v-for="(user, index) in roomStore.roommates"
+                :key="index"
+                class="text-sm sm:text-base"
+              >
+                {{ user }}
+              </li>
             </ul>
           </div>
           <div v-else>
-            <p class="text-slate-400 mb-4">Нет подключенных участников</p>
+            <p class="text-slate-400 mb-4 text-sm sm:text-base">Нет подключенных участников</p>
           </div>
 
-          <p class="text-slate-400 mb-4">Вы не в звонке</p>
+          <p class="text-slate-400 mb-4 text-sm sm:text-base">Вы не в звонке</p>
           <button
             type="button"
-            class="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors"
+            class="px-4 sm:px-6 py-2 sm:py-3 rounded-lg bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold transition-all transform hover:scale-105 active:scale-95 shadow-lg"
             @click="startCall"
             :disabled="!roomStore.selectedChannelId"
           >
             <FontAwesomeIcon :icon="faVideo" class="mr-2" />
-            Начать звонок
+            <span class="text-sm sm:text-base">Начать звонок</span>
           </button>
         </div>
       </div>
@@ -293,7 +358,7 @@ onMounted(() => {
       <!-- Если в звонке -->
       <div
         v-else
-        class="flex flex-wrap justify-center items-center gap-4 h-full content-center transition-all duration-300"
+        class="flex flex-wrap justify-center items-center gap-2 sm:gap-4 h-full content-center transition-all duration-300 p-2"
       >
         <!-- Локальное видео -->
         <div
@@ -337,27 +402,73 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Call Controls -->
-    <ChannelControls
-      v-if="callStore.isInCall"
-      :local-stream="localStream"
-      :remote-peers="remotePeers"
-      :videoEnabled="videoEnabled"
-      :audioEnabled="audioEnabled"
-      :videoStreamIndex="videoStreamIndex"
-      :currentCameraDeviceId="currentCameraDeviceId"
-      :currentMicrophoneDeviceId="currentMicrophoneDeviceId"
-      :isScreenSharing="isScreenSharing"
-      :startScreenShare="startScreenShare"
-      :stopScreenShare="stopScreenShare"
-      @endCall="endCall"
-      @update:toggleVideo="toggleVideo"
-      @update:toggleMicrophone="toggleMicrophone"
-      @update:videoEnabled="(value: boolean) => (videoEnabled = value)"
-      @update:audioEnabled="(value: boolean) => (audioEnabled = value)"
-      @update:selectCamera="selectCamera"
-      @update:selectMicrophone="selectMicrophone"
-      @update:videoStreamIndex="(value: number) => (videoStreamIndex = value)"
-    />
+        <!-- Call Controls -->
+        <ChannelControls
+          v-if="callStore.isInCall"
+          :local-stream="localStream"
+          :remote-peers="remotePeers"
+          :videoEnabled="videoEnabled"
+          :audioEnabled="audioEnabled"
+          :videoStreamIndex="videoStreamIndex"
+          :currentCameraDeviceId="currentCameraDeviceId"
+          :currentMicrophoneDeviceId="currentMicrophoneDeviceId"
+          :isScreenSharing="isScreenSharing"
+          :startScreenShare="startScreenShare"
+          :stopScreenShare="stopScreenShare"
+          @endCall="endCall"
+          @update:toggleVideo="toggleVideo"
+          @update:toggleMicrophone="toggleMicrophone"
+          @update:videoEnabled="(value: boolean) => (videoEnabled = value)"
+          @update:audioEnabled="(value: boolean) => (audioEnabled = value)"
+          @update:selectCamera="selectCamera"
+          @update:selectMicrophone="selectMicrophone"
+          @update:videoStreamIndex="(value: number) => (videoStreamIndex = value)"
+        />
+      </template>
+    </div>
+
+    <!-- Боковая панель чата (Desktop) -->
+    <div class="hidden lg:block w-80 border-l border-slate-800 flex-shrink-0">
+      <ChatComponent :room-id="roomStore.selectedChannelId" :user-name="props.userName" />
+    </div>
+
+    <!-- Мобильная панель чата (Overlay) -->
+    <Transition name="slide-left">
+      <div
+        v-if="showChatMobile"
+        v-click-outside="() => (showChatMobile = false)"
+        class="lg:hidden fixed inset-0 z-50 flex flex-col bg-slate-900"
+      >
+        <div class="p-3 border-b border-slate-800 bg-slate-800/50 flex items-center justify-between safe-area-inset-top">
+          <h2 class="text-lg font-semibold text-white">Чат</h2>
+          <button
+            @click="showChatMobile = false"
+            class="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-slate-300 transition-colors touch-manipulation"
+            title="Закрыть чат"
+          >
+            <FontAwesomeIcon :icon="faTimes" />
+          </button>
+        </div>
+        <div class="flex-1 overflow-hidden min-h-0">
+          <ChatComponent :room-id="roomStore.selectedChannelId" :user-name="props.userName" />
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
+
+<style scoped>
+/* Анимация для мобильного чата */
+.slide-left-enter-active,
+.slide-left-leave-active {
+  transition: transform 0.3s ease-in-out;
+}
+
+.slide-left-enter-from {
+  transform: translateX(100%);
+}
+
+.slide-left-leave-to {
+  transform: translateX(100%);
+}
+</style>

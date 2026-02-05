@@ -5,10 +5,12 @@ import SidebarComponent from '@/components/SidebarComponent.vue'
 import { useApiErrors } from '@/composible/useApiErrors'
 import router from '@/router'
 import { useAuthStore } from '@/stores/authStore'
+import { useSidebarStore } from '@/stores/sidebarStore'
 import { onMounted, ref, type Ref } from 'vue'
 
 const { parseApiError } = useApiErrors()
 const authStore = useAuthStore()
+const sidebarStore = useSidebarStore()
 const user: Ref<UserProfile> = ref({ id: '', username: '' })
 
 const getUser = async () => {
@@ -34,14 +36,15 @@ const getUser = async () => {
 }
 
 onMounted(async () => {
+  sidebarStore.checkMobile()
   await getUser()
 })
 </script>
 
 <template>
-  <div class="flex h-screen bg-gradient-to-b from-slate-900 to-slate-950">
+  <div class="flex h-screen w-screen overflow-hidden animated-gradient relative">
     <SidebarComponent :user="user" />
-    <div class="flex-1 overflow-auto">
+    <div class="flex-1 min-w-0 overflow-hidden lg:ml-0">
       <ChannelComponent :user-name="user.username" />
     </div>
   </div>

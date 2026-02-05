@@ -1,0 +1,75 @@
+version: '3.9'
+
+networks:
+  localhost:
+    driver: bridge
+
+volumes:
+  backend_data:
+  ssl_certs:
+
+services:
+  nginx:
+    image: nginx:latest
+    container_name: webrtc_nginx_localhost
+    ports:
+      - '5001:443'  # HTTPS
+      - '5002:80'   # HTTP (redirects to HTTPS, changed from 5000 due to macOS ControlCenter)
+    volumes:
+      - ./nginx.localhost.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ssl_certs:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+      - chatserver
+    networks:
+      - localhost
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./goserver
+      dockerfile: Dockerfile
+    container_name: webrtc_backend_localhost
+    ports:
+      - '8080:8080'  # Direct access for debugging
+      - '8081:8081'  # Health check
+    volumes:
+      - backend_data:/app/data
+    environment:
+      - MYDISCORD_PORT=8080
+      - MYDISCORD_DATABASE_DSN=/app/data/database.db
+      - MYDISCORD_DATABASE_SALT=${MYDISCORD_DATABASE_SALT:-change-this-salt}
+      - MYDISCORD_AUTH_TOKEN_SECRET=${MYDISCORD_AUTH_TOKEN_SECRET:-change-this-secret}
+    networks:
+      - localhost
+    restart: unless-stopped
+
+  chatserver:
+    build:
+      context: ./chatserver
+      dockerfile: Dockerfile
+    container_name: webrtc_chatserver_localhost
+    ports:
+      - '3001:3001'  # Direct access for debugging
+    environment:
+      - PORT=3001
+      - MYDISCORD_AUTH_TOKEN_SECRET=${MYDISCORD_AUTH_TOKEN_SECRET:-change-this-secret}
+      - BACKEND_API_URL=http://backend:8080
+    networks:
+      - localhost
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./vueclient
+      dockerfile: Dockerfile
+    container_name: webrtc_frontend_localhost
+    ports:
+      - '5173:80'  # Direct access (mapped to common dev port)
+    depends_on:
+      - backend
+      - chatserver
+    networks:
+      - localhost
+    restart: unless-stopped
