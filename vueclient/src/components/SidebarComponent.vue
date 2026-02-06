@@ -92,16 +92,17 @@ async function refreshChannels() {
   }
 }
 
-// Выход
 async function logout() {
   try {
-    await authStore.clearTokens()
-    await router.push({ name: 'Login' })
     await AuthService.logoutUser()
   } catch (e) {
-    console.error(e)
-    parseApiError(e)
+    console.warn('Logout API failed, continuing local logout', e)
   }
+
+  await authStore.clearTokens()
+  await router.push({ name: 'Login' })
+
+  window.location.reload()
 }
 
 // Обработка изменения размера окна
@@ -115,13 +116,8 @@ function handleClickOutside(event: MouseEvent) {
     const target = event.target as HTMLElement
     const sidebar = document.querySelector('[data-sidebar]')
     const toggleButton = document.querySelector('[data-sidebar-toggle]')
-    
-    if (
-      sidebar &&
-      !sidebar.contains(target) &&
-      toggleButton &&
-      !toggleButton.contains(target)
-    ) {
+
+    if (sidebar && !sidebar.contains(target) && toggleButton && !toggleButton.contains(target)) {
       sidebarStore.close()
     }
   }
@@ -144,7 +140,7 @@ watch(
   () => roomStore.selectedChannelId,
   () => {
     sidebarStore.close()
-  }
+  },
 )
 </script>
 
@@ -171,7 +167,9 @@ watch(
     ]"
   >
     <!-- Header -->
-    <header class="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900/50 flex-shrink-0">
+    <header
+      class="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900/50 flex-shrink-0"
+    >
       <div class="flex items-center gap-3 min-w-0 flex-1">
         <div
           class="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-lg"
@@ -282,10 +280,11 @@ watch(
         v-if="!isLoading && filteredChannels.length === 0"
         class="flex flex-col items-center justify-center h-full p-6 text-center"
       >
-        <div
-          class="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-4"
-        >
-          <FontAwesomeIcon :icon="searchQuery ? faSearch : faHashtag" class="text-2xl text-slate-400" />
+        <div class="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-4">
+          <FontAwesomeIcon
+            :icon="searchQuery ? faSearch : faHashtag"
+            class="text-2xl text-slate-400"
+          />
         </div>
         <p class="text-slate-300 font-medium mb-1">
           {{ searchQuery ? 'Каналы не найдены' : 'Нет каналов' }}
@@ -296,7 +295,10 @@ watch(
       </div>
 
       <!-- Loading State -->
-      <div v-if="isLoading && roomStore.channels.length === 0" class="flex items-center justify-center h-full">
+      <div
+        v-if="isLoading && roomStore.channels.length === 0"
+        class="flex items-center justify-center h-full"
+      >
         <div class="text-center">
           <FontAwesomeIcon :icon="faSync" class="text-3xl text-slate-400 animate-spin mb-2" />
           <p class="text-sm text-slate-400">Загрузка каналов...</p>
@@ -320,7 +322,9 @@ watch(
               :icon="faHashtag"
               :class="[
                 'flex-shrink-0 text-sm transition-colors',
-                ch.id === roomStore.selectedChannelId ? 'text-indigo-400' : 'text-slate-500 group-hover:text-slate-400',
+                ch.id === roomStore.selectedChannelId
+                  ? 'text-indigo-400'
+                  : 'text-slate-500 group-hover:text-slate-400',
               ]"
             />
             <span class="flex-1 truncate text-sm font-medium">{{ ch.name || 'Без названия' }}</span>
