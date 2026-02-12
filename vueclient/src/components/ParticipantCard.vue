@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { faMicrophone, faMicrophoneSlash, faVolumeHigh, faVolumeLow, faVolumeXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 
 const props = defineProps<{
   name: string
@@ -20,6 +20,7 @@ const emit = defineEmits<{
 
 const containerRef = ref<HTMLElement | null>(null)
 const menuRef = ref<HTMLElement | null>(null)
+const audioRef = ref<HTMLAudioElement | null>(null)
 const contextMenu = ref({ visible: false, x: 0, y: 0 })
 const localMuted = ref(props.isMuted)
 const localVolume = ref(props.volume ?? 1)
@@ -54,6 +55,34 @@ watch(() => props.isMuted, (value) => {
 watch(() => props.volume, (value) => {
   if (value !== undefined) {
     localVolume.value = value
+  }
+})
+
+// Воспроизведение аудиопотока для участников без видео
+watchEffect(() => {
+  if (props.isLocal || !audioRef.value) return
+  
+  const stream = props.audioStream
+  if (stream && stream.getAudioTracks().length > 0) {
+    const audioTracks = stream.getAudioTracks()
+    const audioOnlyStream = new MediaStream(audioTracks)
+    audioRef.value.srcObject = audioOnlyStream
+    audioRef.value.muted = false
+    audioRef.value.volume = localMuted.value ? 0 : localVolume.value
+    
+    // Автоматическое воспроизведение
+    audioRef.value.play().catch((error) => {
+      console.warn('Не удалось воспроизвести аудио для участника без видео:', error)
+    })
+  } else {
+    audioRef.value.srcObject = null
+  }
+})
+
+// Обновление громкости и состояния mute
+watch([() => localMuted.value, () => localVolume.value], () => {
+  if (audioRef.value) {
+    audioRef.value.volume = localMuted.value ? 0 : localVolume.value
   }
 })
 
@@ -157,6 +186,14 @@ onBeforeUnmount(() => {
     @contextmenu="openContextMenu"
     @click="hideContextMenu"
   >
+    <!-- Скрытый аудио элемент для воспроизведения звука участников без видео -->
+    <audio
+      v-if="!isLocal"
+      ref="audioRef"
+      autoplay
+      playsinline
+    ></audio>
+    
     <!-- Аватар -->
     <div
       class="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl font-semibold mb-3 relative"

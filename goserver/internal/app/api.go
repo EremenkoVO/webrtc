@@ -50,6 +50,7 @@ func (app *API) init(ctx context.Context) error {
 	// Initialize repositories
 	userRepo := sqlite.NewUserRepository(app.db)
 	tokenRepo := sqlite.NewTokenRepository(app.db)
+	roomRepo := sqlite.NewRoomRepository(app.db)
 
 	// Initialize JWT manager and token cache
 	jwtManager := jwt.NewJWTManager(app.config.Auth.TokenSecret)
@@ -58,7 +59,7 @@ func (app *API) init(ctx context.Context) error {
 	// Initialize services
 	authSvc := authService.NewAuthService(userRepo, tokenRepo, jwtManager, accessTokenRepo)
 	userSvc := userService.NewUserService(userRepo)
-	roomSvc := roomService.NewRoomService()
+	roomSvc := roomService.NewRoomService(roomRepo)
 
 	// Initialize handlers
 	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc)

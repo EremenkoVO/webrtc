@@ -97,6 +97,8 @@ export function useWebRTC() {
     }
 
     const audioTracks = stream.getAudioTracks()
+    console.log(`🎵 Обновление аудиопотока для ${peerId}: найдено ${audioTracks.length} аудиотреков`)
+    
     if (audioTracks.length === 0) {
       if (peerAudioStreams.value[peerId]) {
         const updated = { ...peerAudioStreams.value }
@@ -107,12 +109,17 @@ export function useWebRTC() {
     }
 
     const audioStream = new MediaStream()
-    audioTracks.forEach((track) => audioStream.addTrack(track))
+    audioTracks.forEach((track) => {
+      console.log(`🎵 Добавление аудиотрека для ${peerId}:`, track.id, track.enabled, track.muted)
+      audioStream.addTrack(track)
+    })
 
     peerAudioStreams.value = {
       ...peerAudioStreams.value,
       [peerId]: audioStream,
     }
+    
+    console.log(`✅ Аудиопоток для ${peerId} обновлен, треков: ${audioStream.getAudioTracks().length}`)
   }
 
   function setPeerVolume(peerId: string, rawVolume: number) {
@@ -301,7 +308,16 @@ export function useWebRTC() {
           updatePeerRemoteStream(peerId, updatedStream)
         }
 
-        monitorSpeaking(peerId, stream)
+        // Мониторинг речи для всех потоков с аудио
+        if (stream.getAudioTracks().length > 0) {
+          monitorSpeaking(peerId, stream)
+        }
+      }
+
+      // Для аудиотреков всегда обновляем поток, даже если он замучен
+      // Это важно для участников без видео, чтобы их аудио было доступно
+      if (event.track.kind === 'audio') {
+        updateStream()
       }
 
       // вызывать при "размьюте" — когда пир включает видео без повторных переговоров
@@ -310,8 +326,8 @@ export function useWebRTC() {
         updateStream()
       }
 
-      // и сразу при первом включении
-      if (!event.track.muted) {
+      // и сразу при первом включении (для видеотреков)
+      if (event.track.kind === 'video' && !event.track.muted) {
         updateStream()
       }
     }
@@ -1080,7 +1096,14 @@ export function useWebRTC() {
 
   // Отслеживать, говорит ли пир
   function monitorSpeaking(peerId: string, stream: MediaStream) {
+    // Закрываем предыдущий контекст, если он существует
+    if (peerAudioContexts[peerId]) {
+      peerAudioContexts[peerId].close().catch(() => undefined)
+    }
+
     const audioContext = new AudioContext()
+    peerAudioContexts[peerId] = audioContext
+    
     const source = audioContext?.createMediaStreamSource(stream)
     const analyser = audioContext?.createAnalyser()
     source.connect(analyser)
@@ -1089,6 +1112,10 @@ export function useWebRTC() {
     const dataArray = new Uint8Array(analyser.frequencyBinCount)
 
     function checkSpeaking() {
+      if (!peerAudioContexts[peerId] || peerAudioContexts[peerId].state === 'closed') {
+        return
+      }
+      
       analyser.getByteFrequencyData(dataArray)
       const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
 

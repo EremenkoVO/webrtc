@@ -27,3 +27,10 @@ type TokenRepository interface {
 	DeleteAllRefreshTokens(ctx context.Context, userID int) error
 	CleanExpiredTokens(ctx context.Context) error
 }
+
+type RoomRepository interface {
+	CreateRoom(ctx context.Context, room *domain.Room) error
+	GetRoom(ctx context.Context, roomID string) (*domain.Room, error)
+	ListRooms(ctx context.Context) ([]*domain.Room, error)
+	DeleteRoom(ctx context.Context, roomID string) error
+}

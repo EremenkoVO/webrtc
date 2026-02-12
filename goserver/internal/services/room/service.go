@@ -1,6 +1,7 @@
 package room
 
 import (
+	"context"
 	"log"
 	"sync"
 	"time"
@@ -9,15 +10,18 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
+	"github.com/EremenkoVO/webrtc/goserver/internal/ports"
 )
 
 type Service struct {
-	rooms   map[string]*domain.Room
+	repo    ports.RoomRepository
+	rooms   map[string]*domain.Room // In-memory кэш для активных комнат с подключенными клиентами
 	roomsMu sync.RWMutex
 }
 
-func NewRoomService() *Service {
+func NewRoomService(repo ports.RoomRepository) *Service {
 	return &Service{
+		repo:  repo,
 		rooms: make(map[string]*domain.Room),
 	}
 }
@@ -30,6 +34,14 @@ func (s *Service) CreateRoom(name string) *domain.Room {
 		Clients:   make(map[string]*domain.Client),
 	}
 
+	// Сохраняем комнату в БД
+	ctx := context.Background()
+	if err := s.repo.CreateRoom(ctx, room); err != nil {
+		log.Printf("Failed to create room in database: %v", err)
+		// Продолжаем работу даже если не удалось сохранить в БД
+	}
+
+	// Добавляем в in-memory кэш
 	s.roomsMu.Lock()
 	s.rooms[room.ID] = room
 	s.roomsMu.Unlock()
@@ -38,20 +50,70 @@ func (s *Service) CreateRoom(name string) *domain.Room {
 }
 
 func (s *Service) GetRoom(roomID string) *domain.Room {
+	// Сначала проверяем in-memory кэш
 	s.roomsMu.RLock()
-	defer s.roomsMu.RUnlock()
-	return s.rooms[roomID]
+	room, exists := s.rooms[roomID]
+	s.roomsMu.RUnlock()
+
+	if exists {
+		return room
+	}
+
+	// Если нет в кэше, загружаем из БД
+	ctx := context.Background()
+	dbRoom, err := s.repo.GetRoom(ctx, roomID)
+	if err != nil {
+		log.Printf("Failed to get room from database: %v", err)
+		return nil
+	}
+
+	if dbRoom == nil {
+		return nil
+	}
+
+	// Добавляем в кэш
+	s.roomsMu.Lock()
+	s.rooms[dbRoom.ID] = dbRoom
+	s.roomsMu.Unlock()
+
+	return dbRoom
 }
 
 func (s *Service) ListRooms() []*domain.Room {
+	// Загружаем все комнаты из БД
+	ctx := context.Background()
+	dbRooms, err := s.repo.ListRooms(ctx)
+	if err != nil {
+		log.Printf("Failed to list rooms from database: %v", err)
+		// Fallback на in-memory кэш
+		s.roomsMu.RLock()
+		defer s.roomsMu.RUnlock()
+		rooms := make([]*domain.Room, 0, len(s.rooms))
+		for _, room := range s.rooms {
+			rooms = append(rooms, room)
+		}
+		return rooms
+	}
+
+	// Объединяем данные из БД с актуальными данными о клиентах из кэша
 	s.roomsMu.RLock()
 	defer s.roomsMu.RUnlock()
 
-	rooms := make([]*domain.Room, 0, len(s.rooms))
-	for _, room := range s.rooms {
-		rooms = append(rooms, room)
+	// Создаем map для быстрого поиска комнат из кэша
+	cacheMap := make(map[string]*domain.Room)
+	for id, room := range s.rooms {
+		cacheMap[id] = room
 	}
-	return rooms
+
+	// Обновляем комнаты из БД актуальными данными о клиентах из кэша
+	for _, room := range dbRooms {
+		if cachedRoom, exists := cacheMap[room.ID]; exists {
+			// Используем актуальные данные о клиентах из кэша
+			room.Clients = cachedRoom.Clients
+		}
+	}
+
+	return dbRooms
 }
 
 // GetRoomParticipants returns a list of all participants in a room
