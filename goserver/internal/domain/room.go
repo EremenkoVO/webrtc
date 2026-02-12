@@ -11,8 +11,10 @@ type Room struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"created_at"`
-	Clients   map[string]*Client
-	Mu        sync.RWMutex
+
+	// TODO: вынести в отдельную сущность/компонент.
+	Clients map[string]*Client
+	Mu      sync.RWMutex
 }
 
 type Client struct {

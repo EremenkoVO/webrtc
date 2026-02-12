@@ -39,12 +39,12 @@ func (app *API) Init() (init, stop func(context.Context) error) {
 func (app *API) init(ctx context.Context) error {
 	err := envconfig.Process(prefix, &app.config)
 	if err != nil {
-		return fmt.Errorf("failed process env: %w", err)
+		return fmt.Errorf("process env: %w", err)
 	}
 
 	app.db, err = db.New(ctx, app.config.Database)
 	if err != nil {
-		return fmt.Errorf("failed init database: %w", err)
+		return fmt.Errorf("init database: %w", err)
 	}
 
 	// Initialize repositories

@@ -101,7 +101,7 @@ type RoomParticipant struct {
 // RoomParticipantsResponse defines model for RoomParticipantsResponse.
 type RoomParticipantsResponse struct {
 	Participants *[]RoomParticipant `json:"participants,omitempty"`
-	RoomId       *string             `json:"room_id,omitempty"`
+	RoomId       *string            `json:"room_id,omitempty"`
 }
 
 // UserProfile defines model for UserProfile.

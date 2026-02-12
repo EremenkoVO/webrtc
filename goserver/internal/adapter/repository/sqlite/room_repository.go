@@ -47,7 +47,7 @@ func (r *roomRepository) ListRooms(ctx context.Context) ([]*domain.Room, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint: errcheck
 
 	rooms := make([]*domain.Room, 0)
 	for rows.Next() {

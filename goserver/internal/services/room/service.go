@@ -3,6 +3,7 @@ package room
 import (
 	"context"
 	"log"
+	"maps"
 	"sync"
 	"time"
 
@@ -101,9 +102,7 @@ func (s *Service) ListRooms() []*domain.Room {
 
 	// Создаем map для быстрого поиска комнат из кэша
 	cacheMap := make(map[string]*domain.Room)
-	for id, room := range s.rooms {
-		cacheMap[id] = room
-	}
+	maps.Copy(cacheMap, s.rooms)
 
 	// Обновляем комнаты из БД актуальными данными о клиентах из кэша
 	for _, room := range dbRooms {
@@ -141,7 +140,10 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn) {
 		Send: make(chan domain.SignalingMessage, 32),
 	}
 
-	go s.writePump(client)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go s.writePump(ctx, client)
 	s.readPump(client)
 }
 
@@ -216,11 +218,16 @@ func (s *Service) readPump(client *domain.Client) {
 	}
 }
 
-func (s *Service) writePump(client *domain.Client) {
-	for msg := range client.Send {
-		if err := client.Conn.WriteJSON(msg); err != nil {
-			log.Println("write:", err)
+func (s *Service) writePump(ctx context.Context, client *domain.Client) {
+	for {
+		select {
+		case <-ctx.Done():
 			return
+		case msg := <-client.Send:
+			if err := client.Conn.WriteJSON(msg); err != nil {
+				log.Println("write:", err)
+				return
+			}
 		}
 	}
 }
