@@ -54,6 +54,23 @@ func (s *Service) ListRooms() []*domain.Room {
 	return rooms
 }
 
+// GetRoomParticipants returns a list of all participants in a room
+func (s *Service) GetRoomParticipants(roomID string) []*domain.Client {
+	room := s.GetRoom(roomID)
+	if room == nil {
+		return nil
+	}
+
+	room.Mu.RLock()
+	defer room.Mu.RUnlock()
+
+	participants := make([]*domain.Client, 0, len(room.Clients))
+	for _, client := range room.Clients {
+		participants = append(participants, client)
+	}
+	return participants
+}
+
 func (s *Service) HandleWebSocketConnection(conn *websocket.Conn) {
 	clientID := uuid.NewString()
 	client := &domain.Client{

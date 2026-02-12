@@ -6,6 +6,7 @@ import type { CreateRoomRequest } from '../models/CreateRoomRequest';
 import type { ErrorResponse } from '../models/ErrorResponse';
 import type { Room } from '../models/Room';
 import type { RoomJoinResponse } from '../models/RoomJoinResponse';
+import type { RoomParticipantsResponse } from '../models/RoomParticipantsResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -61,6 +62,29 @@ export class SignalingService {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/v1/rooms/{roomId}/join',
+            path: {
+                'roomId': roomId,
+            },
+            errors: {
+                401: `Unauthorized`,
+                404: `Resource Not Found`,
+            },
+        });
+    }
+    /**
+     * Get room participants
+     * Get a list of all users currently connected to the room.
+     * @param roomId
+     * @returns RoomParticipantsResponse List of room participants
+     * @returns ErrorResponse Unexpected server error
+     * @throws ApiError
+     */
+    public static getRoomParticipants(
+        roomId: string,
+    ): CancelablePromise<RoomParticipantsResponse | ErrorResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/rooms/{roomId}/participants',
             path: {
                 'roomId': roomId,
             },

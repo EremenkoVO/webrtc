@@ -24,5 +24,6 @@ type RoomService interface {
 	ListRooms() []*domain.Room
 	CreateRoom(roomName string) *domain.Room
 	GetRoom(roomID string) *domain.Room
+	GetRoomParticipants(roomID string) []*domain.Client
 	HandleWebSocketConnection(conn *websocket.Conn)
 }

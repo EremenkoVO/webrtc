@@ -89,6 +89,41 @@ func (s *ServerWrapper) JoinRoom(w http.ResponseWriter, r *http.Request, roomId 
 	WriteJSONResponse(w, http.StatusOK, resp)
 }
 
+// Get room participants
+// (GET /api/v1/rooms/{roomId}/participants)
+func (s *ServerWrapper) GetRoomParticipants(w http.ResponseWriter, r *http.Request, roomId string) {
+	room := s.roomService.GetRoom(roomId)
+	if room == nil {
+		WriteErrorResponse(w, http.StatusNotFound, api.ErrorResponse{
+			Message: "room not found",
+		})
+		return
+	}
+
+	participants := s.roomService.GetRoomParticipants(roomId)
+	if participants == nil {
+		WriteErrorResponse(w, http.StatusNotFound, api.ErrorResponse{
+			Message: "room not found",
+		})
+		return
+	}
+
+	apiParticipants := make([]api.RoomParticipant, len(participants))
+	for i, client := range participants {
+		apiParticipants[i] = api.RoomParticipant{
+			ClientId: &client.ID,
+			Username: &client.Username,
+		}
+	}
+
+	resp := api.RoomParticipantsResponse{
+		RoomId:       &roomId,
+		Participants: &apiParticipants,
+	}
+
+	WriteJSONResponse(w, http.StatusOK, resp)
+}
+
 // WebSocket connection for signaling
 // (GET /api/v1/ws)
 func (s *ServerWrapper) SignalingWebSocket(w http.ResponseWriter, r *http.Request) {

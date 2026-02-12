@@ -9,11 +9,12 @@ import { useSidebarStore } from '@/stores/sidebarStore'
 import { useSignalingStore } from '@/stores/signalingStore'
 import { faVideo, faBars } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import BadgeComponent from './BadgeComponent.vue'
 import ChannelControls from './ChannelControls.vue'
 import ChatComponent from './ChatComponent.vue'
 import VideoTile from './VideoTile.vue'
+import ParticipantCard from './ParticipantCard.vue'
 import { faComments, faTimes } from '@fortawesome/free-solid-svg-icons'
 
 const props = defineProps<{
@@ -54,20 +55,138 @@ const videoEnabled = ref(false)
 const audioEnabled = ref(true)
 const audioElement = ref<HTMLAudioElement | null>(null)
 const soundUrl = connectSound
-const totalPeers = computed(() => 1 + remotePeers.value.length)
 const currentCameraDeviceId = ref<string | null>(null)
 const currentMicrophoneDeviceId = ref<string | null>(null)
 const videoStreamIndex = ref<number>(0)
 const showChatMobile = ref(false)
 
-// динамический класс ширины
+// Тип для участника с видео
+type PeerWithVideo = {
+  peerId: string
+  connection: RTCPeerConnection | null
+  remoteStream: MediaStream
+  room_mates?: Record<string, string>
+  isLocal: boolean
+}
+
+// Участники с видео
+const peersWithVideo = computed<PeerWithVideo[]>(() => {
+  const withVideo: PeerWithVideo[] = []
+  
+  const localClientId = signalingStore.clientId
+  
+  // Локальный пользователь с видео
+  if (localStream.value && localStream.value.getVideoTracks().length > 0 && localClientId) {
+    withVideo.push({
+      peerId: localClientId,
+      connection: null,
+      remoteStream: localStream.value,
+      room_mates: {},
+      isLocal: true,
+    })
+  }
+  
+  // Удаленные пользователи с видео
+  remotePeers.value.forEach((peer) => {
+    if (peer.remoteStream && peer.remoteStream.getVideoTracks().length > 0) {
+      withVideo.push({
+        peerId: peer.peerId,
+        connection: peer.connection,
+        remoteStream: peer.remoteStream,
+        room_mates: peer.room_mates,
+        isLocal: false,
+      })
+    }
+  })
+  
+  return withVideo
+})
+
+// Тип для участника без видео
+type PeerWithoutVideo = {
+  peerId: string
+  name: string
+  isMuted: boolean
+  isSpeaking: boolean
+  isLocal: boolean
+  volume?: number
+  audioStream?: MediaStream
+}
+
+// Участники без видео (все подключенные участники без активного видео стрима)
+const peersWithoutVideo = computed<PeerWithoutVideo[]>(() => {
+  const withoutVideo: PeerWithoutVideo[] = []
+  
+  // Получаем всех участников из API через roomStore
+  const allParticipants = roomStore.participants
+  const localClientId = signalingStore.clientId
+  
+  // Локальный пользователь без видео
+  if ((!localStream.value || localStream.value.getVideoTracks().length === 0) && localClientId) {
+    withoutVideo.push({
+      peerId: localClientId,
+      name: props.userName || 'Вы',
+      isMuted: !audioEnabled.value,
+      isSpeaking: isLocalSpeaking.value,
+      isLocal: true,
+    })
+  }
+  
+  // Проходим по всем участникам комнаты из API
+  allParticipants.forEach((participant) => {
+    const peerId = participant.client_id || ''
+    const name = participant.username || peerId
+    
+    // Пропускаем локального пользователя (уже добавлен выше)
+    if (peerId === localClientId) return
+    
+    // Проверяем, есть ли у этого участника видео стрим
+    const peer = remotePeers.value.find((p) => p.peerId === peerId)
+    const hasVideo = peer?.remoteStream && peer.remoteStream.getVideoTracks().length > 0
+    
+    // Если нет видео, добавляем в список участников без видео
+    if (!hasVideo) {
+      const peerState = peerStates.value[peerId]
+      const playback = peerPlayback.value[peerId]
+      
+      // Определяем состояние микрофона:
+      // 1. Приоритет: peerState.microphone (реальное состояние микрофона удаленного пользователя)
+      // 2. Если нет peerState.microphone, используем playback.muted (локальная настройка пользователя)
+      // 3. По умолчанию считаем выключенным
+      let isMuted = true // по умолчанию считаем выключенным
+      
+      if (peerState && typeof peerState.microphone === 'boolean') {
+        // Реальное состояние микрофона удаленного пользователя
+        isMuted = !peerState.microphone
+      } else if (playback) {
+        // Локальная настройка пользователя (если нет данных о реальном состоянии)
+        isMuted = playback.muted
+      }
+      
+      withoutVideo.push({
+        peerId,
+        name: name || peerId,
+        isMuted,
+        isSpeaking: speakingPeers.value[peerId] || false,
+        isLocal: false,
+        volume: playback?.volume ?? 1,
+        audioStream: peerAudioStreams.value[peerId],
+      })
+    }
+  })
+  
+  return withoutVideo
+})
+
+// динамический класс ширины для видео
 const videoTileClass = computed(() => {
   const base =
     'relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300'
+  const count = peersWithVideo.value.length
   // Mobile-first: full width on mobile, then responsive
-  if (totalPeers.value <= 2) return base + ' w-full sm:w-[70%] md:w-[60%] max-w-[700px]'
-  if (totalPeers.value <= 4) return base + ' w-full sm:w-[48%] md:w-[45%] max-w-[500px]'
-  if (totalPeers.value <= 6) return base + ' w-full sm:w-[31%] md:w-[30%] max-w-[400px]'
+  if (count <= 2) return base + ' w-full sm:w-[70%] md:w-[60%] max-w-[700px]'
+  if (count <= 4) return base + ' w-full sm:w-[48%] md:w-[45%] max-w-[500px]'
+  if (count <= 6) return base + ' w-full sm:w-[31%] md:w-[30%] max-w-[400px]'
   return base + ' w-full sm:w-[23%] md:w-[22%] max-w-[320px]'
 })
 
@@ -119,10 +238,13 @@ async function toggleMicrophone() {
     if (audioTrack) {
       audioTrack.enabled = !audioTrack.enabled
       audioEnabled.value = audioTrack.enabled
+      // Немедленно отправляем состояние микрофона всем пирам
+      toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
     }
+  } else {
+    // Если нет локального стрима, все равно обновляем состояние
+    toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
   }
-
-  toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
 }
 
 // Запуск звонка
@@ -143,6 +265,8 @@ async function startCall() {
     }).then(() => {
       callStore.setStateCall(true)
       roomStore.getListChannels()
+      // Отправляем начальное состояние микрофона всем пирам
+      toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
     })
   } catch (error) {
     console.error('Не удалось начать звонок:', error)
@@ -233,43 +357,96 @@ watch(
 
 watch(
   () => remotePeers.value,
-  (newStream) => {
-    Array.from(newStream.values()).forEach((peer) => {
+  (newPeers) => {
+    newPeers.forEach((peer) => {
       console.log('Удалённый поток изменился:', peer?.remoteStream?.getVideoTracks())
     })
   },
   { deep: true },
 )
 
-// Отслеживание изменений участников в реальном времени
+// Отслеживаем изменения состояния микрофона у пиров для реактивности
 watch(
-  () => signalingStore.room_mates,
-  (newRoomMates) => {
-    // Обновляем список участников в roomStore при изменении room_mates
-    const roommatesArray = Object.values(newRoomMates)
-    roomStore.setRoommates(roommatesArray)
+  () => peerStates.value,
+  () => {
+    // Принудительно обновляем computed свойства при изменении состояний пиров
+    console.log('Состояния пиров изменились:', peerStates.value)
   },
-  { deep: true, immediate: true }
+  { deep: true },
 )
 
-// Отслеживание смены канала для очистки списка участников
+// Отслеживание смены канала для загрузки участников
 watch(
   () => roomStore.selectedChannelId,
-  (newChannelId, oldChannelId) => {
-    if (newChannelId !== oldChannelId) {
-      // Очищаем список участников при смене канала
+  async (newChannelId, oldChannelId) => {
+    if (newChannelId && newChannelId !== oldChannelId) {
+      // Загружаем участников через API при смене канала
+      await roomStore.getRoomParticipants(newChannelId)
+    } else if (!newChannelId) {
+      // Очищаем список участников при выходе из канала
       roomStore.setRoommates([])
+      roomStore.setParticipants([])
     }
-  }
+  },
+  { immediate: true }
+)
+
+// Периодическое обновление списка участников (каждые 5 секунд)
+let participantsRefreshInterval: ReturnType<typeof setInterval> | null = null
+
+watch(
+  () => [roomStore.selectedChannelId, callStore.isInCall],
+  ([channelId, isInCall]) => {
+    // Очищаем предыдущий интервал
+    if (participantsRefreshInterval) {
+      clearInterval(participantsRefreshInterval)
+      participantsRefreshInterval = null
+    }
+    
+    // Запускаем обновление только если есть выбранный канал и мы в звонке
+    if (typeof channelId === 'string' && channelId && isInCall) {
+      // Загружаем участников сразу
+      roomStore.getRoomParticipants(channelId)
+      
+      // Устанавливаем периодическое обновление каждые 5 секунд
+      participantsRefreshInterval = setInterval(() => {
+        if (roomStore.selectedChannelId && callStore.isInCall) {
+          roomStore.getRoomParticipants(roomStore.selectedChannelId)
+        }
+      }, 5000)
+    }
+  },
+  { immediate: true }
 )
 
 onMounted(() => {
   fetchVideoDevices()
   fetchAudioDevices()
   
-  // Инициализируем список участников при монтировании
-  const roommatesArray = Object.values(signalingStore.room_mates)
-  roomStore.setRoommates(roommatesArray)
+  // Загружаем участников при монтировании, если канал уже выбран
+  if (roomStore.selectedChannelId) {
+    roomStore.getRoomParticipants(roomStore.selectedChannelId)
+  }
+})
+
+// Очищаем интервал при размонтировании
+onBeforeUnmount(() => {
+  // Очищаем интервал обновления участников
+  if (participantsRefreshInterval) {
+    clearInterval(participantsRefreshInterval)
+    participantsRefreshInterval = null
+  }
+  
+  // Завершаем звонок если он активен
+  if (callStore.isInCall) {
+    endCall()
+  }
+  
+  // Останавливаем медиа
+  stopMedia()
+  
+  // Покидаем комнату
+  leaveRoom()
 })
 </script>
 
@@ -382,48 +559,91 @@ onMounted(() => {
       </div>
 
       <!-- Если в звонке -->
-      <div
-        v-else
-        class="flex flex-wrap justify-center items-center gap-2 sm:gap-4 h-full content-center transition-all duration-300 p-2"
-      >
-        <!-- Локальное видео -->
+      <div v-else class="flex flex-col h-full overflow-hidden">
+        <!-- Видео стримы (только когда включены) -->
         <div
-          v-if="localStream"
-          :class="[videoTileClass]"
-          class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300"
+          v-if="peersWithVideo.length > 0"
+          class="flex flex-wrap justify-center items-center gap-2 sm:gap-4 p-2 sm:p-4 transition-all duration-300"
         >
-          <VideoTile
-            :condition-video="localStream?.getVideoTracks().length > 0"
-            :condition-audio="localStream?.getAudioTracks().length > 0"
-            :stream="localStream"
-            :key-id="localStream.id"
-            :muted="true"
-          />
-          <BadgeComponent
-            :condition-show="!audioEnabled"
-            :name="`Вы (${props.userName})`"
-            :speaking="isLocalSpeaking"
-          />
+          <template v-for="(peer, index) in peersWithVideo" :key="peer.peerId || index">
+            <div
+              :class="[videoTileClass]"
+              class="relative bg-slate-800 border border-slate-700 rounded-lg overflow-hidden aspect-video transition-all duration-300"
+            >
+              <VideoTile
+                v-if="peer.isLocal && localStream"
+                :condition-video="true"
+                :condition-audio="localStream.getAudioTracks().length > 0"
+                :stream="localStream"
+                :key-id="localStream.id"
+                :muted="true"
+              />
+              <VideoTile
+                v-else
+                :condition-video="true"
+                :condition-audio="peer.remoteStream?.getAudioTracks().length"
+                :stream="peer.remoteStream!"
+                :key-id="peer.peerId"
+                :muted="peerPlayback[peer.peerId]?.muted ?? false"
+                :volume="peerPlayback[peer.peerId]?.volume ?? 1"
+                :audio-stream="peerAudioStreams[peer.peerId]"
+                @update:muted="handlePeerMuteChange(peer.peerId, $event)"
+                @update:volume="handlePeerVolumeChange(peer.peerId, $event)"
+              />
+              <BadgeComponent
+                v-if="peer.isLocal"
+                :condition-show="!audioEnabled"
+                :name="`Вы (${props.userName})`"
+                :speaking="isLocalSpeaking"
+              />
+              <BadgeComponent
+                v-else
+                :condition-show="peerStates[peer.peerId] && typeof peerStates[peer.peerId]?.microphone === 'boolean' && !peerStates[peer.peerId]?.microphone"
+                :name="roomStore.participants.find(p => p.client_id === peer.peerId)?.username || peer.peerId"
+                :speaking="speakingPeers[peer.peerId]"
+              />
+            </div>
+          </template>
         </div>
 
-        <!-- Видео собеседников -->
-        <div v-for="peer in remotePeers" :key="peer.peerId" :class="[videoTileClass]">
-          <VideoTile
-            :condition-video="peer.remoteStream?.getVideoTracks().length"
-            :condition-audio="peer.remoteStream?.getAudioTracks().length"
-            :stream="peer.remoteStream"
-            :key-id="peer.peerId"
-            :muted="peerPlayback[peer.peerId]?.muted ?? false"
-            :volume="peerPlayback[peer.peerId]?.volume ?? 1"
-            :audio-stream="peerAudioStreams[peer.peerId]"
-            @update:muted="handlePeerMuteChange(peer.peerId, $event)"
-            @update:volume="handlePeerVolumeChange(peer.peerId, $event)"
-          />
-          <BadgeComponent
-            :condition-show="peerStates[peer.peerId] && !peerStates[peer.peerId]?.microphone"
-            :name="peer.room_mates?.[peer.peerId] || peer.peerId"
-            :speaking="speakingPeers[peer.peerId]"
-          />
+        <!-- Список участников без видео -->
+        <div
+          v-if="peersWithoutVideo.length > 0"
+          class="flex-1 overflow-y-auto p-2 sm:p-4"
+        >
+          <div class="max-w-6xl mx-auto">
+            <h3
+              v-if="peersWithVideo.length > 0"
+              class="text-sm font-semibold text-slate-400 mb-3 px-2"
+            >
+              Участники
+            </h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              <template v-for="(participant, index) in peersWithoutVideo" :key="participant.peerId || index">
+                <ParticipantCard
+                  :name="participant.name"
+                  :is-muted="participant.isMuted"
+                  :is-speaking="participant.isSpeaking"
+                  :is-local="participant.isLocal"
+                  :peer-id="participant.peerId"
+                  :volume="participant.volume"
+                  :audio-stream="participant.audioStream"
+                  @update:muted="handlePeerMuteChange(participant.peerId, $event)"
+                  @update:volume="handlePeerVolumeChange(participant.peerId, $event)"
+                />
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- Пустое состояние когда нет ни видео, ни участников -->
+        <div
+          v-if="peersWithVideo.length === 0 && peersWithoutVideo.length === 0"
+          class="flex-1 flex items-center justify-center"
+        >
+          <div class="text-center text-slate-400">
+            <p>Ожидание подключения участников...</p>
+          </div>
         </div>
       </div>
     </div>

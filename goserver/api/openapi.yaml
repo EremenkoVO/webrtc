@@ -267,6 +267,33 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         default:
           $ref: '#/components/responses/ServerError'
+  /api/v1/rooms/{roomId}/participants:
+    get:
+      tags: [Signaling]
+      summary: Get room participants
+      description: Get a list of all users currently connected to the room.
+      operationId: getRoomParticipants
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of room participants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomParticipantsResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        default:
+          $ref: '#/components/responses/ServerError'
   /api/v1/ws:
     get:
       tags: [Signaling]
@@ -390,6 +417,24 @@ components:
         client_id:
           type: string
           description: Unique ID assigned to this client in the room
+    RoomParticipantsResponse:
+      type: object
+      properties:
+        room_id:
+          type: string
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomParticipant'
+    RoomParticipant:
+      type: object
+      properties:
+        client_id:
+          type: string
+          description: Unique client ID in the room
+        username:
+          type: string
+          description: Username of the participant
     SignalingMessage:
       type: object
       description: A signaling message exchanged over WebSocket for WebRTC peer-to-peer calls

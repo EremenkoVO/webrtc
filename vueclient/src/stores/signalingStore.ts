@@ -136,7 +136,9 @@ export const useSignalingStore = defineStore('signaling', () => {
     reconnectAttempts.value = 0
     
     // Очищаем список участников в roomStore
-    updateRoomStoreRoommates()
+    const roomStore = useRoomStore()
+    roomStore.setParticipants([])
+    roomStore.setRoommates([])
   }
 
   // Отправка сообщения через WebSocket
@@ -200,7 +202,9 @@ export const useSignalingStore = defineStore('signaling', () => {
       room_mates.value = {}
       connectedPeers.value.clear()
       // Очищаем список участников в roomStore
-      updateRoomStoreRoommates()
+      const roomStore = useRoomStore()
+      roomStore.setParticipants([])
+      roomStore.setRoommates([])
     }
 
     return success
@@ -281,9 +285,12 @@ export const useSignalingStore = defineStore('signaling', () => {
         } else {
           room_mates.value = {}
         }
-        // Обновляем список участников в roomStore
-        updateRoomStoreRoommates()
-        useRoomStore().getListChannels()
+        // Обновляем список участников через API вместо WebSocket данных
+        const roomStore = useRoomStore()
+        if (currentRoomId.value) {
+          roomStore.getRoomParticipants(currentRoomId.value)
+        }
+        roomStore.getListChannels()
         console.log(
           'Вошли в комнату как',
           username.value,
@@ -296,8 +303,11 @@ export const useSignalingStore = defineStore('signaling', () => {
         if (message.from) {
           connectedPeers.value.set(message.from, message.username || 'Anonymous')
           room_mates.value[message.from] = message.username || 'Anonymous'
-          // Обновляем список участников в roomStore
-          updateRoomStoreRoommates()
+          // Обновляем список участников через API
+          const roomStore = useRoomStore()
+          if (currentRoomId.value) {
+            roomStore.getRoomParticipants(currentRoomId.value)
+          }
           console.log(
             'К беседе присоединился пир:',
             message.from,
@@ -312,8 +322,11 @@ export const useSignalingStore = defineStore('signaling', () => {
         if (message.from) {
           connectedPeers.value.delete(message.from)
           delete room_mates.value[message.from]
-          // Обновляем список участников в roomStore
-          updateRoomStoreRoommates()
+          // Обновляем список участников через API
+          const roomStore = useRoomStore()
+          if (currentRoomId.value) {
+            roomStore.getRoomParticipants(currentRoomId.value)
+          }
           console.log('Пир покинул комнату:', message.from)
           useRoomStore().getListChannels()
         }

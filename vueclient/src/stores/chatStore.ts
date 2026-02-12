@@ -352,6 +352,15 @@ export const useChatStore = defineStore('chat', () => {
     return await requestNotificationPermission()
   }
 
+  // Очистка сообщений для конкретной комнаты или всех комнат
+  function clearMessages(roomId?: string) {
+    if (roomId) {
+      messagesByRoom.value.delete(roomId)
+    } else {
+      messagesByRoom.value.clear()
+    }
+  }
+
   return {
     // Состояние
     connectionState,
@@ -374,5 +383,6 @@ export const useChatStore = defineStore('chat', () => {
     sendTyping,
     setNotificationsEnabled,
     requestNotificationPermission: requestPermission,
+    clearMessages,
   }
 })

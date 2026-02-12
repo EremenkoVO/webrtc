@@ -89,6 +89,21 @@ type RoomJoinResponse struct {
 	RoomId   *string `json:"room_id,omitempty"`
 }
 
+// RoomParticipant defines model for RoomParticipant.
+type RoomParticipant struct {
+	// ClientId Unique client ID in the room
+	ClientId *string `json:"client_id,omitempty"`
+
+	// Username Username of the participant
+	Username *string `json:"username,omitempty"`
+}
+
+// RoomParticipantsResponse defines model for RoomParticipantsResponse.
+type RoomParticipantsResponse struct {
+	Participants *[]RoomParticipant `json:"participants,omitempty"`
+	RoomId       *string             `json:"room_id,omitempty"`
+}
+
 // UserProfile defines model for UserProfile.
 type UserProfile struct {
 	Id       *string `json:"id,omitempty"`
@@ -151,6 +166,9 @@ type ServerInterface interface {
 	// Join a signaling room
 	// (POST /api/v1/rooms/{roomId}/join)
 	JoinRoom(w http.ResponseWriter, r *http.Request, roomId string)
+	// Get room participants
+	// (GET /api/v1/rooms/{roomId}/participants)
+	GetRoomParticipants(w http.ResponseWriter, r *http.Request, roomId string)
 	// WebSocket connection for signaling
 	// (GET /api/v1/ws)
 	SignalingWebSocket(w http.ResponseWriter, r *http.Request)
@@ -318,6 +336,37 @@ func (siw *ServerInterfaceWrapper) JoinRoom(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// GetRoomParticipants operation middleware
+func (siw *ServerInterfaceWrapper) GetRoomParticipants(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRoomParticipants(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SignalingWebSocket operation middleware
 func (siw *ServerInterfaceWrapper) SignalingWebSocket(w http.ResponseWriter, r *http.Request) {
 
@@ -460,6 +509,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/rooms", wrapper.ListRooms)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/rooms", wrapper.CreateRoom)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/rooms/{roomId}/join", wrapper.JoinRoom)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/rooms/{roomId}/participants", wrapper.GetRoomParticipants)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/ws", wrapper.SignalingWebSocket)
 
 	return m

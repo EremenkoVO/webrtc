@@ -231,17 +231,18 @@ export function useWebRTC() {
   function createPeerConnection(peerId: string): RTCPeerConnection {
     const pc = new RTCPeerConnection(iceConfiguration)
 
-    // Создать data channel
+    // Создать data channel (работает даже без треков)
     const dataChannel = pc.createDataChannel('state-channel')
     setupDataChannel(peerId, dataChannel)
 
-    // Добавить треки локального потока в соединение
+    // Добавить треки локального потока в соединение (если есть)
     if (localStream.value) {
       localStream.value.getTracks().forEach((track) => {
         pc.addTrack(track, localStream.value!)
       })
     } else {
-      console.warn('Локальный поток отсутствует при создании соединения')
+      // Даже без треков создаем соединение для data channel
+      console.log('Локальный поток отсутствует, но создаем соединение для data channel с', peerId)
     }
 
     // Обработка ICE кандидатов
@@ -317,7 +318,16 @@ export function useWebRTC() {
 
     pc.ondatachannel = (event) => {
       console.log('Получен DataChannel от', peerId)
-      setupDataChannel(peerId, event.channel)
+      const existingPeer = peers.value.get(peerId)
+      if (existingPeer) {
+        // Обновляем dataChannel в существующем пире
+        existingPeer.dataChannel = event.channel
+        // Обновляем пира в Map для реактивности
+        peers.value.set(peerId, { ...existingPeer, dataChannel: event.channel })
+        setupDataChannel(peerId, event.channel)
+      } else {
+        setupDataChannel(peerId, event.channel)
+      }
     }
 
     // Сохранить соединение с пиром
@@ -344,17 +354,28 @@ export function useWebRTC() {
   }
 
   function handlePeerState(peerId: string, state: Record<string, any>) {
-    peerStates.value = {
-      ...peerStates.value,
-      [peerId]: {
-        ...(peerStates.value[peerId] || {}),
-        ...state,
-      },
+    console.log('Получено состояние от', peerId, ':', state)
+
+    // Создаем новый объект для реактивности Vue
+    const newPeerStates = { ...peerStates.value }
+    newPeerStates[peerId] = {
+      ...(newPeerStates[peerId] || {}),
+      ...state,
     }
+    peerStates.value = newPeerStates
 
     // Если видео включено/выключено, вызываем соответствующую логику
     if ('video' in state) {
       updateRemoteVideo(peerId, state.video)
+    }
+
+    // Логируем состояние микрофона для отладки
+    if ('microphone' in state) {
+      const micStatus = state.microphone ? 'включен' : 'выключен'
+      const peer = peers.value.get(peerId)
+      const hasVideo = peer?.remoteStream && peer.remoteStream.getVideoTracks().length > 0
+      console.log(`Микрофон ${peerId} (${hasVideo ? 'с видео' : 'без видео'}):`, micStatus)
+      console.log('Обновленное состояние пира', peerId, ':', peerStates.value[peerId])
     }
   }
 
@@ -374,133 +395,136 @@ export function useWebRTC() {
   }
 
   function updateRemoteVideo(peerId: string, enabled: boolean) {
-    const peer = peers.value.get(peerId)
-    if (!peer || !peer.remoteStream) {
-      console.warn(`Пир ${peerId} или remoteStream не найдены для обновления видео.`)
-      return
-    }
+      const peer = peers.value.get(peerId)
+      if (!peer || !peer.remoteStream) {
+        console.warn(`Пир ${peerId} или remoteStream не найдены для обновления видео.`)
+        return
+      }
 
-    const currentVideoTracks = peer.remoteStream.getVideoTracks()
-    const hasVideoTrack = currentVideoTracks.length > 0
+      const currentVideoTracks = peer.remoteStream.getVideoTracks()
+      const hasVideoTrack = currentVideoTracks.length > 0
 
-    if (enabled && !hasVideoTrack) {
-      console.log(`Запрашиваю повторные переговоры для добавления видеотрека пиру ${peerId}`)
-      createOfferSafe(peerId)
+      if (enabled && !hasVideoTrack) {
+        console.log(`Запрашиваю повторные переговоры для добавления видеотрека пиру ${peerId}`)
+        createOfferSafe(peerId)
+      }
     }
-  }
 
   function setupDataChannel(peerId: string, channel: RTCDataChannel) {
     channel.onopen = () => {
       console.log('DataChannel открыт с', peerId)
       // Отправляем своё состояние при открытии канала
-      broadcastStateTo(peerId, localState.value)
+      const stateToSend = { ...localState.value }
+      console.log('Отправляю начальное состояние', peerId, ':', stateToSend)
+      broadcastStateTo(peerId, stateToSend)
     }
     channel.onclose = () => console.log('DataChannel закрыт с', peerId)
     channel.onerror = (err) => console.error('Ошибка DataChannel', err)
     channel.onmessage = (event) => {
-      console.log('Сообщение по DataChannel')
+      console.log('Сообщение по DataChannel от', peerId, ':', event.data)
       try {
         const data = JSON.parse(event.data)
+        console.log('Распарсенные данные от', peerId, ':', data)
         handlePeerState(peerId, data)
-      } catch {
-        console.warn('Некорректные данные от пира', event.data)
+      } catch (error) {
+        console.warn('Некорректные данные от пира', event.data, error)
       }
     }
   }
 
   // Создать и отправить offer пирy
   async function createOffer(peerId: string) {
-    try {
-      const pc = peers.value.get(peerId)?.connection || createPeerConnection(peerId)
+      try {
+        const pc = peers.value.get(peerId)?.connection || createPeerConnection(peerId)
 
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
 
-      console.log('Создан offer для', peerId)
-      signalingStore.sendOffer(peerId, offer)
+        console.log('Создан offer для', peerId)
+        signalingStore.sendOffer(peerId, offer)
 
-      // Обновить объект пира в Map для реактивности и актуального потока
-      const peer = peers.value.get(peerId)
+        // Обновить объект пира в Map для реактивности и актуального потока
+        const peer = peers.value.get(peerId)
 
-      if (peer) {
-        console.log('Создаю offer, обновляю пира:', peer.remoteStream?.getVideoTracks())
+        if (peer) {
+          console.log('Создаю offer, обновляю пира:', peer.remoteStream?.getVideoTracks())
 
-        peers.value.set(peerId, {
-          ...peer,
-          connection: pc,
-          remoteStream: peer.remoteStream,
-        })
+          peers.value.set(peerId, {
+            ...peer,
+            connection: pc,
+            remoteStream: peer.remoteStream,
+          })
 
-        console.log('Пир обновлён после создания offer:', peers.value.get(peerId))
+          console.log('Пир обновлён после создания offer:', peers.value.get(peerId))
+        }
+      } catch (error) {
+        console.error('Не удалось создать offer:', error)
+        throw error
       }
-    } catch (error) {
-      console.error('Не удалось создать offer:', error)
-      throw error
     }
-  }
 
   // Обработка входящего offer
   async function handleOffer(peerId: string, offer: RTCSessionDescriptionInit) {
-    try {
-      console.log('Обрабатываю offer от', peerId)
+      try {
+        console.log('Обрабатываю offer от', peerId)
 
-      const pc = peers.value.get(peerId)?.connection || createPeerConnection(peerId)
+        const pc = peers.value.get(peerId)?.connection || createPeerConnection(peerId)
 
-      await pc.setRemoteDescription(new RTCSessionDescription(offer))
+        await pc.setRemoteDescription(new RTCSessionDescription(offer))
 
-      const answer = await pc.createAnswer()
-      await pc.setLocalDescription(answer)
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
 
-      console.log('Создан answer для', peerId)
-      signalingStore.sendAnswer(peerId, answer)
-    } catch (error) {
-      console.error('Не удалось обработать offer:', error)
-      throw error
+        console.log('Создан answer для', peerId)
+        signalingStore.sendAnswer(peerId, answer)
+      } catch (error) {
+        console.error('Не удалось обработать offer:', error)
+        throw error
+      }
     }
-  }
 
   // Обработка входящего answer
   async function handleAnswer(peerId: string, answer: RTCSessionDescriptionInit) {
-    try {
-      console.log('Обрабатываю answer от', peerId)
+      try {
+        console.log('Обрабатываю answer от', peerId)
 
-      const peer = peers.value.get(peerId)
-      if (!peer) {
-        console.error('Не найдено соединение с пиром для', peerId)
-        return
-      }
+        const peer = peers.value.get(peerId)
+        if (!peer) {
+          console.error('Не найдено соединение с пиром для', peerId)
+          return
+        }
 
-      // Устанавливать remote answer только если signalingState равен 'have-local-offer'
-      if (peer.connection.signalingState === 'have-local-offer') {
-        await peer.connection.setRemoteDescription(new RTCSessionDescription(answer))
-      } else {
-        console.warn(
-          `Пир ${peerId} находится в состоянии '${peer.connection.signalingState}', ответ не ожидается. Пропускаю setRemoteDescription.`,
-        )
+        // Устанавливать remote answer только если signalingState равен 'have-local-offer'
+        if (peer.connection.signalingState === 'have-local-offer') {
+          await peer.connection.setRemoteDescription(new RTCSessionDescription(answer))
+        } else {
+          console.warn(
+            `Пир ${peerId} находится в состоянии '${peer.connection.signalingState}', ответ не ожидается. Пропускаю setRemoteDescription.`,
+          )
+        }
+      } catch (error) {
+        console.error('Не удалось обработать answer:', error)
+        throw error
       }
-    } catch (error) {
-      console.error('Не удалось обработать answer:', error)
-      throw error
     }
-  }
 
   // Обработка входящего ICE кандидата
   async function handleIceCandidate(peerId: string, candidate: RTCIceCandidateInit) {
-    try {
-      console.log('Обрабатываю ICE-кандидата от', peerId)
+      try {
+        console.log('Обрабатываю ICE-кандидата от', peerId)
 
-      const peer = peers.value.get(peerId)
-      if (!peer) {
-        console.error('Не найдено соединение с пиром для', peerId)
-        return
+        const peer = peers.value.get(peerId)
+        if (!peer) {
+          console.error('Не найдено соединение с пиром для', peerId)
+          return
+        }
+
+        await peer.connection.addIceCandidate(new RTCIceCandidate(candidate))
+      } catch (error) {
+        console.error('Не удалось обработать ICE-кандидата:', error)
+        throw error
       }
-
-      await peer.connection.addIceCandidate(new RTCIceCandidate(candidate))
-    } catch (error) {
-      console.error('Не удалось обработать ICE-кандидата:', error)
-      throw error
     }
-  }
 
   // Удалить соединение с пиром
   function removePeer(peerId: string) {
@@ -648,127 +672,178 @@ export function useWebRTC() {
 
   // Переключить камеру
   async function switchCamera(deviceId: string) {
-    try {
-      if (!localStream.value) {
-        console.warn('Локальный поток отсутствует — невозможно переключить камеру')
-        return
-      }
-
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: deviceId } },
-        audio: false,
-      })
-
-      const newVideoTrack = newStream.getVideoTracks()[0]
-      if (!newVideoTrack) return
-
-      const oldVideoTrack = localStream.value.getVideoTracks()[0] || null
-
-      peers.value.forEach(({ connection }, peerId) => {
-        const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'video')
-        if (sender) {
-          sender.replaceTrack(newVideoTrack)
-        } else {
-          connection.addTrack(newVideoTrack, localStream.value!)
+      try {
+        if (!localStream.value) {
+          console.warn('Локальный поток отсутствует — невозможно переключить камеру')
+          return
         }
-        createOfferSafe(peerId)
-      })
 
-      if (oldVideoTrack) {
-        oldVideoTrack.stop()
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: deviceId } },
+          audio: false,
+        })
+
+        const newVideoTrack = newStream.getVideoTracks()[0]
+        if (!newVideoTrack) return
+
+        const oldVideoTrack = localStream.value.getVideoTracks()[0] || null
+
+        peers.value.forEach(({ connection }, peerId) => {
+          const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'video')
+          if (sender) {
+            sender.replaceTrack(newVideoTrack)
+          } else {
+            connection.addTrack(newVideoTrack, localStream.value!)
+          }
+          createOfferSafe(peerId)
+        })
+
+        if (oldVideoTrack) {
+          oldVideoTrack.stop()
+        }
+
+        const audioTrack = localStream.value?.getAudioTracks()[0]
+        localStream.value = new MediaStream([newVideoTrack, ...(audioTrack ? [audioTrack] : [])])
+        console.log('Камера успешно переключена')
+      } catch (error) {
+        console.error('Не удалось переключить камеру:', error)
       }
-
-      const audioTrack = localStream.value?.getAudioTracks()[0]
-      localStream.value = new MediaStream([newVideoTrack, ...(audioTrack ? [audioTrack] : [])])
-      console.log('Камера успешно переключена')
-    } catch (error) {
-      console.error('Не удалось переключить камеру:', error)
     }
-  }
 
   // Переключить микрофон
   async function switchMicrophone(deviceId: string) {
-    try {
-      if (!localStream.value) {
-        console.warn('Локальный поток отсутствует — невозможно переключить микрофон')
-        return
+      try {
+        if (!localStream.value) {
+          console.warn('Локальный поток отсутствует — невозможно переключить микрофон')
+          return
+        }
+
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: false,
+          audio: { deviceId: { exact: deviceId } },
+        })
+
+        const newAudioTrack = newStream.getAudioTracks()[0]
+        if (!newAudioTrack) return
+        newAudioTrack.contentHint = 'speech'
+
+        const oldAudioTrack = localStream.value.getAudioTracks()[0]
+
+        peers.value.forEach(({ connection }) => {
+          const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'audio')
+          if (sender) sender.replaceTrack(newAudioTrack)
+        })
+
+        if (oldAudioTrack) {
+          oldAudioTrack.stop()
+        }
+
+        const videoTracks = localStream.value.getVideoTracks()
+        localStream.value = new MediaStream([newAudioTrack, ...videoTracks])
+
+        console.log('Микрофон успешно переключён')
+      } catch (error) {
+        console.error('Не удалось переключить микрофон:', error)
       }
-
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: false,
-        audio: { deviceId: { exact: deviceId } },
-      })
-
-      const newAudioTrack = newStream.getAudioTracks()[0]
-      if (!newAudioTrack) return
-      newAudioTrack.contentHint = 'speech'
-
-      const oldAudioTrack = localStream.value.getAudioTracks()[0]
-
-      peers.value.forEach(({ connection }) => {
-        const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'audio')
-        if (sender) sender.replaceTrack(newAudioTrack)
-      })
-
-      if (oldAudioTrack) {
-        oldAudioTrack.stop()
-      }
-
-      const videoTracks = localStream.value.getVideoTracks()
-      localStream.value = new MediaStream([newAudioTrack, ...videoTracks])
-
-      console.log('Микрофон успешно переключён')
-    } catch (error) {
-      console.error('Не удалось переключить микрофон:', error)
     }
-  }
 
   // Заменить видео-трек у всех пиров
   async function replaceVideoTrackInPeers(newTrack: MediaStreamTrack | null) {
-    peers.value.forEach(({ connection }, peerId) => {
-      const videoSenders = connection.getSenders().filter((s) => s.track?.kind === 'video')
-      if (videoSenders.length > 0) {
-        const sender = videoSenders[0]
-        if (newTrack) {
-          sender.replaceTrack(newTrack)
-        } else {
-          connection.removeTrack(sender)
+      peers.value.forEach(({ connection }, peerId) => {
+        const videoSenders = connection.getSenders().filter((s) => s.track?.kind === 'video')
+        if (videoSenders.length > 0) {
+          const sender = videoSenders[0]
+          if (newTrack) {
+            sender.replaceTrack(newTrack)
+          } else {
+            connection.removeTrack(sender)
+          }
+        } else if (newTrack && localStream.value) {
+          connection.addTrack(newTrack, localStream.value)
         }
-      } else if (newTrack && localStream.value) {
-        connection.addTrack(newTrack, localStream.value)
-      }
-      createOfferSafe(peerId)
-    })
-  }
+        createOfferSafe(peerId)
+      })
+    }
 
   // Отправить состояние конкретному пиру
   function broadcastStateTo(peerId: string, state: Record<string, any>) {
     const peer = peers.value.get(peerId)
+    if (!peer) {
+      console.warn(`Пир ${peerId} не найден для отправки состояния`)
+      return
+    }
+
     const json = JSON.stringify(state)
-    if (peer?.dataChannel?.readyState === 'open') {
+    if (peer.dataChannel?.readyState === 'open') {
+      console.log('Отправляю состояние пиру', peerId, ':', state)
       peer.dataChannel.send(json)
     } else {
-      console.warn(`Нельзя отправить состояние пирy ${peerId}: dataChannel не открыт`)
+      console.warn(
+        'Нельзя отправить состояние пиру',
+        peerId,
+        ': dataChannel не открыт (readyState:',
+        peer.dataChannel?.readyState,
+        ')',
+      )
+      // Пытаемся отправить позже, когда канал откроется
+      const checkInterval = setInterval(() => {
+        if (peer.dataChannel?.readyState === 'open') {
+          console.log('DataChannel открыт, отправляю состояние пиру', peerId)
+          peer.dataChannel.send(json)
+          clearInterval(checkInterval)
+        } else if (peer.dataChannel?.readyState === 'closed') {
+          clearInterval(checkInterval)
+        }
+      }, 100)
+
+      // Очищаем интервал через 5 секунд
+      setTimeout(() => clearInterval(checkInterval), 5000)
     }
   }
 
   // Отправить состояние всем пирам
   function broadcastState(state: Record<string, any>) {
     const json = JSON.stringify(state)
-    peers.value.forEach(({ dataChannel }) => {
-      if (dataChannel?.readyState === 'open') {
-        dataChannel.send(json)
+    console.log('Отправляю состояние всем пирам:', state, 'Количество пиров:', peers.value.size)
+    peers.value.forEach((peer, peerId) => {
+      if (peer.dataChannel?.readyState === 'open') {
+        console.log('Отправляю состояние пиру', peerId)
+        peer.dataChannel.send(json)
+      } else {
+        console.warn(
+          'Пропускаю пира',
+          peerId,
+          ': dataChannel не открыт (readyState:',
+          peer.dataChannel?.readyState,
+          ')',
+        )
+        // Пытаемся отправить позже через broadcastStateTo
+        broadcastStateTo(peerId, state)
       }
     })
   }
 
   // Включить/выключить медиа (видео/микрофон)
   async function toggleMedia(videoEnable: boolean, microphoneEnable: boolean, deviceId: string) {
+    // Сохраняем предыдущее состояние для возможного восстановления при ошибке
+    const previousState = { ...localState.value }
     try {
+      // Обновляем локальное состояние
       localState.value = { video: videoEnable, microphone: microphoneEnable }
+      console.log('Обновлено локальное состояние:', localState.value)
+
+      if (!localStream.value) {
+        console.warn('Локальный поток отсутствует, пропускаю переключение медиа')
+        return
+      }
+
+      // Определяем, что именно изменилось
+      const videoChanged = previousState.video !== videoEnable
+      const microphoneChanged = previousState.microphone !== microphoneEnable
 
       // Если видео включено, но нет videoTrack — создаём его
-      if (videoEnable && localStream.value?.getVideoTracks().length === 0) {
+      // Только если видео действительно включилось (было выключено, стало включено)
+      if (videoEnable && videoChanged && localStream.value.getVideoTracks().length === 0) {
         const newVideoStream = await navigator.mediaDevices.getUserMedia({
           video: { deviceId: { exact: deviceId } },
           audio: false,
@@ -778,167 +853,204 @@ export function useWebRTC() {
         console.log('Добавляю новый видеотрек пирам', newVideoTrack)
 
         if (newVideoTrack) {
-          const audioTrack = localStream.value?.getAudioTracks()[0]
-          localStream.value = new MediaStream([newVideoTrack, ...(audioTrack ? [audioTrack] : [])])
+          // Сохраняем существующие треки (особенно аудио)
+          const existingAudioTracks = localStream.value.getAudioTracks()
+          const existingVideoTracks = localStream.value.getVideoTracks()
+          
+          // Добавляем новый видео-трек в существующий стрим вместо пересоздания
+          localStream.value.addTrack(newVideoTrack)
+          
+          // Останавливаем старые видео-треки, если они есть
+          existingVideoTracks.forEach(track => {
+            track.stop()
+            localStream.value?.removeTrack(track)
+          })
+          
           await replaceVideoTrackInPeers(newVideoTrack)
         }
       }
 
-      // обновляем enable для треков, если они есть
-      localStream.value?.getVideoTracks().forEach((track) => (track.enabled = videoEnable))
-      localStream.value?.getAudioTracks().forEach((track) => (track.enabled = microphoneEnable))
+      // Обновляем enable для треков, если они есть
+      // Важно: не пересоздаем стрим, только меняем состояние треков
+      // Это безопасная операция, которая не нарушает соединения
+      const videoTracks = localStream.value.getVideoTracks()
+      const audioTracks = localStream.value.getAudioTracks()
+      
+      // Обновляем видео-треки только если видео действительно изменилось
+      if (videoChanged && videoTracks.length > 0) {
+        videoTracks.forEach((track) => {
+          if (track.enabled !== videoEnable) {
+            track.enabled = videoEnable
+          }
+        })
+      }
+      
+      // Обновляем аудио-треки только если микрофон действительно изменился
+      if (microphoneChanged && audioTracks.length > 0) {
+        audioTracks.forEach((track) => {
+          if (track.enabled !== microphoneEnable) {
+            track.enabled = microphoneEnable
+          }
+        })
+      }
 
-      broadcastState({ video: videoEnable, microphone: microphoneEnable })
+      // Отправляем состояние всем пирам через data channel
+      // Это не требует реинициализации соединений
+      const stateToSend = { video: videoEnable, microphone: microphoneEnable }
+      console.log('Отправляю состояние всем пирам:', stateToSend)
+      broadcastState(stateToSend)
       console.log('Переключены медиа — видео:', videoEnable, 'микрофон:', microphoneEnable)
     } catch (err) {
       console.error('Не удалось переключить медиа:', err)
+      // Восстанавливаем предыдущее состояние при ошибке
+      localState.value = previousState
     }
   }
 
   // Начало демонстрации экрана
   async function startScreenShare() {
-    try {
-      if (isScreenSharing.value) {
-        console.warn('Экран уже транслируется')
-        return
-      }
-
-      console.log('Запускаю демонстрацию экрана...')
-
-      // Получаем экран
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: true,
-      })
-
-      const screenVideoTrack = screenStream.getVideoTracks()[0]
-      if (!screenVideoTrack) throw new Error('Нет видеотрека для экрана')
-      const screenAudioTrack = screenStream.getAudioTracks()[0] || null
-      if (screenAudioTrack) {
-        screenAudioTrack.contentHint = 'screen'
-      }
-
-      // Сохраняем текущие локальные треки для восстановления
-      previousVideoTrack = localStream.value?.getVideoTracks()[0] || null
-      previousAudioTrack = localStream.value?.getAudioTracks()[0] || null
-      screenShareStream = screenStream
-      activeScreenAudioTrack = screenAudioTrack
-
-      const composedStream = new MediaStream([
-        screenVideoTrack,
-        ...(previousAudioTrack ? [previousAudioTrack] : []),
-      ])
-      composedStream
-        .getAudioTracks()
-        .filter((track) => track !== screenAudioTrack)
-        .forEach((track) => (track.contentHint = 'speech'))
-      localStream.value = composedStream
-      localStream.value.getVideoTracks().forEach((track) => (track.enabled = true))
-      localStream.value
-        .getAudioTracks()
-        .forEach((track) => (track.enabled = localState.value.microphone))
-
-      // Обновляем треки у всех пиров
-      peers.value.forEach(({ connection }, peerId) => {
-        // Видео
-        const videoSender = connection.getSenders().find((s) => s.track?.kind === 'video')
-        if (videoSender) videoSender.replaceTrack(screenVideoTrack)
-        else connection.addTrack(screenVideoTrack, composedStream)
-
-        if (screenAudioTrack) {
-          const existingSender = screenAudioSenders.get(peerId)
-          if (existingSender) {
-            try {
-              connection.removeTrack(existingSender.sender)
-            } catch (error) {
-              console.warn('Не удалось удалить предыдущий аудио-сендер экрана:', error)
-            }
-            existingSender.track.stop()
-            screenAudioSenders.delete(peerId)
-          }
-
-          const clonedTrack = screenAudioTrack.clone()
-          clonedTrack.contentHint = 'screen'
-          const senderStream = new MediaStream([clonedTrack])
-          const sender = connection.addTrack(clonedTrack, senderStream)
-          screenAudioSenders.set(peerId, { sender, track: clonedTrack })
+      try {
+        if (isScreenSharing.value) {
+          console.warn('Экран уже транслируется')
+          return
         }
 
-        createOfferSafe(peerId)
-      })
+        console.log('Запускаю демонстрацию экрана...')
 
-      // Обработчик окончания демонстрации экрана
-      screenVideoTrack.onended = stopScreenShare
-      if (screenAudioTrack) {
-        screenAudioTrack.onended = stopScreenShare
+        // Получаем экран
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        })
+
+        const screenVideoTrack = screenStream.getVideoTracks()[0]
+        if (!screenVideoTrack) throw new Error('Нет видеотрека для экрана')
+        const screenAudioTrack = screenStream.getAudioTracks()[0] || null
+        if (screenAudioTrack) {
+          screenAudioTrack.contentHint = 'screen'
+        }
+
+        // Сохраняем текущие локальные треки для восстановления
+        previousVideoTrack = localStream.value?.getVideoTracks()[0] || null
+        previousAudioTrack = localStream.value?.getAudioTracks()[0] || null
+        screenShareStream = screenStream
+        activeScreenAudioTrack = screenAudioTrack
+
+        const composedStream = new MediaStream([
+          screenVideoTrack,
+          ...(previousAudioTrack ? [previousAudioTrack] : []),
+        ])
+        composedStream
+          .getAudioTracks()
+          .filter((track) => track !== screenAudioTrack)
+          .forEach((track) => (track.contentHint = 'speech'))
+        localStream.value = composedStream
+        localStream.value.getVideoTracks().forEach((track) => (track.enabled = true))
+        localStream.value
+          .getAudioTracks()
+          .forEach((track) => (track.enabled = localState.value.microphone))
+
+        // Обновляем треки у всех пиров
+        peers.value.forEach(({ connection }, peerId) => {
+          // Видео
+          const videoSender = connection.getSenders().find((s) => s.track?.kind === 'video')
+          if (videoSender) videoSender.replaceTrack(screenVideoTrack)
+          else connection.addTrack(screenVideoTrack, composedStream)
+
+          if (screenAudioTrack) {
+            const existingSender = screenAudioSenders.get(peerId)
+            if (existingSender) {
+              try {
+                connection.removeTrack(existingSender.sender)
+              } catch (error) {
+                console.warn('Не удалось удалить предыдущий аудио-сендер экрана:', error)
+              }
+              existingSender.track.stop()
+              screenAudioSenders.delete(peerId)
+            }
+
+            const clonedTrack = screenAudioTrack.clone()
+            clonedTrack.contentHint = 'screen'
+            const senderStream = new MediaStream([clonedTrack])
+            const sender = connection.addTrack(clonedTrack, senderStream)
+            screenAudioSenders.set(peerId, { sender, track: clonedTrack })
+          }
+
+          createOfferSafe(peerId)
+        })
+
+        // Обработчик окончания демонстрации экрана
+        screenVideoTrack.onended = stopScreenShare
+        if (screenAudioTrack) {
+          screenAudioTrack.onended = stopScreenShare
+        }
+
+        isScreenSharing.value = true
+        console.log('Демонстрация экрана запущена')
+      } catch (err) {
+        console.error('Не удалось запустить демонстрацию экрана:', err)
       }
-
-      isScreenSharing.value = true
-      console.log('Демонстрация экрана запущена')
-    } catch (err) {
-      console.error('Не удалось запустить демонстрацию экрана:', err)
     }
-  }
 
   // Остановка демонстрации экрана
   async function stopScreenShare() {
-    try {
-      if (!isScreenSharing.value) return
-      console.log('Останавливаю демонстрацию экрана...')
+      try {
+        if (!isScreenSharing.value) return
+        console.log('Останавливаю демонстрацию экрана...')
 
-      // Останавливаем треки экрана
-      if (screenShareStream) {
-        screenShareStream.getTracks().forEach((track) => track.stop())
-        screenShareStream = null
-      }
-      activeScreenAudioTrack = null
-
-      screenAudioSenders.forEach(({ sender, track }, peerId) => {
-        const peer = peers.value.get(peerId)
-        if (peer) {
-          try {
-            peer.connection.removeTrack(sender)
-          } catch (error) {
-            console.warn('Не удалось удалить аудио-сендер экрана при остановке:', error)
-          }
+        // Останавливаем треки экрана
+        if (screenShareStream) {
+          screenShareStream.getTracks().forEach((track) => track.stop())
+          screenShareStream = null
         }
-        track.stop()
-      })
-      screenAudioSenders.clear()
+        activeScreenAudioTrack = null
 
-      // Восстанавливаем камеру
-      const restoredTracks: MediaStreamTrack[] = []
-      if (previousVideoTrack) restoredTracks.push(previousVideoTrack)
-      if (previousAudioTrack) restoredTracks.push(previousAudioTrack)
+        screenAudioSenders.forEach(({ sender, track }, peerId) => {
+          const peer = peers.value.get(peerId)
+          if (peer) {
+            try {
+              peer.connection.removeTrack(sender)
+            } catch (error) {
+              console.warn('Не удалось удалить аудио-сендер экрана при остановке:', error)
+            }
+          }
+          track.stop()
+        })
+        screenAudioSenders.clear()
 
-      const restoredStream = new MediaStream(restoredTracks)
-      restoredStream.getAudioTracks().forEach((track) => (track.contentHint = 'speech'))
-      localStream.value = restoredStream
-      localStream.value
-        .getVideoTracks()
-        .forEach((track) => (track.enabled = localState.value.video))
-      localStream.value
-        .getAudioTracks()
-        .forEach((track) => (track.enabled = localState.value.microphone))
+        // Восстанавливаем камеру
+        const restoredTracks: MediaStreamTrack[] = []
+        if (previousVideoTrack) restoredTracks.push(previousVideoTrack)
+        if (previousAudioTrack) restoredTracks.push(previousAudioTrack)
 
-      // Заменяем треки у всех пиров обратно
-      peers.value.forEach(({ connection }, peerId) => {
-        // Видео
-        const videoSender = connection.getSenders().find((s) => s.track?.kind === 'video')
-        if (videoSender && previousVideoTrack) videoSender.replaceTrack(previousVideoTrack)
+        const restoredStream = new MediaStream(restoredTracks)
+        restoredStream.getAudioTracks().forEach((track) => (track.contentHint = 'speech'))
+        localStream.value = restoredStream
+        localStream.value
+          .getVideoTracks()
+          .forEach((track) => (track.enabled = localState.value.video))
+        localStream.value
+          .getAudioTracks()
+          .forEach((track) => (track.enabled = localState.value.microphone))
 
-        createOfferSafe(peerId)
-      })
+        // Заменяем треки у всех пиров обратно
+        peers.value.forEach(({ connection }, peerId) => {
+          // Видео
+          const videoSender = connection.getSenders().find((s) => s.track?.kind === 'video')
+          if (videoSender && previousVideoTrack) videoSender.replaceTrack(previousVideoTrack)
 
-      previousVideoTrack = null
-      previousAudioTrack = null
-      isScreenSharing.value = false
+          createOfferSafe(peerId)
+        })
 
-      console.log('Демонстрация экрана остановлена, камера и микрофон восстановлены')
-    } catch (err) {
-      console.error('Не удалось остановить демонстрацию экрана:', err)
+        previousVideoTrack = null
+        previousAudioTrack = null
+        isScreenSharing.value = false
+
+        console.log('Демонстрация экрана остановлена, камера и микрофон восстановлены')
+      } catch (err) {
+        console.error('Не удалось остановить демонстрацию экрана:', err)
+      }
     }
-  }
 
   // Отслеживать, говорит ли локальный пользователь
   function monitorLocalSpeaking(stream: MediaStream | null) {
@@ -1031,4 +1143,5 @@ export function useWebRTC() {
     startScreenShare,
     stopScreenShare,
   }
+  
 }
