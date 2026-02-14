@@ -37,6 +37,8 @@ export function useWebRTC() {
   const peerStates = ref<Record<string, PeerState>>({})
   const peerPlayback = ref<Record<string, PeerPlaybackSettings>>({})
   const peerAudioStreams = ref<Record<string, MediaStream>>({})
+  /** Пир-идентификаторы, к чьему видео пользователь вручную подключился (стримы не показываются автоматически). */
+  const subscribedVideoPeerIds = ref<Set<string>>(new Set())
   const audioContextRef = ref<AudioContext | null>(null)
   const analyserRef = ref<AnalyserNode | null>(null)
   const animationFrameId = ref<number | null>(null)
@@ -143,6 +145,16 @@ export function useWebRTC() {
         muted,
       },
     }
+  }
+
+  function subscribeToPeerVideo(peerId: string) {
+    subscribedVideoPeerIds.value = new Set(subscribedVideoPeerIds.value).add(peerId)
+  }
+
+  function unsubscribeFromPeerVideo(peerId: string) {
+    const next = new Set(subscribedVideoPeerIds.value)
+    next.delete(peerId)
+    subscribedVideoPeerIds.value = next
   }
 
   // Вызывает createOffer только если signallingState === 'stable'
@@ -294,16 +306,11 @@ export function useWebRTC() {
           updatePeerAudioStream(peerId, stream)
           console.log(`👤 Новый пир ${peerId} с потоком`, stream)
         } else {
-          // После удаления видео-трека инициируем renegotiation для всех пиров
-          peers.value.forEach((_, peerIdInner) => {
-            createOfferSafe(peerIdInner)
-          })
-          // добавляем трек, если его нет
+          // Добавляем трек в существующий поток (без лишних renegotiation — иначе при смене микрофона у других пропадало видео)
           const existingStream = existingPeer.remoteStream || new MediaStream()
           if (!existingStream.getTracks().includes(event.track)) {
             existingStream.addTrack(event.track)
           }
-          // принудительно обновляем ссылку, чтобы Vue отреагировал
           const updatedStream = new MediaStream(existingStream.getTracks())
           updatePeerRemoteStream(peerId, updatedStream)
         }
@@ -374,14 +381,15 @@ export function useWebRTC() {
 
     // Создаем новый объект для реактивности Vue
     const newPeerStates = { ...peerStates.value }
+    const previousVideo = newPeerStates[peerId]?.video
     newPeerStates[peerId] = {
       ...(newPeerStates[peerId] || {}),
       ...state,
     }
     peerStates.value = newPeerStates
 
-    // Если видео включено/выключено, вызываем соответствующую логику
-    if ('video' in state) {
+    // Обновляем видео у пира только при реальном изменении (previousVideo !== state.video)
+    if ('video' in state && typeof state.video === 'boolean' && previousVideo !== state.video) {
       updateRemoteVideo(peerId, state.video)
     }
 
@@ -398,10 +406,8 @@ export function useWebRTC() {
   function updatePeerRemoteStream(peerId: string, newStream: MediaStream) {
     const peer = peers.value.get(peerId)
     if (peer) {
-      // Прямое присваивание свойства объекта, отслеживаемого реактивно
-      peer.remoteStream = newStream
-      // Если используете ref для peers, то:
-      peers.value.set(peerId, peer)
+      // Новый объект пира, чтобы Vue заметил изменение и обновил UI (иначе застывшая картинка при выключении стрима)
+      peers.value.set(peerId, { ...peer, remoteStream: newStream })
       console.log(
         `Удалённый поток пира ${peerId} обновлён. Количество видеотреков: ${newStream.getVideoTracks().length}`,
       )
@@ -423,6 +429,17 @@ export function useWebRTC() {
       if (enabled && !hasVideoTrack) {
         console.log(`Запрашиваю повторные переговоры для добавления видеотрека пиру ${peerId}`)
         createOfferSafe(peerId)
+      }
+
+      // Когда собеседник выключил именно видео — убираем видеотреки и снимаем подписку
+      if (enabled === false && hasVideoTrack) {
+        currentVideoTracks.forEach((track) => track.stop())
+        const tracksWithoutVideo = peer.remoteStream.getTracks().filter((t) => t.kind !== 'video')
+        const newStream = new MediaStream(tracksWithoutVideo)
+        updatePeerRemoteStream(peerId, newStream)
+        // Снимаем подписку, чтобы пир вернулся в обычный тайл, а при повторном включении показалось превью
+        unsubscribeFromPeerVideo(peerId)
+        console.log(`Стрим пира ${peerId} закрыт (видео выключено), подписка снята`)
       }
     }
 
@@ -680,6 +697,7 @@ export function useWebRTC() {
     peerStates.value = {}
     peerPlayback.value = {}
     peerAudioStreams.value = {}
+    subscribedVideoPeerIds.value = new Set()
 
     localState.value = { video: false, microphone: true }
 
@@ -910,9 +928,15 @@ export function useWebRTC() {
         })
       }
 
-      // Отправляем состояние всем пирам через data channel
-      // Это не требует реинициализации соединений
-      const stateToSend = { video: videoEnable, microphone: microphoneEnable }
+      // Отправляем только изменившиеся поля, чтобы смена микрофона не трогала видео у собеседников
+      const stateToSend: Record<string, boolean> = {}
+      if (videoChanged) stateToSend.video = videoEnable
+      if (microphoneChanged) stateToSend.microphone = microphoneEnable
+      // Если ничего не изменилось (повторный вызов), отправляем оба
+      if (!videoChanged && !microphoneChanged) {
+        stateToSend.video = videoEnable
+        stateToSend.microphone = microphoneEnable
+      }
       console.log('Отправляю состояние всем пирам:', stateToSend)
       broadcastState(stateToSend)
       console.log('Переключены медиа — видео:', videoEnable, 'микрофон:', microphoneEnable)
@@ -1160,6 +1184,9 @@ export function useWebRTC() {
     removePeer,
     setPeerVolume,
     setPeerMuted,
+    subscribeToPeerVideo,
+    unsubscribeFromPeerVideo,
+    subscribedVideoPeerIds,
 
     // Переключение устройств
     switchCamera,

@@ -47,9 +47,11 @@ const volumeIcon = computed(() => {
 
 watchEffect(() => {
   const stream = (props.stream as MediaStream | null) ?? null
-  if (videoRef.value && videoRef.value.srcObject !== stream) {
-    videoRef.value.srcObject = stream
-    videoRef.value.muted = true
+  if (videoRef.value) {
+    if (videoRef.value.srcObject !== stream) {
+      videoRef.value.srcObject = stream
+      if (stream) videoRef.value.muted = true
+    }
   }
   // Separate audio tracks for stream and peers
   if (audioStreamRef.value && stream) {

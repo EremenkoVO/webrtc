@@ -436,7 +436,7 @@ watch(
     <div
       ref="messagesContainer"
       @scroll="handleScroll"
-      class="flex-1 overflow-y-auto p-2 sm:p-4 space-y-3 sm:space-y-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900"
+      class="flex-1 overflow-y-auto p-2 sm:p-4 2xl:p-5 4k:p-6 space-y-3 sm:space-y-4 4k:space-y-5 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900"
     >
       <!-- Нет выбранного канала -->
       <div v-if="!props.roomId" class="flex flex-col items-center justify-center h-full text-slate-400 px-4">
@@ -541,7 +541,7 @@ watch(
     </div>
 
     <!-- Поле ввода -->
-    <div v-if="props.roomId" class="p-3 sm:p-4 border-t border-slate-800 bg-slate-800/50 backdrop-blur-sm safe-area-inset-bottom">
+    <div v-if="props.roomId" class="p-3 sm:p-4 2xl:p-5 4k:p-6 border-t border-slate-800 bg-slate-800/50 backdrop-blur-sm safe-area-inset-bottom">
       <div class="flex gap-2 items-end">
         <div class="flex-1 relative">
           <textarea

@@ -96,8 +96,8 @@ function selectMicrophone(deviceId: string) {
 </script>
 
 <template>
-  <div class="p-2 sm:p-4 bg-slate-900/50 border-t border-slate-800">
-    <div class="flex items-center justify-center gap-2 sm:gap-4 flex-wrap">
+  <div class="p-2 sm:p-4 2xl:p-5 4k:p-6 5xl:p-8 bg-slate-900/50 border-t border-slate-800">
+    <div class="flex items-center justify-center gap-2 sm:gap-4 2xl:gap-5 4k:gap-6 flex-wrap">
       <div class="relative flex items-center">
         <!-- Основная кнопка включения/выключения видео -->
         <button
@@ -224,7 +224,7 @@ function selectMicrophone(deviceId: string) {
       </button>
     </div>
 
-    <div class="mt-2 sm:mt-4 text-center text-xs sm:text-sm text-slate-400 px-2">
+    <div class="mt-2 sm:mt-4 4k:mt-5 text-center text-xs sm:text-sm 4k:text-base text-slate-400 px-2">
       <p>Участников: {{ remotePeers.length + 1 }}</p>
     </div>
   </div>

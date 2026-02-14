@@ -1,5 +1,15 @@
 @import 'tailwindcss';
 
+/* Breakpoints для больших экранов вплоть до 4K (Tailwind v4) */
+@theme {
+  /* 1920px (Full HD+) */
+  --breakpoint-3xl: 120rem;
+  /* 2560px (2K / QHD) */
+  --breakpoint-4k: 160rem;
+  /* 3840px (4K Ultra HD) */
+  --breakpoint-5xl: 240rem;
+}
+
 /* Регулярный шрифт */
 @font-face {
   font-family: 'Inter';
@@ -108,6 +118,14 @@ html {
   ::-webkit-scrollbar {
     width: 4px;
     height: 4px;
+  }
+}
+
+/* Scrollbars для больших экранов (2K/4K) — чуть шире для удобства */
+@media (min-width: 2560px) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
   }
 }
 

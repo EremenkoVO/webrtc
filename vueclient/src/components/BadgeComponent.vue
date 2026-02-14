@@ -21,7 +21,7 @@ defineProps<{
       :icon="faMicrophoneSlash"
       class="mr-2 text-red-400 flex-shrink-0"
     />
-    <span class="truncate max-w-[200px]">{{ name }}</span>
+    <span class="truncate max-w-[200px] 2xl:max-w-[240px] 4k:max-w-[280px]">{{ name }}</span>
     <FontAwesomeIcon
       v-if="speaking"
       :icon="faMicrophone"

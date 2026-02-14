@@ -163,12 +163,12 @@ watch(
         ? sidebarStore.isOpen
           ? 'translate-x-0 w-[320px]'
           : '-translate-x-full w-[320px]'
-        : 'translate-x-0 w-[280px] xl:w-[320px]',
+        : 'translate-x-0 w-[280px] xl:w-[320px] 2xl:w-[340px] 3xl:w-[360px] 4k:w-[380px] 5xl:w-[400px]',
     ]"
   >
     <!-- Header -->
     <header
-      class="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900/50 flex-shrink-0"
+      class="flex items-center justify-between p-4 2xl:p-5 4k:p-6 border-b border-slate-800 bg-slate-900/50 flex-shrink-0"
     >
       <div class="flex items-center gap-3 min-w-0 flex-1">
         <div
@@ -192,7 +192,7 @@ watch(
     </header>
 
     <!-- Search and Actions -->
-    <div class="p-3 border-b border-slate-800 space-y-2 flex-shrink-0">
+    <div class="p-3 2xl:p-4 4k:p-5 border-b border-slate-800 space-y-2 flex-shrink-0">
       <!-- Поиск -->
       <div class="relative">
         <FontAwesomeIcon
