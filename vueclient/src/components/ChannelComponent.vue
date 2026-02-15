@@ -558,12 +558,12 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- Если в звонке -->
-      <div v-else class="flex flex-col h-full overflow-hidden">
+      <!-- Если в звонке: на мобильном — контент в один столбец со скроллом, на sm+ — деление по высоте -->
+      <div v-else class="flex flex-col min-h-0 h-auto sm:h-full overflow-hidden">
         <!-- Видео стримы (только когда включены) -->
         <div
           v-if="peersWithVideo.length > 0"
-          class="flex flex-wrap justify-center items-center gap-2 sm:gap-4 p-2 sm:p-4 transition-all duration-300"
+          class="flex-shrink-0 sm:flex-1 sm:min-h-0 flex flex-wrap justify-center content-center items-center gap-2 sm:gap-4 p-2 sm:p-4 transition-all duration-300"
         >
           <template v-for="(peer, index) in peersWithVideo" :key="peer.peerId || index">
             <div
@@ -606,19 +606,19 @@ onBeforeUnmount(() => {
           </template>
         </div>
 
-        <!-- Список участников без видео -->
+        <!-- Список участников без видео: на мобильном — гарантированная высота и скролл, на sm+ — половина экрана -->
         <div
           v-if="peersWithoutVideo.length > 0"
-          class="flex-1 overflow-y-auto p-2 sm:p-4"
+          class="flex-shrink-0 sm:flex-1 min-h-[180px] sm:min-h-0 overflow-y-auto p-2 sm:p-4 flex flex-col"
         >
-          <div class="max-w-6xl mx-auto">
+          <div class="max-w-6xl mx-auto w-full flex flex-col justify-center min-h-full sm:min-h-0">
             <h3
               v-if="peersWithVideo.length > 0"
               class="text-sm font-semibold text-slate-400 mb-3 px-2"
             >
               Участники
             </h3>
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 place-content-center">
               <template v-for="(participant, index) in peersWithoutVideo" :key="participant.peerId || index">
                 <ParticipantCard
                   :name="participant.name"

@@ -2,6 +2,7 @@ node_modules
 webrtc-vue/node_modules
 server/node_modules
 chatserver/node_modules
+electron-client/release
 cert
 .claude
 **/__pycache__/
