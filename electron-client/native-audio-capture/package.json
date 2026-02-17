@@ -1,0 +1,29 @@
+{
+  "name": "native-audio-capture",
+  "version": "0.1.0",
+  "description": "Native module for per-application audio capture",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "build": "cargo build --release && npm run postbuild",
+    "build:debug": "cargo build",
+    "postbuild": "node scripts/copy-module.js",
+    "install": "npm run build",
+    "test": "cargo test"
+  },
+  "keywords": [
+    "audio",
+    "capture",
+    "native",
+    "electron",
+    "webrtc"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

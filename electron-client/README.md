@@ -1,10 +1,10 @@
 # WebRTC Desktop Client
 
-Десктопное приложение WebRTC для Windows, Linux и macOS на базе Electron и React.
+Десктопное приложение WebRTC для Windows, Linux и macOS на базе Electron и Vue.js.
 
 ## Требования
 
-- Node.js 18+
+- Node.js 20.19.0+ или 22.12.0+
 - Бэкенд API (например, из этого репозитория) должен быть запущен (по умолчанию `http://localhost:3000`)
 
 ## Установка
@@ -15,7 +15,7 @@ npm install
 
 ## Запуск в режиме разработки
 
-Соберите главный процесс Electron и запустите приложение с горячей перезагрузкой React:
+Соберите главный процесс Electron и запустите приложение с горячей перезагрузкой Vue:
 
 ```bash
 npm run electron:dev

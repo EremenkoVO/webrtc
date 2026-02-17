@@ -1,8 +1,13 @@
+/* generated using openapi-typescript-codegen -- do not edit */
+/* istanbul ignore file */
+/* tslint:disable */
+/* eslint-disable */
 export class CancelError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'CancelError'
   }
+
   public get isCancelled(): boolean {
     return true
   }
@@ -12,34 +17,70 @@ export interface OnCancel {
   readonly isResolved: boolean
   readonly isRejected: boolean
   readonly isCancelled: boolean
+
   (cancelHandler: () => void): void
 }
 
 export class CancelablePromise<T> implements Promise<T> {
-  #isResolved = false
-  #isRejected = false
-  #isCancelled = false
-  readonly #cancelHandlers: (() => void)[] = []
+  #isResolved: boolean
+  #isRejected: boolean
+  #isCancelled: boolean
+  readonly #cancelHandlers: (() => void)[]
   readonly #promise: Promise<T>
-  #reject?: (reason?: unknown) => void
+  #resolve?: (value: T | PromiseLike<T>) => void
+  #reject?: (reason?: any) => void
 
   constructor(
     executor: (
       resolve: (value: T | PromiseLike<T>) => void,
-      reject: (reason?: unknown) => void,
-      onCancel: OnCancel
-    ) => void
+      reject: (reason?: any) => void,
+      onCancel: OnCancel,
+    ) => void,
   ) {
+    this.#isResolved = false
+    this.#isRejected = false
+    this.#isCancelled = false
+    this.#cancelHandlers = []
     this.#promise = new Promise<T>((resolve, reject) => {
+      this.#resolve = resolve
       this.#reject = reject
+
+      const onResolve = (value: T | PromiseLike<T>): void => {
+        if (this.#isResolved || this.#isRejected || this.#isCancelled) {
+          return
+        }
+        this.#isResolved = true
+        if (this.#resolve) this.#resolve(value)
+      }
+
+      const onReject = (reason?: any): void => {
+        if (this.#isResolved || this.#isRejected || this.#isCancelled) {
+          return
+        }
+        this.#isRejected = true
+        if (this.#reject) this.#reject(reason)
+      }
+
       const onCancel = (cancelHandler: () => void): void => {
-        if (this.#isResolved || this.#isRejected || this.#isCancelled) return
+        if (this.#isResolved || this.#isRejected || this.#isCancelled) {
+          return
+        }
         this.#cancelHandlers.push(cancelHandler)
       }
-      Object.defineProperty(onCancel, 'isResolved', { get: () => this.#isResolved })
-      Object.defineProperty(onCancel, 'isRejected', { get: () => this.#isRejected })
-      Object.defineProperty(onCancel, 'isCancelled', { get: () => this.#isCancelled })
-      executor(resolve, reject, onCancel as OnCancel)
+
+      Object.defineProperty(onCancel, 'isResolved', {
+        get: (): boolean => this.#isResolved,
+      })
+
+      Object.defineProperty(onCancel, 'isRejected', {
+        get: (): boolean => this.#isRejected,
+      })
+
+      Object.defineProperty(onCancel, 'isCancelled', {
+        get: (): boolean => this.#isCancelled,
+      })
+
+      return executor(onResolve, onReject, onCancel as OnCancel)
     })
   }
 
@@ -47,38 +88,43 @@ export class CancelablePromise<T> implements Promise<T> {
     return 'Cancellable Promise'
   }
 
-  then<TResult1 = T, TResult2 = never>(
+  public then<TResult1 = T, TResult2 = never>(
     onFulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
-    onRejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+    onRejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
     return this.#promise.then(onFulfilled, onRejected)
   }
 
-  catch<TResult = never>(
-    onRejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null
+  public catch<TResult = never>(
+    onRejected?: ((reason: any) => TResult | PromiseLike<TResult>) | null,
   ): Promise<T | TResult> {
     return this.#promise.catch(onRejected)
   }
 
-  finally(onFinally?: (() => void) | null): Promise<T> {
+  public finally(onFinally?: (() => void) | null): Promise<T> {
     return this.#promise.finally(onFinally)
   }
 
-  cancel(): void {
-    if (this.#isResolved || this.#isRejected || this.#isCancelled) return
+  public cancel(): void {
+    if (this.#isResolved || this.#isRejected || this.#isCancelled) {
+      return
+    }
     this.#isCancelled = true
-    for (const h of this.#cancelHandlers) {
+    if (this.#cancelHandlers.length) {
       try {
-        h()
-      } catch (e) {
-        console.warn('Cancel handler error', e)
+        for (const cancelHandler of this.#cancelHandlers) {
+          cancelHandler()
+        }
+      } catch (error) {
+        console.warn('При отмене возникла ошибка', error)
+        return
       }
     }
     this.#cancelHandlers.length = 0
-    this.#reject?.(new CancelError('Request aborted'))
+    if (this.#reject) this.#reject(new CancelError('Request aborted'))
   }
 
-  get isCancelled(): boolean {
+  public get isCancelled(): boolean {
     return this.#isCancelled
   }
 }

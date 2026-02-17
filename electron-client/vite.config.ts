@@ -1,9 +1,12 @@
-import react from '@vitejs/plugin-react';
+import { fileURLToPath, URL } from 'node:url'
 import path from 'path';
-import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite'
+import vue from '@vitejs/plugin-vue'
+import { defineConfig } from 'vite'
+import vueDevTools from 'vite-plugin-vue-devtools'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [vue(), vueDevTools(), tailwindcss()],
   base: './',
   root: path.resolve(__dirname),
   build: {
@@ -12,7 +15,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   server: {
