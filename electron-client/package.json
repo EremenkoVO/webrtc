@@ -7,13 +7,14 @@
   "license": "ISC",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p electron/tsconfig.json && tsc && vite build && electron-builder",
-    "electron:dev": "tsc -p electron/tsconfig.json && concurrently \"vite\" \"wait-on http://localhost:5177 && electron .\"",
-    "build:win": "tsc -p electron/tsconfig.json && tsc && vite build && electron-builder --win",
-    "build:mac": "tsc -p electron/tsconfig.json && tsc && vite build && electron-builder --mac",
-    "build:linux": "tsc -p electron/tsconfig.json && tsc && vite build && electron-builder --linux",
+    "native:build": "cd native-audio-capture && npm install",
+    "build": "npm run native:build && tsc -p electron/tsconfig.json && tsc && vite build && electron-builder",
+    "electron:dev": "npm run native:build && tsc -p electron/tsconfig.json && concurrently \"vite\" \"wait-on http://localhost:5177 && electron .\"",
+    "build:win": "npm run native:build && tsc -p electron/tsconfig.json && tsc && vite build && electron-builder --win",
+    "build:mac": "npm run native:build && tsc -p electron/tsconfig.json && tsc && vite build && electron-builder --mac",
+    "build:linux": "npm run native:build && tsc -p electron/tsconfig.json && tsc && vite build && electron-builder --linux",
     "preview": "vite preview",
-    "electron:build": "tsc -p electron/tsconfig.json && vite build && electron-builder"
+    "electron:build": "npm run native:build && tsc -p electron/tsconfig.json && vite build && electron-builder"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.0.1",
@@ -59,7 +60,10 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "native-audio-capture/index.js",
+      "native-audio-capture/package.json",
+      "native-audio-capture/build/Release/stream_audio.node"
     ],
     "win": {
       "target": [

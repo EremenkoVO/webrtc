@@ -8,7 +8,18 @@
       "Read(/E:\\Projects\\webrtc\\server\\websocket/**)",
       "Read(/E:\\Projects\\webrtc\\server\\websocket/**)",
       "Read(/E:\\Projects\\webrtc\\webrtc-vue\\src\\composables/**)",
-      "Read(/E:\\Projects\\webrtc\\webrtc-vue\\src\\composables/**)"
+      "Read(/E:\\Projects\\webrtc\\webrtc-vue\\src\\composables/**)",
+      "Bash(pkg-config:*)",
+      "Bash(brew list:*)",
+      "Bash(brew --prefix:*)",
+      "Bash(node -e:*)",
+      "Bash(sw_vers:*)",
+      "Bash(/tmp/test_coreaudio2.m:*)",
+      "Bash(clang:*)",
+      "Bash(/tmp/test_coreaudio2:*)",
+      "Bash(/tmp/check_include.cpp:*)",
+      "Bash(clang++:*)",
+      "Bash(/tmp/check_include:*)"
     ],
     "deny": [],
     "ask": []

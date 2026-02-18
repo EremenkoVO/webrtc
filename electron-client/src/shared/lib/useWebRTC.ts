@@ -706,15 +706,43 @@ export function useWebRTC() {
       const screenVideoTrack = screenStream.getVideoTracks()[0]
       if (!screenVideoTrack) throw new Error('No screen video track')
       
-      // Get audio track from screen stream if system or application audio is requested
-      // In browser, both will work the same way - capturing audio from the selected source
-      // In Electron, audio will be captured if supported by the platform
+      // Get audio track from screen stream if system or application audio is requested.
+      // On macOS, Electron loopback is unavailable so screenStream has no audio track;
+      // the native module fills the gap via startAudioCapture(0) + onAudioData IPC.
       let screenAudioTrack: MediaStreamTrack | null = null
       if (options?.audioSource === 'system' || options?.audioSource === 'application') {
         screenAudioTrack = screenStream.getAudioTracks()[0] || null
         if (screenAudioTrack) {
-          // Use 'screen' hint for system audio, 'music' for application audio
           screenAudioTrack.contentHint = options?.audioSource === 'system' ? 'screen' : 'music'
+        }
+
+        // macOS fallback: if Electron loopback produced no audio track, use the native
+        // module to capture system audio (pid=0).  main.ts starts the capture automatically
+        // when screen sharing on macOS, so we just need to pipe the PCM into a MediaStreamTrack.
+        const isMacOS = window.electronAPI?.platform === 'darwin'
+        if (!screenAudioTrack && isMacOS && window.electronAPI?.audioCapture) {
+          try {
+            if (applicationAudioStream) {
+              applicationAudioStream.stop()
+              applicationAudioStream = null
+            }
+            // Request system loopback (pid=0); main.ts already started capture.
+            // We just subscribe to the audio-data IPC events it emits.
+            applicationAudioStream = new PCMAudioStream()
+            const nativeTrack = applicationAudioStream.getTrack()
+            nativeTrack.contentHint = options?.audioSource === 'system' ? 'screen' : 'music'
+
+            window.electronAPI.audioCapture.removeAudioDataListener()
+            window.electronAPI.audioCapture.onAudioData((data: Float32Array) => {
+              if (applicationAudioStream) applicationAudioStream.addAudioData(data)
+            })
+
+            screenAudioTrack = nativeTrack
+            activeScreenAudioTrack = nativeTrack
+            console.log('[useWebRTC] macOS: using native audio capture for screen share')
+          } catch (err) {
+            console.warn('[useWebRTC] macOS native audio fallback failed:', err)
+          }
         }
       }
 

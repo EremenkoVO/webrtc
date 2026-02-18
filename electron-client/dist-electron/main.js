@@ -105,6 +105,35 @@ electron_1.app.whenReady().then(() => {
     // ── Audio capture from applications (native module) ──────────────────────
     let audioCapture = null;
     let audioCapturePolling = false;
+    // Polling loop — shared by the IPC handler and the macOS screen-share path.
+    const startAudioPoll = () => {
+        const poll = async () => {
+            if (!audioCapturePolling || !audioCapture)
+                return;
+            try {
+                const audioData = await audioCapture.getAllAudioData();
+                if (audioData && audioData.length > 0) {
+                    const win = electron_1.BrowserWindow.getAllWindows()[0];
+                    if (win && !win.isDestroyed()) {
+                        if (Math.random() < 0.01) {
+                            console.log(`[AudioCapture] Sending ${audioData.length} samples`);
+                        }
+                        win.webContents.send('audio-data', audioData);
+                    }
+                }
+                if (audioCapturePolling)
+                    setTimeout(poll, 10);
+            }
+            catch (error) {
+                console.error('[AudioCapture] Poll error:', error);
+                const win = electron_1.BrowserWindow.getAllWindows()[0];
+                if (win && !win.isDestroyed())
+                    win.webContents.send('audio-capture-error', error.message);
+                audioCapturePolling = false;
+            }
+        };
+        setTimeout(poll, 10);
+    };
     // Регистрируем handlers всегда, даже если модуль не загружен
     electron_1.ipcMain.handle('get-audio-applications', async () => {
         try {
@@ -132,9 +161,9 @@ electron_1.app.whenReady().then(() => {
             if (!audioCapture) {
                 return { success: false, error: 'Audio capture not initialized' };
             }
-            // Убеждаемся, что PID является числом
+            // Убеждаемся, что PID является числом (0 = system loopback, разрешён)
             const pidNum = Number(pid);
-            if (isNaN(pidNum) || pidNum <= 0) {
+            if (isNaN(pidNum) || pidNum < 0) {
                 console.error('[AudioCapture] Invalid PID:', pid);
                 return { success: false, error: `Invalid PID: ${pid}` };
             }
@@ -142,43 +171,8 @@ electron_1.app.whenReady().then(() => {
             audioCapturePolling = false;
             console.log('[AudioCapture] Starting capture for PID:', pidNum);
             await audioCapture.startCapture(pidNum);
-            // Запустить цикл получения аудио данных и отправки в renderer
-            const mainWindow = electron_1.BrowserWindow.getAllWindows()[0];
-            if (!mainWindow) {
-                return { success: false, error: 'Main window not found' };
-            }
             audioCapturePolling = true;
-            // Функция для получения и отправки аудио данных
-            const pollAudioData = async () => {
-                if (!audioCapturePolling || !audioCapture) {
-                    return;
-                }
-                try {
-                    // Собираем все доступные данные за один цикл
-                    const audioData = await audioCapture.getAllAudioData();
-                    if (audioData && audioData.length > 0) {
-                        // Логируем размер данных для диагностики (только периодически)
-                        if (Math.random() < 0.01) { // ~1% вызовов
-                            console.log(`[AudioCapture] Sending ${audioData.length} samples (${(audioData.length / 2).toFixed(0)} frames)`);
-                        }
-                        mainWindow.webContents.send('audio-data', audioData);
-                    }
-                    // Продолжаем опрос, если захват активен
-                    // Используем более частый polling (10ms) для меньшей задержки
-                    if (audioCapturePolling) {
-                        setTimeout(pollAudioData, 10); // ~100 FPS для плавности
-                    }
-                }
-                catch (error) {
-                    console.error('Error polling audio data:', error);
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('audio-capture-error', error.message);
-                    }
-                    audioCapturePolling = false;
-                }
-            };
-            // Начать опрос аудио данных
-            setTimeout(pollAudioData, 10);
+            startAudioPoll();
             return { success: true };
         }
         catch (error) {
@@ -377,16 +371,11 @@ electron_1.app.whenReady().then(() => {
                 const result = {
                     video: selectedSource,
                 };
-                // Устанавливаем аудио в зависимости от платформы
-                // На macOS для system audio можно использовать loopback (требует виртуальный драйвер)
-                // Для application audio на macOS используется нативный модуль, поэтому НЕ устанавливаем loopback
-                // чтобы избежать захвата системного звука (включая микрофон) через Electron
+                // Windows / Linux: use Electron's built-in loopback.
+                // macOS: loopback would capture the mic too; native module handles audio instead.
                 if (includeAudio && process.platform !== 'darwin') {
-                    // На Windows/Linux можно использовать loopback для системного звука
                     result.audio = 'loopback';
                 }
-                // На macOS не устанавливаем audio здесь - нативный модуль обработает захват приложения
-                // Если установить 'loopback', Electron будет захватывать весь системный звук (включая микрофон)
                 console.log('[ScreenShare] ✓ Source selected, calling callback with result:', {
                     hasVideo: !!result.video,
                     videoId: result.video?.id,
@@ -401,6 +390,22 @@ electron_1.app.whenReady().then(() => {
                     console.log('[ScreenShare] Calling safeCallback with selected source');
                     sourceSelectionInProgress = false;
                     safeCallback(result);
+                    // macOS: Electron loopback isn't available; start native system-audio capture.
+                    if (includeAudio && process.platform === 'darwin' && audioCapture) {
+                        (async () => {
+                            try {
+                                audioCapturePolling = false;
+                                console.log('[ScreenShare] macOS: starting native system-audio capture (pid=0)');
+                                await audioCapture.startCapture(0);
+                                audioCapturePolling = true;
+                                startAudioPoll();
+                                console.log('[ScreenShare] macOS: native audio capture started');
+                            }
+                            catch (err) {
+                                console.warn('[ScreenShare] macOS native audio capture failed:', err);
+                            }
+                        })();
+                    }
                 }, 100);
             };
             console.log('[ScreenShare] Registering IPC handler for:', handlerId);

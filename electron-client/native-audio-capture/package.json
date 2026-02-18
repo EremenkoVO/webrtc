@@ -1,29 +1,18 @@
 {
   "name": "native-audio-capture",
-  "version": "0.1.0",
-  "description": "Native module for per-application audio capture",
+  "version": "1.0.0",
+  "description": "Native C++ audio capture for Electron — WASAPI / CoreAudio / PipeWire + Opus encoding",
   "main": "index.js",
-  "types": "index.d.ts",
   "scripts": {
-    "build": "cargo build --release && npm run postbuild",
-    "build:debug": "cargo build",
-    "postbuild": "node scripts/copy-module.js",
-    "install": "npm run build",
-    "test": "cargo test"
+    "preinstall": "node scripts/detect_opus.js",
+    "install": "node-gyp rebuild",
+    "build": "node scripts/detect_opus.js && node-gyp rebuild",
+    "build:debug": "node scripts/detect_opus.js && node-gyp rebuild --debug",
+    "clean": "node-gyp clean && node -e \"try{require('fs').unlinkSync('config.gypi')}catch(_){}\"",
+    "rebuild": "npm run clean && npm run build"
   },
-  "keywords": [
-    "audio",
-    "capture",
-    "native",
-    "electron",
-    "webrtc"
-  ],
-  "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "@types/node": "^22.0.0"
+  "dependencies": {
+    "node-addon-api": "^8.3.0"
   },
-  "engines": {
-    "node": ">=18"
-  }
+  "gypfile": true
 }
