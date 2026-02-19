@@ -83,6 +83,25 @@ body {
 
 button {
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+/* Buttons inside input fields should not scale on active */
+.relative button:active {
+  transform: none;
+}
+
+/* Smooth transitions for interactive elements */
+a,
+input,
+textarea,
+select {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 button:focus-visible,
@@ -91,7 +110,39 @@ textarea:focus-visible,
 select:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--color-dc-blurple);
-  outline-offset: -2px;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(88, 101, 242, 0.2);
+}
+
+/* Improved shadows for depth */
+.shadow-elevation-1 {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.shadow-elevation-2 {
+  box-shadow:
+    0 3px 6px rgba(0, 0, 0, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.24);
+}
+
+.shadow-elevation-3 {
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.4),
+    0 3px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Smooth hover effects */
+.hover-lift {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* Discord-style scrollbar */
@@ -123,17 +174,54 @@ a:focus-visible {
   width: 4px;
 }
 
+/* Ensure buttons inside input fields are properly positioned */
+.relative button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
 /* Mobile */
 @media (max-width: 640px) {
   * {
     -webkit-tap-highlight-color: transparent;
   }
-  button, a {
+  button,
+  a {
     touch-action: manipulation;
     -webkit-touch-callout: none;
     user-select: none;
   }
-  input, textarea {
-    font-size: 16px;
+  input,
+  textarea {
+    font-size: 18px;
+    padding: 14px 16px;
+  }
+  
+  /* Larger text for mobile */
+  h2 {
+    font-size: 1.75rem;
+  }
+  
+  /* Larger labels */
+  label {
+    font-size: 0.875rem;
+  }
+  
+  /* Larger buttons */
+  button[type="submit"] {
+    padding: 14px 20px;
+    font-size: 18px;
+  }
+  
+  /* Larger form spacing */
+  form.space-y-5 > * + * {
+    margin-top: 1.5rem;
+  }
+  
+  /* Larger text in paragraphs */
+  p {
+    font-size: 1rem;
   }
 }

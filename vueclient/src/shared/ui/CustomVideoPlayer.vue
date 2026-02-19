@@ -12,20 +12,30 @@ const props = withDefaults(
     autoplay?: boolean
     playsinline?: boolean
     showControls?: boolean
+    hasMicAudio?: boolean
+    hasScreenAudio?: boolean
+    micVolume?: number
+    screenVolume?: number
   }>(),
   {
     muted: false,
     autoplay: true,
     playsinline: true,
     showControls: true,
+    hasMicAudio: false,
+    hasScreenAudio: false,
+    micVolume: 1,
+    screenVolume: 1,
   },
 )
 
 const emit = defineEmits<{
   (e: 'play'): void
   (e: 'pause'): void
-  (e: 'volumechange', volume: number): void
   (e: 'fullscreenchange', isFullscreen: boolean): void
+  (e: 'contextmenu', event: MouseEvent): void
+  (e: 'micVolumeChange', volume: number): void
+  (e: 'screenVolumeChange', volume: number): void
 }>()
 
 const videoRef = ref<HTMLVideoElement | null>(null)
@@ -33,9 +43,10 @@ const containerRef = ref<HTMLElement | null>(null)
 const controlsVisible = ref(false)
 const isPlaying = ref(false)
 const isFullscreen = ref(false)
-const volume = ref(1)
-const showVolumeSlider = ref(false)
 const controlsTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
+const isHovering = ref(false)
+const showMicVolumeSlider = ref(false)
+const showScreenVolumeSlider = ref(false)
 
 const isLive = computed(() => {
   if (!videoRef.value) return true
@@ -75,15 +86,38 @@ function showControls() {
 }
 
 function hideControls() {
-  if (showVolumeSlider.value) return
+  if (isHovering.value || showMicVolumeSlider.value || showScreenVolumeSlider.value) return
   controlsVisible.value = false
 }
 
 function resetControlsTimeout() {
   if (controlsTimeout.value) clearTimeout(controlsTimeout.value)
+  // В полноэкранном режиме элементы управления остаются видимыми дольше
+  const timeout = isFullscreen.value ? 5000 : 3000
   controlsTimeout.value = setTimeout(() => {
-    hideControls()
-  }, 3000)
+    if (!isHovering.value && !showMicVolumeSlider.value && !showScreenVolumeSlider.value) {
+      hideControls()
+    }
+  }, timeout)
+}
+
+function handleMouseEnter() {
+  isHovering.value = true
+  showControls()
+}
+
+function handleMouseLeave() {
+  isHovering.value = false
+  if (!showMicVolumeSlider.value && !showScreenVolumeSlider.value) {
+    resetControlsTimeout()
+  }
+}
+
+function handleMouseMove() {
+  if (!isHovering.value) {
+    isHovering.value = true
+  }
+  showControls()
 }
 
 function togglePlay() {
@@ -118,24 +152,25 @@ function toggleFullscreen() {
   }
 }
 
-function handleVolumeInput(e: Event) {
-  const target = e.target as HTMLInputElement
-  const newVolume = Number(target.value) / 100
-  volume.value = newVolume
-  if (videoRef.value) {
-    videoRef.value.volume = newVolume
-  }
-  emit('volumechange', newVolume)
-}
-
-function toggleMute() {
-  if (!videoRef.value) return
-  videoRef.value.muted = !videoRef.value.muted
-}
-
 function handleFullscreenChange() {
   isFullscreen.value = !!document.fullscreenElement
   emit('fullscreenchange', isFullscreen.value)
+  // Показываем элементы управления при входе в полноэкранный режим
+  if (isFullscreen.value && props.showControls) {
+    showControls()
+  }
+}
+
+function handleMicVolumeInput(e: Event) {
+  const target = e.target as HTMLInputElement
+  const newVolume = Number(target.value) / 100
+  emit('micVolumeChange', newVolume)
+}
+
+function handleScreenVolumeInput(e: Event) {
+  const target = e.target as HTMLInputElement
+  const newVolume = Number(target.value) / 100
+  emit('screenVolumeChange', newVolume)
 }
 
 watch(
@@ -143,6 +178,7 @@ watch(
   (stream) => {
     if (videoRef.value && stream) {
       videoRef.value.srcObject = stream
+      videoRef.value.muted = true // Always mute video element for audio (handled by parent)
     }
   },
   { immediate: true },
@@ -180,11 +216,6 @@ watch(
         duration.value = videoEl.duration || 0
       }
     })
-    videoEl.addEventListener('volumechange', () => {
-      if (videoEl) {
-        volume.value = videoEl.volume
-      }
-    })
   },
   { immediate: true },
 )
@@ -213,9 +244,10 @@ onBeforeUnmount(() => {
   <div
     ref="containerRef"
     class="relative w-full h-full bg-black overflow-hidden group"
-    @mouseenter="showControls"
-    @mousemove="showControls"
-    @mouseleave="hideControls"
+    @mouseenter="handleMouseEnter"
+    @mousemove="handleMouseMove"
+    @mouseleave="handleMouseLeave"
+    @contextmenu="(e) => emit('contextmenu', e)"
   >
     <video
       ref="videoRef"
@@ -227,19 +259,17 @@ onBeforeUnmount(() => {
     <!-- Controls overlay -->
     <Transition name="fade">
       <div
-        v-if="controlsVisible || showVolumeSlider"
+        v-if="controlsVisible || showMicVolumeSlider || showScreenVolumeSlider"
         class="absolute inset-0 z-10 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none"
       >
         <!-- Progress bar (only for non-live) -->
         <div
           v-if="!isLive && duration > 0"
-          class="w-full h-1 bg-white/20 cursor-pointer pointer-events-auto"
+          class="w-full bg-white/20 cursor-pointer pointer-events-auto transition-opacity duration-200"
+          :class="{ 'h-1': !isFullscreen, 'h-2': isFullscreen }"
           @click="handleSeek"
         >
-          <div
-            class="h-full bg-dc-blurple transition-all"
-            :style="{ width: `${progress}%` }"
-          />
+          <div class="h-full bg-dc-blurple transition-all" :style="{ width: `${progress}%` }" />
         </div>
 
         <!-- Controls bar -->
@@ -248,61 +278,134 @@ onBeforeUnmount(() => {
           <button
             v-if="!isLive"
             @click="togglePlay"
-            class="w-8 h-8 flex items-center justify-center text-white hover:text-dc-blurple transition-colors"
+            class="w-12 h-12 2xl:w-14 2xl:h-14 flex items-center justify-center text-white hover:text-dc-blurple transition-colors rounded-full hover:bg-white/10"
+            :class="{ 'w-14 h-14 2xl:w-16 2xl:h-16': isFullscreen }"
           >
-            <font-awesome-icon :icon="isPlaying ? 'pause' : 'play'" class="text-sm" />
+            <font-awesome-icon
+              :icon="isPlaying ? 'pause' : 'play'"
+              :class="isFullscreen ? 'text-xl 2xl:text-2xl' : 'text-lg 2xl:text-xl'"
+            />
           </button>
 
           <!-- Time -->
-          <div v-if="!isLive && duration > 0" class="text-xs text-white/80 font-mono min-w-[80px]">
+          <div
+            v-if="!isLive && duration > 0"
+            class="text-xs text-white/80 font-mono min-w-[80px]"
+            :class="{ 'text-sm': isFullscreen }"
+          >
             {{ formattedTime.current }} / {{ formattedTime.total }}
           </div>
-          <div v-else-if="isLive" class="flex items-center gap-1.5 text-xs text-dc-red font-semibold">
-            <div class="w-2 h-2 bg-dc-red rounded-full animate-pulse" />
+          <div
+            v-else-if="isLive"
+            class="flex items-center gap-1.5 text-xs text-dc-red font-semibold"
+            :class="{ 'text-sm': isFullscreen }"
+          >
+            <div
+              class="w-2 h-2 bg-dc-red rounded-full animate-pulse"
+              :class="{ 'w-2.5 h-2.5': isFullscreen }"
+            />
             LIVE
           </div>
 
           <div class="flex-1" />
 
-          <!-- Volume -->
-          <div
-            class="relative flex items-center gap-2"
-            @mouseenter="showVolumeSlider = true"
-            @mouseleave="showVolumeSlider = false"
-          >
-            <button
-              @click="toggleMute"
-              class="w-8 h-8 flex items-center justify-center text-white hover:text-dc-blurple transition-colors"
+          <!-- Volume Controls -->
+          <div class="relative flex items-center gap-2">
+            <!-- Mic Volume -->
+            <div
+              v-if="props.hasMicAudio"
+              class="relative flex items-center"
+              @mouseenter="showMicVolumeSlider = true"
+              @mouseleave="showMicVolumeSlider = false"
             >
-              <font-awesome-icon
-                :icon="videoRef?.muted || volume === 0 ? 'volume-mute' : volume < 0.5 ? 'volume-high' : 'volume-high'"
-                class="text-sm"
-              />
-            </button>
-            <Transition name="fade">
-              <div
-                v-if="showVolumeSlider"
-                class="absolute right-0 bottom-full mb-2 px-3 py-2 bg-dc-bg-floating rounded-lg shadow-xl"
+              <button
+                class="w-10 h-10 flex items-center justify-center text-white hover:text-dc-blurple transition-colors rounded-full hover:bg-white/10 flex-shrink-0"
+                :class="{ 'w-12 h-12': isFullscreen }"
+                :title="t('common.micVolume')"
               >
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  :value="Math.round(volume * 100)"
-                  class="w-24 accent-dc-blurple cursor-pointer"
-                  @input="handleVolumeInput"
+                <font-awesome-icon
+                  icon="microphone"
+                  :class="[
+                    isFullscreen ? 'text-lg' : 'text-sm',
+                    props.micVolume === 0 || props.muted ? 'opacity-50' : '',
+                  ]"
                 />
-              </div>
-            </Transition>
+              </button>
+              <Transition name="slide-up">
+                <div
+                  v-if="showMicVolumeSlider"
+                  class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex flex-col items-center px-3 py-2 bg-dc-bg-floating rounded-lg shadow-xl"
+                  :class="{ 'px-4 py-3': isFullscreen }"
+                >
+                  <span class="text-xs text-white/80 mb-1">{{ t('common.micVolume') }}</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    :value="Math.round(props.micVolume * 100)"
+                    class="accent-dc-blurple cursor-pointer"
+                    :class="isFullscreen ? 'w-32 h-2' : 'w-24 h-2'"
+                    @input="handleMicVolumeInput"
+                  />
+                </div>
+              </Transition>
+            </div>
+
+            <!-- Screen Audio Volume -->
+            <div
+              v-if="props.hasScreenAudio"
+              class="relative flex items-center"
+              @mouseenter="showScreenVolumeSlider = true"
+              @mouseleave="showScreenVolumeSlider = false"
+            >
+              <button
+                class="w-10 h-10 flex items-center justify-center text-white hover:text-dc-blurple transition-colors rounded-full hover:bg-white/10 flex-shrink-0"
+                :class="{ 'w-12 h-12': isFullscreen }"
+                :title="t('common.streamVolume')"
+              >
+                <font-awesome-icon
+                  icon="desktop"
+                  :class="[
+                    isFullscreen ? 'text-xl 2xl:text-2xl' : 'text-lg 2xl:text-xl',
+                    props.screenVolume === 0 || props.muted ? 'opacity-50' : '',
+                  ]"
+                />
+              </button>
+              <Transition name="slide-up">
+                <div
+                  v-if="showScreenVolumeSlider"
+                  class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex flex-col items-center px-4 py-3 bg-dc-bg-floating rounded-lg shadow-xl"
+                  :class="{ 'px-5 py-4': isFullscreen }"
+                >
+                  <span class="text-sm 2xl:text-base text-white/80 mb-2">{{
+                    t('common.streamVolume')
+                  }}</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    :value="Math.round(props.screenVolume * 100)"
+                    class="accent-dc-blurple cursor-pointer"
+                    :class="isFullscreen ? 'w-40 h-3' : 'w-32 h-2.5'"
+                    @input="handleScreenVolumeInput"
+                  />
+                </div>
+              </Transition>
+            </div>
           </div>
 
           <!-- Fullscreen -->
           <button
             @click="toggleFullscreen"
-            class="w-8 h-8 flex items-center justify-center text-white hover:text-dc-blurple transition-colors"
+            class="w-12 h-12 2xl:w-14 2xl:h-14 flex items-center justify-center text-white hover:text-dc-blurple transition-colors rounded-full hover:bg-white/10"
+            :class="{ 'w-14 h-14 2xl:w-16 2xl:h-16': isFullscreen }"
           >
-            <font-awesome-icon :icon="isFullscreen ? 'window-restore' : 'window-maximize'" class="text-sm" />
+            <font-awesome-icon
+              :icon="isFullscreen ? 'window-restore' : 'window-maximize'"
+              :class="isFullscreen ? 'text-xl 2xl:text-2xl' : 'text-lg 2xl:text-xl'"
+            />
           </button>
         </div>
       </div>
@@ -318,5 +421,29 @@ onBeforeUnmount(() => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.slide-up-enter-active {
+  transition: all 0.2s ease-out;
+}
+.slide-up-leave-active {
+  transition: all 0.15s ease-in;
+}
+.slide-up-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(20px);
+}
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(20px);
+}
+
+/* Улучшенные стили для полноэкранного режима */
+:deep(.group:fullscreen) {
+  background-color: #000;
+}
+
+:deep(.group:fullscreen video) {
+  object-fit: contain;
 }
 </style>

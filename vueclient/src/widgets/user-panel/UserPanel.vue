@@ -2,9 +2,9 @@
 import { AuthService } from '@/api/index'
 import { useAuthStore } from '@/shared/stores/authStore'
 import SettingsModal from '@/widgets/settings/SettingsModal.vue'
-import { useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 
 const { t } = useI18n()
 
@@ -23,8 +23,16 @@ function getInitials(name: string): string {
 
 function getAvatarColor(name: string): string {
   const colors = [
-    '#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459e',
-    '#57f287', '#fee75c', '#5865f2', '#eb459e', '#ed4245',
+    '#5865f2',
+    '#3ba55c',
+    '#faa61a',
+    '#ed4245',
+    '#eb459e',
+    '#57f287',
+    '#fee75c',
+    '#5865f2',
+    '#eb459e',
+    '#ed4245',
   ]
   let hash = 0
   for (let i = 0; i < name.length; i++) {

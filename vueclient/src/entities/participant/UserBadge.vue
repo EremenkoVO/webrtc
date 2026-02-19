@@ -9,7 +9,7 @@ defineProps<{
 <template>
   <div
     :class="[
-      'absolute flex items-center bottom-2 left-2 bg-dc-bg-floating/80 backdrop-blur-sm px-2 py-1 rounded text-xs transition-all duration-200 gap-1.5',
+      'absolute flex items-center top-2 left-2 bg-dc-bg-floating/80 backdrop-blur-sm px-2 py-1 rounded text-xs transition-all duration-200 gap-1.5 z-20',
       speaking ? 'ring-2 ring-dc-green/60' : '',
     ]"
   >

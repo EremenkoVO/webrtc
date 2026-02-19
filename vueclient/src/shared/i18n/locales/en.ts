@@ -119,6 +119,9 @@ export default {
     fpsNative: 'Native',
     fps60: '60',
     fps30: '30',
+    browserDialogTitle: 'Browser Dialog',
+    browserDialogHint: 'After clicking "Start Sharing", a browser dialog will open where you can select which screen/window to share and whether to include system audio.',
+    streamAudio: 'Stream Audio',
   },
   settings: {
     title: 'Settings',

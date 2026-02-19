@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watchEffect, watch } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -32,16 +32,34 @@ const avatarInitials = computed(() => {
 
 function getAvatarColor(name: string): string {
   const colors = [
-    '#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459e',
-    '#57f287', '#fee75c', '#9b59b6', '#e91e63', '#1abc9c',
+    '#5865f2',
+    '#3ba55c',
+    '#faa61a',
+    '#ed4245',
+    '#eb459e',
+    '#57f287',
+    '#fee75c',
+    '#9b59b6',
+    '#e91e63',
+    '#1abc9c',
   ]
   let hash = 0
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
   return colors[Math.abs(hash) % colors.length]
 }
 
-watch(() => props.isMuted, (v) => { localMuted.value = v })
-watch(() => props.volume, (v) => { if (v !== undefined) localVolume.value = v })
+watch(
+  () => props.isMuted,
+  (v) => {
+    localMuted.value = v
+  },
+)
+watch(
+  () => props.volume,
+  (v) => {
+    if (v !== undefined) localVolume.value = v
+  },
+)
 
 watchEffect(() => {
   if (props.isLocal || !audioRef.value) return
@@ -109,10 +127,7 @@ function handleVolumeInput(event: Event) {
     <!-- Name -->
     <div class="text-xs 2xl:text-sm font-medium text-dc-text truncate max-w-full px-1 text-center">
       {{ isLocal ? `${name} (${t('common.you')})` : name }}
-      <span
-        v-if="isConnecting"
-        class="block text-[10px] text-dc-text-muted mt-0.5"
-      >
+      <span v-if="isConnecting" class="block text-[10px] text-dc-text-muted mt-0.5">
         {{ t('common.connecting') }}
       </span>
     </div>
@@ -125,7 +140,10 @@ function handleVolumeInput(event: Event) {
           localMuted ? 'bg-dc-red/20 text-dc-red' : 'bg-dc-green/15 text-dc-green',
         ]"
       >
-        <font-awesome-icon :icon="localMuted ? 'microphone-slash' : 'microphone'" class="text-[10px]" />
+        <font-awesome-icon
+          :icon="localMuted ? 'microphone-slash' : 'microphone'"
+          class="text-[10px]"
+        />
       </div>
     </div>
 
@@ -133,7 +151,7 @@ function handleVolumeInput(event: Event) {
     <Transition name="fade">
       <div
         v-if="!isLocal && showMenu"
-        class="absolute z-20 top-full left-1/2 -translate-x-1/2 mt-1 bg-dc-bg-floating border border-dc-separator rounded-lg shadow-xl p-3 w-44 flex flex-col gap-2"
+        class="absolute z-20 top-full left-1/2 -translate-x-1/2 mt-1 bg-dc-bg-floating border border-dc-separator rounded shadow-lg p-2 w-40 flex flex-col gap-1.5"
         @click.stop
       >
         <button
@@ -143,9 +161,14 @@ function handleVolumeInput(event: Event) {
           {{ localMuted ? t('common.unmute') : t('common.mute') }}
         </button>
         <div class="flex flex-col gap-1">
-          <span class="text-[10px] uppercase tracking-wide text-dc-text-muted">{{ t('common.volume') }}</span>
+          <span class="text-[10px] uppercase tracking-wide text-dc-text-muted">{{
+            t('common.volume')
+          }}</span>
           <input
-            type="range" min="0" max="100" step="1"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
             :value="Math.round(localVolume * 100)"
             class="accent-dc-blurple cursor-pointer w-full"
             @input="handleVolumeInput"
@@ -158,6 +181,12 @@ function handleVolumeInput(event: Event) {
 </template>
 
 <style scoped>
-.fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 </style>

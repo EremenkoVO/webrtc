@@ -5,26 +5,19 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
 export interface ScreenShareOptions {
-  displaySurface?: 'monitor' | 'application'
   resolution?: { width: number; height: number } | null
   frameRate?: number | null
-  audioSource?: 'system' | 'none'
 }
 
-const props = defineProps<{
-  audioDevices: MediaDeviceInfo[]
-  currentMicrophoneDeviceId: string | null
-}>()
+const props = defineProps<{}>()
 
 const emit = defineEmits<{
   (e: 'start', options: ScreenShareOptions): void
   (e: 'cancel'): void
 }>()
 
-const displaySurface = ref<'monitor' | 'application'>('monitor')
 const resolution = ref<{ width: number; height: number } | null>(null)
 const frameRate = ref<number | null>(null)
-const audioSource = ref<'system' | 'none'>('system')
 
 const resolutions = computed(() => [
   { label: t('screenShare.resolutionNative'), value: null },
@@ -53,10 +46,8 @@ function isResolutionSelected(res: { width: number; height: number } | null): bo
 
 function handleStart() {
   emit('start', {
-    displaySurface: displaySurface.value,
     resolution: resolution.value,
     frameRate: frameRate.value,
-    audioSource: audioSource.value,
   })
 }
 
@@ -84,30 +75,12 @@ function handleCancel() {
 
       <!-- Content -->
       <div class="px-6 py-4 space-y-6 max-h-[70vh] overflow-y-auto">
-        <!-- Display Surface -->
-        <div>
-          <label class="block text-sm font-medium text-dc-text-heading mb-2">
-            {{ t('screenShare.share') }}
-          </label>
-          <div class="flex rounded-md bg-dc-bg-tertiary p-0.5">
-            <button
-              v-for="option in [
-                { value: 'monitor', label: t('screenShare.screen'), icon: 'desktop' },
-                { value: 'application', label: t('screenShare.app'), icon: 'window-restore' },
-              ]"
-              :key="option.value"
-              type="button"
-              @click="displaySurface = option.value as any"
-              :class="[
-                'flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-[5px] text-sm font-medium transition-colors',
-                displaySurface === option.value
-                  ? 'bg-dc-bg-active text-dc-text-heading'
-                  : 'text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover/50',
-              ]"
-            >
-              <font-awesome-icon :icon="option.icon" class="text-sm" />
-              {{ option.label }}
-            </button>
+        <!-- Info message -->
+        <div class="bg-dc-blurple/10 border border-dc-blurple/20 rounded-lg p-3 flex items-start gap-2.5">
+          <font-awesome-icon icon="circle-info" class="text-dc-blurple mt-0.5 flex-shrink-0" />
+          <div class="text-sm text-dc-text">
+            <p class="font-medium text-dc-text-heading mb-1">{{ t('screenShare.browserDialogTitle') }}</p>
+            <p class="text-dc-text-muted">{{ t('screenShare.browserDialogHint') }}</p>
           </div>
         </div>
 
@@ -153,33 +126,6 @@ function handleCancel() {
               ]"
             >
               {{ fr.label }}
-            </button>
-          </div>
-        </div>
-
-        <!-- Audio Source -->
-        <div>
-          <label class="block text-sm font-medium text-dc-text-heading mb-2">
-            {{ t('screenShare.audioSource') }}
-          </label>
-          <div class="flex rounded-md bg-dc-bg-tertiary p-0.5">
-            <button
-              v-for="option in [
-                { value: 'system', label: t('screenShare.systemAudio'), icon: 'volume-high' },
-                { value: 'none', label: t('screenShare.noAudio'), icon: 'volume-mute' },
-              ]"
-              :key="option.value"
-              type="button"
-              @click="audioSource = (option.value as 'system' | 'none')"
-              :class="[
-                'flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-[5px] text-sm font-medium transition-colors',
-                audioSource === option.value
-                  ? 'bg-dc-bg-active text-dc-text-heading'
-                  : 'text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover/50',
-              ]"
-            >
-              <font-awesome-icon :icon="option.icon" class="text-sm" />
-              {{ option.label }}
             </button>
           </div>
         </div>

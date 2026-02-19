@@ -40,10 +40,12 @@ const handleLogin = async () => {
 </script>
 
 <template>
-  <form @submit.prevent="handleLogin" class="space-y-5">
+  <form @submit.prevent="handleLogin" class="space-y-5 sm:space-y-5">
     <div class="text-center mb-2">
-      <h2 class="text-2xl font-bold text-dc-text-heading">{{ t('auth.welcomeBack') }}</h2>
-      <p class="text-dc-text-secondary text-sm mt-1">{{ t('auth.welcomeBackSub') }}</p>
+      <h2 class="text-[1.75rem] sm:text-2xl font-bold text-dc-text-heading">
+        {{ t('auth.welcomeBack') }}
+      </h2>
+      <p class="text-dc-text-secondary text-base sm:text-sm mt-1">{{ t('auth.welcomeBackSub') }}</p>
     </div>
 
     <div
@@ -54,7 +56,9 @@ const handleLogin = async () => {
     </div>
 
     <div class="space-y-1">
-      <label class="block text-xs font-bold uppercase tracking-wide text-dc-text-secondary">
+      <label
+        class="block text-sm sm:text-xs font-bold uppercase tracking-wide text-dc-text-secondary"
+      >
         {{ t('auth.username') }} <span class="text-dc-red">*</span>
       </label>
       <input
@@ -62,12 +66,14 @@ const handleLogin = async () => {
         type="text"
         required
         autocomplete="username"
-        class="w-full px-3 py-2.5 rounded bg-dc-input border-none text-dc-text text-base outline-none focus:ring-2 focus:ring-dc-blurple transition-all"
+        class="w-full px-4 sm:px-3 py-3.5 sm:py-2.5 rounded bg-dc-input border-none text-dc-text text-lg sm:text-base outline-none focus:ring-2 focus:ring-dc-blurple transition-all"
       />
     </div>
 
     <div class="space-y-1">
-      <label class="block text-xs font-bold uppercase tracking-wide text-dc-text-secondary">
+      <label
+        class="block text-sm sm:text-xs font-bold uppercase tracking-wide text-dc-text-secondary"
+      >
         {{ t('auth.password') }} <span class="text-dc-red">*</span>
       </label>
       <div class="relative">
@@ -76,22 +82,26 @@ const handleLogin = async () => {
           :type="showPassword ? 'text' : 'password'"
           required
           autocomplete="current-password"
-          class="w-full px-3 py-2.5 rounded bg-dc-input border-none text-dc-text text-base outline-none focus:ring-2 focus:ring-dc-blurple transition-all pr-16"
+          class="w-full px-4 sm:px-3 py-3.5 sm:py-2.5 rounded bg-dc-input border-none text-dc-text text-lg sm:text-base outline-none focus:ring-2 focus:ring-dc-blurple transition-all pr-14 sm:pr-12"
         />
-        <button
+        <span
           type="button"
           @click="showPassword = !showPassword"
-          class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-dc-text-link hover:underline bg-transparent border-none px-2 py-1"
+          class="absolute right-3 sm:right-2 top-1/2 -translate-y-1/2 text-dc-text-muted hover:text-dc-text transition-colors bg-transparent border-none p-2 sm:p-1.5"
+          :title="showPassword ? t('common.hide') : t('common.show')"
         >
-          {{ showPassword ? t('common.hide') : t('common.show') }}
-        </button>
+          <font-awesome-icon
+            :icon="showPassword ? 'eye-slash' : 'eye'"
+            class="text-lg sm:text-base"
+          />
+        </span>
       </div>
     </div>
 
     <button
       type="submit"
       :disabled="isLoading"
-      class="w-full py-2.5 rounded bg-dc-blurple hover:bg-dc-blurple-hover active:bg-dc-blurple-active disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-base transition-colors"
+      class="w-full py-3.5 sm:py-2.5 rounded bg-dc-blurple hover:bg-dc-blurple-hover active:bg-dc-blurple-active disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-lg sm:text-base transition-colors"
     >
       <svg
         v-if="isLoading"
@@ -109,12 +119,12 @@ const handleLogin = async () => {
       {{ t('auth.login') }}
     </button>
 
-    <p class="text-sm text-dc-text-muted">
+    <p class="text-base sm:text-sm text-dc-text-muted">
       {{ t('auth.needAccount') }}
       <button
         type="button"
         @click="emit('switch')"
-        class="text-dc-text-link hover:underline bg-transparent border-none text-sm"
+        class="text-dc-text-link hover:underline bg-transparent border-none text-base sm:text-sm"
       >
         {{ t('auth.register') }}
       </button>

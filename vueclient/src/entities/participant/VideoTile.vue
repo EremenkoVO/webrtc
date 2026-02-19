@@ -1,8 +1,8 @@
 <!-- eslint-disable @typescript-eslint/no-explicit-any -->
 <script setup lang="ts">
+import CustomVideoPlayer from '@/shared/ui/CustomVideoPlayer.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
-import CustomVideoPlayer from '@/shared/ui/CustomVideoPlayer.vue'
 
 const { t } = useI18n()
 
@@ -12,6 +12,7 @@ const props = defineProps<{
   stream: any
   keyId: string
   muted: boolean | undefined
+  isScreenSharing?: boolean
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
@@ -19,6 +20,7 @@ const videoPlayerRef = ref<InstanceType<typeof CustomVideoPlayer> | null>(null)
 const videoRef = computed(() => videoPlayerRef.value?.videoElement || null)
 const audioRef = ref<HTMLAudioElement | null>(null)
 const audioStreamRef = ref<HTMLAudioElement | null>(null)
+const screenAudioRef = ref<HTMLAudioElement | null>(null)
 const isMuted = ref(Boolean(props.muted))
 const micVolume = ref(1)
 const screenVolume = ref(1)
@@ -28,8 +30,8 @@ const contextMenu = ref({ visible: false, x: 0, y: 0 })
 const menuRef = ref<HTMLElement | null>(null)
 const audioContextRef = ref<AudioContext | null>(null)
 const micGainNode = ref<GainNode | null>(null)
-const screenGainNode = ref<GainNode | null>(null)
 const processedAudioStream = ref<MediaStream | null>(null)
+const screenAudioStream = ref<MediaStream | null>(null)
 const needsActivation = ref(false)
 let resumePlaybackHandler: ((event: Event) => void) | null = null
 let resumePromise: Promise<void> | null = null
@@ -42,6 +44,11 @@ const volumeIcon = computed(() => {
   return level < 0.5 ? 'low' : 'high'
 })
 
+const isFullscreen = computed(() => {
+  if (typeof document === 'undefined') return false
+  return !!document.fullscreenElement
+})
+
 watchEffect(() => {
   const stream = (props.stream as MediaStream | null) ?? null
   const videoEl = videoRef.value
@@ -49,15 +56,12 @@ watchEffect(() => {
     videoEl.srcObject = stream
     videoEl.muted = true
   }
-  if (audioStreamRef.value && stream) {
-    const audioTracks = stream.getAudioTracks()
-    if (audioTracks.length > 0) {
-      audioStreamRef.value.srcObject = new MediaStream(audioTracks)
-      audioStreamRef.value.muted = true
-      audioStreamRef.value.volume = 0
-    } else {
-      audioStreamRef.value.srcObject = null
-    }
+  // Don't play audio through audioStreamRef - it will be handled by rebuildAudioGraph
+  // which separates mic and screen audio into different audio elements
+  if (audioStreamRef.value) {
+    audioStreamRef.value.srcObject = null
+    audioStreamRef.value.muted = true
+    audioStreamRef.value.volume = 0
   }
 })
 
@@ -82,7 +86,6 @@ watch(
   () => isMuted.value,
   () => applyMuteState(),
 )
-
 watch(
   () =>
     (props.stream as MediaStream | null)
@@ -105,18 +108,30 @@ watch(
   () => audioRef.value,
   () => syncAudioElement(),
 )
+watch(
+  () => screenAudioStream.value,
+  () => syncScreenAudioElement(),
+)
+watch(
+  () => screenAudioRef.value,
+  () => syncScreenAudioElement(),
+)
 
 function teardownAudioGraph() {
   processedAudioStream.value = null
+  screenAudioStream.value = null
   hasScreenAudio.value = false
   hasMicAudio.value = false
   micGainNode.value = null
-  screenGainNode.value = null
   cleanupResumeHandler()
   needsActivation.value = false
   if (audioRef.value) {
     audioRef.value.pause()
     audioRef.value.srcObject = null
+  }
+  if (screenAudioRef.value) {
+    screenAudioRef.value.pause()
+    screenAudioRef.value.srcObject = null
   }
   if (audioContextRef.value) {
     audioContextRef.value.close().catch(() => undefined)
@@ -139,54 +154,100 @@ function rebuildAudioGraph() {
   if (!stream) return
   const audioTracks = stream.getAudioTracks()
   if (audioTracks.length === 0) return
-  const micTracks = audioTracks.filter((t, i) => !isScreenAudioTrack(t) && i === 0)
-  const screenTracks = audioTracks.filter((t, i) => isScreenAudioTrack(t) || i > 0)
-  const context = new AudioContext()
-  const destination = context.createMediaStreamDestination()
-  const micGain = context.createGain()
-  const screenGain = context.createGain()
-  micTracks.forEach((t) => {
-    context.createMediaStreamSource(new MediaStream([t])).connect(micGain)
-  })
-  screenTracks.forEach((t) => {
-    context.createMediaStreamSource(new MediaStream([t])).connect(screenGain)
-  })
-  micGain.connect(destination)
-  screenGain.connect(destination)
-  audioContextRef.value = context
-  micGainNode.value = micTracks.length > 0 ? micGain : null
-  screenGainNode.value = screenTracks.length > 0 ? screenGain : null
-  hasMicAudio.value = micTracks.length > 0
-  hasScreenAudio.value = screenTracks.length > 0
-  processedAudioStream.value = destination.stream
+
+  // Separate mic and screen tracks completely
+  const micTracks = audioTracks.filter((track, idx) => !isScreenAudioTrack(track) && idx === 0)
+  const screenTracks = audioTracks.filter((track, idx) => isScreenAudioTrack(track) || idx > 0)
+
+  const micTrackPresent = micTracks.length > 0
+  const screenTrackPresent = screenTracks.length > 0
+
+  // Process microphone tracks separately through AudioContext for volume control
+  if (micTrackPresent) {
+    // Get sampleRate from mic track to avoid resampling quality loss
+    let sampleRate = 48000 // Default WebRTC sample rate
+    try {
+      const settings = micTracks[0].getSettings()
+      if (settings.sampleRate) {
+        sampleRate = settings.sampleRate
+      }
+    } catch (e) {
+      // Fallback to default
+    }
+
+    const context = new AudioContext({ sampleRate })
+    const destination = context.createMediaStreamDestination()
+    const micGain = context.createGain()
+
+    micTracks.forEach((track) => {
+      const sourceStream = new MediaStream([track])
+      const source = context.createMediaStreamSource(sourceStream)
+      source.connect(micGain)
+    })
+
+    micGain.connect(destination)
+
+    audioContextRef.value = context
+    micGainNode.value = micGain
+    processedAudioStream.value = destination.stream
+    hasMicAudio.value = true
+  } else {
+    audioContextRef.value = null
+    micGainNode.value = null
+    processedAudioStream.value = null
+    hasMicAudio.value = false
+  }
+
+  // Process screen audio tracks separately - direct playback without AudioContext
+  // This preserves original quality and keeps tracks completely separate
+  if (screenTrackPresent) {
+    screenAudioStream.value = new MediaStream(screenTracks)
+    hasScreenAudio.value = true
+  } else {
+    screenAudioStream.value = null
+    hasScreenAudio.value = false
+  }
+
   syncAudioElement()
+  syncScreenAudioElement()
   applyMuteState()
 }
 
 function applyMuteState() {
-  if (micGainNode.value) micGainNode.value.gain.value = isMuted.value ? 0 : micVolume.value
-  if (screenGainNode.value) screenGainNode.value.gain.value = isMuted.value ? 0 : screenVolume.value
-  if (videoRef.value) videoRef.value.muted = true
+  const muted = isMuted.value
+  // Control microphone volume through gain node
+  if (micGainNode.value) {
+    micGainNode.value.gain.value = muted ? 0 : micVolume.value
+  }
+  // Control screen audio volume through audio element volume
+  if (videoRef.value) {
+    videoRef.value.muted = true
+  }
   if (audioRef.value) {
-    audioRef.value.muted = isMuted.value
+    audioRef.value.muted = muted
     audioRef.value.volume = 1
   }
-  if (!isMuted.value) ensureAudioPlayback()
+  if (screenAudioRef.value && screenAudioStream.value) {
+    screenAudioRef.value.muted = muted
+    screenAudioRef.value.volume = muted ? 0 : screenVolume.value
+  }
+
+  if (!muted) {
+    ensureAudioPlayback()
+  }
 }
 
 function toggleMute() {
   isMuted.value = !isMuted.value
   hideContextMenu()
 }
-function handleMicVolumeInput(e: Event) {
-  const v = Math.min(Math.max(Number((e.target as HTMLInputElement).value) / 100, 0), 1)
-  micVolume.value = v
-  if (v > 0 && isMuted.value) isMuted.value = false
+function handleMicVolumeInput(volume: number) {
+  micVolume.value = Math.min(Math.max(volume, 0), 1)
+  if (micVolume.value > 0 && isMuted.value) isMuted.value = false
 }
-function handleScreenVolumeInput(e: Event) {
-  const v = Math.min(Math.max(Number((e.target as HTMLInputElement).value) / 100, 0), 1)
-  screenVolume.value = v
-  if (v > 0 && isMuted.value) isMuted.value = false
+function handleScreenVolumeInput(volume: number) {
+  screenVolume.value = Math.min(Math.max(volume, 0), 1)
+  if (screenVolume.value > 0 && isMuted.value) isMuted.value = false
 }
 
 async function enterFullscreen() {
@@ -200,6 +261,7 @@ async function enterFullscreen() {
 
 function openContextMenu(event: MouseEvent) {
   event.preventDefault()
+  event.stopPropagation()
   const container = containerRef.value
   if (!container) return
   const rect = container.getBoundingClientRect()
@@ -219,9 +281,27 @@ function adjustMenuPosition() {
   if (!contextMenu.value.visible || !containerRef.value || !menuRef.value) return
   const cr = containerRef.value.getBoundingClientRect()
   const mr = menuRef.value.getBoundingClientRect()
-  let x = Math.min(Math.max(contextMenu.value.x, 8), Math.max(cr.width - mr.width - 8, 0))
-  let y = Math.min(Math.max(contextMenu.value.y, 8), Math.max(cr.height - mr.height - 8, 0))
-  contextMenu.value = { ...contextMenu.value, x, y }
+
+  // In fullscreen mode, use viewport coordinates
+  if (isFullscreen.value) {
+    // Calculate position relative to viewport in fullscreen
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const menuX = Math.min(
+      Math.max(contextMenu.value.x + cr.left, 8),
+      Math.max(viewportWidth - mr.width - 8, 0),
+    )
+    const menuY = Math.min(
+      Math.max(contextMenu.value.y + cr.top, 8),
+      Math.max(viewportHeight - mr.height - 8, 0),
+    )
+    contextMenu.value = { ...contextMenu.value, x: menuX - cr.left, y: menuY - cr.top }
+  } else {
+    // Normal mode - use container coordinates
+    let x = Math.min(Math.max(contextMenu.value.x, 8), Math.max(cr.width - mr.width - 8, 0))
+    let y = Math.min(Math.max(contextMenu.value.y, 8), Math.max(cr.height - mr.height - 8, 0))
+    contextMenu.value = { ...contextMenu.value, x, y }
+  }
 }
 
 async function attemptResumePlayback() {
@@ -237,9 +317,17 @@ async function attemptResumePlayback() {
       try {
         await el.play()
       } catch {}
-    const running = !audioContextRef.value || audioContextRef.value.state === 'running'
-    const playing = !audioRef.value || !audioRef.value.paused || audioRef.value.muted
-    needsActivation.value = !(running && playing)
+    // Also ensure screen audio element is playing
+    const screenEl = screenAudioRef.value
+    if (screenEl && screenAudioStream.value)
+      try {
+        await screenEl.play()
+      } catch {}
+    const contextRunning = !audioContextRef.value || audioContextRef.value.state === 'running'
+    const elementActive = !audioRef.value || !audioRef.value.paused || audioRef.value.muted
+    const screenPlaying =
+      !screenAudioRef.value || !screenAudioRef.value.paused || screenAudioRef.value.muted
+    needsActivation.value = !(contextRunning && elementActive && screenPlaying)
     if (!needsActivation.value) cleanupResumeHandler()
   })()
   try {
@@ -273,6 +361,26 @@ function syncAudioElement() {
   ensureAudioPlayback()
 }
 
+function syncScreenAudioElement() {
+  const el = screenAudioRef.value,
+    s = screenAudioStream.value
+  if (!el) return
+  if (s) {
+    if (el.srcObject !== s) {
+      el.srcObject = s
+      el.muted = isMuted.value
+      el.volume = isMuted.value ? 0 : screenVolume.value
+      el.play().catch(() => {})
+    }
+  } else {
+    // Clear if no screen audio stream
+    if (el.srcObject) {
+      el.pause()
+      el.srcObject = null
+    }
+  }
+}
+
 onMounted(() => {
   document.addEventListener('click', handleOutsideClick)
   document.addEventListener('contextmenu', handleOutsideClick)
@@ -297,18 +405,26 @@ onBeforeUnmount(() => {
     <CustomVideoPlayer
       v-if="conditionVideo"
       ref="videoPlayerRef"
-      :stream="(stream as MediaStream | null)"
+      :stream="stream as MediaStream | null"
       :muted="true"
       :autoplay="true"
       :playsinline="true"
-      :show-controls="false"
+      :show-controls="true"
+      :has-mic-audio="hasMicAudio"
+      :has-screen-audio="hasScreenAudio"
+      :mic-volume="micVolume"
+      :screen-volume="screenVolume"
       class="w-full h-full"
+      @contextmenu="openContextMenu"
+      @mic-volume-change="handleMicVolumeInput"
+      @screen-volume-change="handleScreenVolumeInput"
     />
     <div v-else class="flex flex-col items-center justify-center gap-2">
       <font-awesome-icon icon="user" class="text-6xl text-dc-text-muted" />
     </div>
 
     <audio ref="audioRef" autoplay playsinline class="hidden" />
+    <audio ref="screenAudioRef" autoplay playsinline class="hidden" />
     <audio ref="audioStreamRef" autoplay playsinline class="hidden" />
 
     <!-- Context menu -->
@@ -316,8 +432,12 @@ onBeforeUnmount(() => {
       <div
         ref="menuRef"
         v-if="(conditionAudio || conditionVideo) && contextMenu.visible"
-        class="absolute z-20 bg-dc-bg-floating border border-dc-separator rounded-lg shadow-xl p-2.5 w-44 flex flex-col gap-2"
-        :style="{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }"
+        class="absolute z-[9999] bg-dc-bg-floating border border-dc-separator rounded-lg shadow-xl p-2.5 w-44 flex flex-col gap-2"
+        :style="{
+          top: `${contextMenu.y}px`,
+          left: `${contextMenu.x}px`,
+          position: isFullscreen ? 'fixed' : 'absolute',
+        }"
         @click.stop
       >
         <button
@@ -326,38 +446,6 @@ onBeforeUnmount(() => {
         >
           {{ isMuted ? t('common.unmute') : t('common.mute') }}
         </button>
-
-        <div v-if="hasMicAudio" class="flex flex-col gap-1 px-1">
-          <span class="text-[10px] uppercase tracking-wide text-dc-text-muted">{{
-            t('common.micVolume')
-          }}</span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            :value="Math.round(micVolume * 100)"
-            class="accent-dc-blurple cursor-pointer"
-            @input="handleMicVolumeInput"
-            @click.stop
-          />
-        </div>
-
-        <div v-if="hasScreenAudio" class="flex flex-col gap-1 px-1">
-          <span class="text-[10px] uppercase tracking-wide text-dc-text-muted">{{
-            t('common.streamVolume')
-          }}</span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            :value="Math.round(screenVolume * 100)"
-            class="accent-dc-blurple cursor-pointer"
-            @input="handleScreenVolumeInput"
-            @click.stop
-          />
-        </div>
 
         <button
           class="flex items-center gap-2 px-2 py-1.5 rounded text-sm text-dc-text hover:bg-dc-bg-hover transition-colors text-left"

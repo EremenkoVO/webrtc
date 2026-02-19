@@ -206,6 +206,13 @@ func (s *Service) readPump(client *domain.Client) {
 			}
 			client.Room.Forward(msg, client.ID)
 
+		case "sound-event":
+			if client.Room == nil {
+				continue
+			}
+			// Broadcast sound events to all peers in the room
+			client.Room.BroadcastExcept(msg, client.ID)
+
 		case "leave":
 			if client.Room != nil {
 				client.Room.Mu.Lock()

@@ -228,6 +228,15 @@ export const useSignalingStore = defineStore('signaling', () => {
     if (allHandlers) allHandlers.forEach((handler) => handler(message))
   }
 
+  function sendEvent(eventType: string, payload?: any) {
+    if (!currentRoomId.value) return false
+    return sendMessage({
+      type: eventType as any,
+      room: currentRoomId.value,
+      payload: payload,
+    })
+  }
+
   function onMessage(messageType: string, handler: (message: SignalingMessage) => void) {
     if (!messageHandlers.value.has(messageType)) {
       messageHandlers.value.set(messageType, [])
@@ -256,6 +265,7 @@ export const useSignalingStore = defineStore('signaling', () => {
     isInRoom,
     connect,
     disconnect,
+    sendEvent,
     joinRoom,
     leaveRoom,
     sendOffer,

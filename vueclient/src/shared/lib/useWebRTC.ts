@@ -200,6 +200,22 @@ export function useWebRTC() {
     pc.ontrack = (event) => {
       const [stream] = event.streams
       if (!stream) return
+      
+      // Log track information for debugging
+      if (event.track.kind === 'audio') {
+        console.log(`[ontrack] Audio track received from ${peerId}:`, {
+          trackId: event.track.id,
+          label: event.track.label,
+          contentHint: event.track.contentHint,
+          enabled: event.track.enabled,
+          muted: event.track.muted,
+          streamId: stream.id,
+          streamHasVideo: stream.getVideoTracks().length > 0,
+          streamHasOnlyAudio: stream.getAudioTracks().length === 1 && stream.getVideoTracks().length === 0,
+          streamTracks: stream.getTracks().map(t => ({ kind: t.kind, id: t.id, contentHint: t.contentHint }))
+        })
+      }
+      
       const updateStream = () => {
         const existingPeer = peers.value.get(peerId)
         const isScreenSharing = peerStates.value[peerId]?.screen === true
@@ -229,13 +245,34 @@ export function useWebRTC() {
           const updatedStream = new MediaStream(existingStream.getTracks())
           updatePeerRemoteStream(peerId, updatedStream)
         }
-        if (stream.getAudioTracks().length > 0) monitorSpeaking(peerId, stream)
+        
+        // Only monitor speaking if there are microphone tracks (not screen audio)
+        // Screen audio tracks come in separate audio-only streams when peer is screen sharing
+        const finalStream = existingPeer?.remoteStream || stream
+        const audioTracks = finalStream.getAudioTracks()
+        const isScreenSharingState = peerStates.value[peerId]?.screen === true
+        
+        // Filter screen audio: tracks from audio-only streams when peer is screen sharing, or tracks with screen contentHint/label
+        const micTracks = audioTracks.filter(track => {
+          // Find which stream this track came from
+          const trackStream = event.streams.find(s => s.getAudioTracks().includes(track)) || stream
+          // Use improved isScreenAudioTrack with stream context
+          return !isScreenAudioTrack(track, trackStream, isScreenSharingState)
+        })
+        
+        if (micTracks.length > 0) {
+          // Create a stream with only microphone tracks for monitoring
+          const micOnlyStream = new MediaStream(micTracks)
+          monitorSpeaking(peerId, micOnlyStream)
+        } else {
+          // No microphone tracks, ensure speaking is false
+          speakingPeers.value[peerId] = false
+        }
       }
       if (event.track.kind === 'audio') updateStream()
       event.track.onunmute = () => updateStream()
       if (event.track.kind === 'video' && !event.track.muted) {
         // Check again if user is watching (state might have changed)
-        const currentPeer = peers.value.get(peerId)
         const currentIsScreenSharing = peerStates.value[peerId]?.screen === true
         const currentIsWatching = watchingStreams.value.has(peerId)
         if (currentIsScreenSharing && !currentIsWatching) {
@@ -303,13 +340,37 @@ export function useWebRTC() {
     if (enabled && peer.remoteStream.getVideoTracks().length === 0) createOfferSafe(peerId)
   }
 
+  const soundEventHandlers = new Set<(eventType: string) => void>()
+
+  function onSoundEvent(handler: (eventType: string) => void) {
+    soundEventHandlers.add(handler)
+    return () => soundEventHandlers.delete(handler)
+  }
+
+  function triggerSoundEvent(eventType: string) {
+    soundEventHandlers.forEach(handler => {
+      try {
+        handler(eventType)
+      } catch (error) {
+        console.error('Sound event handler error:', error)
+      }
+    })
+  }
+
   function setupDataChannel(peerId: string, channel: RTCDataChannel) {
     channel.onopen = () => broadcastStateTo(peerId, { ...localState.value, screen: isScreenSharing.value })
     channel.onclose = () => {}
     channel.onerror = (err) => console.error('DataChannel error', err)
     channel.onmessage = (event) => {
       try {
-        handlePeerState(peerId, JSON.parse(event.data))
+        const data = JSON.parse(event.data)
+        // Check if it's a sound event
+        if (data.soundEvent) {
+          triggerSoundEvent(data.soundEvent)
+        } else {
+          // Otherwise handle as peer state
+          handlePeerState(peerId, data)
+        }
       } catch (error) {
         console.warn('Invalid peer data', event.data, error)
       }
@@ -452,6 +513,8 @@ export function useWebRTC() {
   }
 
   function leaveRoom() {
+    // Send disconnect sound event before leaving
+    broadcastSoundEvent('disconnect')
     peers.value.forEach(({ connection }) => connection.close())
     peers.value.clear()
     signalingStore.leaveRoom()
@@ -553,6 +616,22 @@ export function useWebRTC() {
     })
   }
 
+  function broadcastSoundEvent(eventType: string) {
+    // Send via signaling (WebSocket) as primary method
+    if (signalingStore.isInRoom && signalingStore.currentRoomId) {
+      signalingStore.sendEvent('sound-event', { type: eventType })
+    }
+    // Also try to send via data channels if available (faster, but may not be ready)
+    const eventData = JSON.stringify({ soundEvent: eventType })
+    peers.value.forEach((peer) => {
+      if (peer.dataChannel?.readyState === 'open') {
+        try {
+          peer.dataChannel.send(eventData)
+        } catch {}
+      }
+    })
+  }
+
   function watchStream(peerId: string) {
     watchingStreams.value.add(peerId)
     const peer = peers.value.get(peerId)
@@ -640,7 +719,8 @@ export function useWebRTC() {
       }
       if (microphoneChanged) {
         localStream.value.getAudioTracks().forEach((track) => {
-          if (track.enabled !== microphoneEnable) track.enabled = microphoneEnable
+          const isScreenAudio = track.contentHint === 'screen'
+          if (!isScreenAudio && track.enabled !== microphoneEnable) track.enabled = microphoneEnable
         })
       }
 
@@ -652,17 +732,14 @@ export function useWebRTC() {
   }
 
   async function startScreenShare(options?: {
-    displaySurface?: 'monitor' | 'window' | 'application'
     resolution?: { width: number; height: number } | null
     frameRate?: number | null
-    audioSource?: 'system' | 'application' | 'none'
   }) {
     try {
       if (isScreenSharing.value) return
       
-      const videoConstraints: MediaTrackConstraints = {
-        displaySurface: options?.displaySurface || 'monitor',
-      }
+      // Prepare display media options - requesting both video and audio
+      const videoConstraints: MediaTrackConstraints = {}
       if (options?.resolution) {
         videoConstraints.width = { ideal: options.resolution.width }
         videoConstraints.height = { ideal: options.resolution.height }
@@ -671,26 +748,36 @@ export function useWebRTC() {
         videoConstraints.frameRate = { ideal: options.frameRate }
       }
 
-      // In browser API, both 'system' and 'application' audio use getDisplayMedia with audio: true
-      // The browser will capture audio based on what the user selects in the system dialog
-      const audioEnabled = options?.audioSource === 'system' || options?.audioSource === 'application'
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: videoConstraints as MediaTrackConstraints,
-        audio: audioEnabled,
-      })
+      const displayMediaOptions: MediaStreamConstraints = {
+        video: Object.keys(videoConstraints).length > 0 ? videoConstraints : true,
+        audio: true, // Requesting audio - browser dialog will let user choose to include system audio
+      }
+
+      // Request screen share stream with audio
+      const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions)
       
+      // Extract video and audio tracks from the stream
       const screenVideoTrack = screenStream.getVideoTracks()[0]
-      if (!screenVideoTrack) throw new Error('No screen video track')
+      if (!screenVideoTrack) {
+        throw new Error('No screen video track available')
+      }
       
-      // Get audio track from screen stream if system or application audio is requested
-      // In browser, both will work the same way - capturing audio from the selected source
-      let screenAudioTrack: MediaStreamTrack | null = null
-      if (options?.audioSource === 'system' || options?.audioSource === 'application') {
-        screenAudioTrack = screenStream.getAudioTracks()[0] || null
-        if (screenAudioTrack) {
-          // Use 'screen' hint for system audio, 'music' for application audio
-          screenAudioTrack.contentHint = options?.audioSource === 'system' ? 'screen' : 'music'
-        }
+      // Get audio track from screen stream if user selected it in browser dialog
+      const audioTracks = screenStream.getAudioTracks()
+      const screenAudioTrack: MediaStreamTrack | null = audioTracks[0] || null
+      
+      if (!screenAudioTrack) {
+        console.log('No audio track returned from getDisplayMedia - user may not have selected audio in browser dialog')
+        console.log('Available tracks:', screenStream.getTracks().map(t => ({ 
+          kind: t.kind, 
+          label: t.label, 
+          enabled: t.enabled, 
+          muted: t.muted 
+        })))
+      }
+      
+      if (screenAudioTrack) {
+        screenAudioTrack.contentHint = 'screen'
       }
 
       previousVideoTrack = localStream.value?.getVideoTracks()[0] || null
@@ -698,27 +785,19 @@ export function useWebRTC() {
       screenShareStream = screenStream
       activeScreenAudioTrack = screenAudioTrack
 
-      // Create composed stream with screen video, screen audio (if any), and microphone
+      // Create composed stream with screen video and microphone (screen audio is sent separately)
       const composedStream = new MediaStream([
         screenVideoTrack,
-        ...(screenAudioTrack ? [screenAudioTrack] : []),
         ...(previousAudioTrack ? [previousAudioTrack] : []),
       ])
-      // Set content hints: screen audio = 'screen'/'music', microphone = 'speech'
+      // Set content hints: microphone = 'speech'
       composedStream
         .getAudioTracks()
-        .forEach((t) => {
-          if (t === screenAudioTrack) {
-            // Screen audio hint already set above
-          } else {
-            t.contentHint = 'speech' // Microphone
-          }
-        })
+        .filter((track) => track !== screenAudioTrack)
+        .forEach((track) => (track.contentHint = 'speech'))
       localStream.value = composedStream
       localStream.value.getVideoTracks().forEach((t) => (t.enabled = true))
-      localStream.value
-        .getAudioTracks()
-        .forEach((t) => (t.enabled = localState.value.microphone))
+      localStream.value.getAudioTracks().forEach((t) => (t.enabled = localState.value.microphone))
 
       peers.value.forEach(({ connection }, peerId) => {
         // Replace video track
@@ -728,31 +807,38 @@ export function useWebRTC() {
 
         // Ensure microphone track is sent (it's in composedStream, so it should be sent automatically)
         // But we need to make sure it's not removed
-        const audioSender = connection.getSenders().find((s) => s.track?.kind === 'audio' && s.track.contentHint !== 'screen' && s.track.contentHint !== 'music')
-        if (!audioSender && previousAudioTrack) {
+        const micAudioSender = connection.getSenders().find((s) => s.track?.kind === 'audio' && s.track.contentHint !== 'screen' && s.track.contentHint !== 'music')
+        if (!micAudioSender && previousAudioTrack) {
           // Microphone track is missing, add it
           connection.addTrack(previousAudioTrack, composedStream)
         }
 
-        // Send screen audio track if system or application audio is selected
-        if (screenAudioTrack && (options?.audioSource === 'system' || options?.audioSource === 'application')) {
+        // Send screen audio track separately (not in composedStream) if it was obtained from the stream
+        if (screenAudioTrack) {
           const existingSender = screenAudioSenders.get(peerId)
           if (existingSender) {
-            try { connection.removeTrack(existingSender.sender) } catch {}
+            try {
+              connection.removeTrack(existingSender.sender)
+            } catch (error) {
+              console.warn('Failed to remove existing screen audio sender:', error)
+            }
             existingSender.track.stop()
             screenAudioSenders.delete(peerId)
           }
+
           const clonedTrack = screenAudioTrack.clone()
-          clonedTrack.contentHint = options?.audioSource === 'system' ? 'screen' : 'music'
+          clonedTrack.contentHint = 'screen'
           const senderStream = new MediaStream([clonedTrack])
           const sender = connection.addTrack(clonedTrack, senderStream)
           screenAudioSenders.set(peerId, { sender, track: clonedTrack })
-        } else if (options?.audioSource !== 'system' && options?.audioSource !== 'application') {
-          // Clean up any existing screen audio senders if not using audio
+        } else {
+          // No screen audio track available - clean up any existing senders
           const existingSender = screenAudioSenders.get(peerId)
           if (existingSender) {
-            try { connection.removeTrack(existingSender.sender) } catch {}
-            existingSender.track.stop()
+            try {
+              connection.removeTrack(existingSender.sender)
+              existingSender.track.stop()
+            } catch {}
             screenAudioSenders.delete(peerId)
           }
         }
@@ -763,6 +849,7 @@ export function useWebRTC() {
       if (screenAudioTrack) screenAudioTrack.onended = stopScreenShare
       isScreenSharing.value = true
       broadcastState({ screen: true })
+      broadcastSoundEvent('screen-share-start')
     } catch (err) {
       console.error('Failed to start screen share:', err)
     }
@@ -782,7 +869,12 @@ export function useWebRTC() {
         if (peer) {
           try { peer.connection.removeTrack(sender) } catch {}
         }
-        track.stop()
+        // Only stop the track if it's not already stopped (tracks from screenShareStream are stopped above)
+        if (track.readyState !== 'ended') {
+          try {
+            track.stop()
+          } catch {}
+        }
       })
       screenAudioSenders.clear()
 
@@ -805,15 +897,47 @@ export function useWebRTC() {
       previousAudioTrack = null
       isScreenSharing.value = false
       broadcastState({ screen: false })
+      broadcastSoundEvent('screen-share-stop')
     } catch (err) {
       console.error('Failed to stop screen share:', err)
     }
   }
 
+  function isScreenAudioTrack(track: MediaStreamTrack, stream?: MediaStream, isPeerScreenSharing?: boolean): boolean {
+    // Check contentHint first (most reliable when preserved)
+    const hint = track.contentHint?.toLowerCase() ?? ''
+    if (hint.includes('screen') || hint.includes('presentation') || hint.includes('music')) return true
+    
+    // Check label
+    const label = track.label.toLowerCase()
+    if (label.includes('screen') || label.includes('system') || label.includes('tab') || 
+        label.includes('desktop') || label.includes('window') || label.includes('display')) {
+      return true
+    }
+    
+    // If stream is provided and peer is screen sharing, check stream characteristics
+    if (stream && isPeerScreenSharing) {
+      const streamHasVideo = stream.getVideoTracks().length > 0
+      const streamHasOnlyAudio = stream.getAudioTracks().length === 1 && stream.getVideoTracks().length === 0
+      // Audio-only streams when peer is screen sharing are likely screen audio
+      if (streamHasOnlyAudio && !streamHasVideo) {
+        return true
+      }
+    }
+    
+    return false
+  }
+
   function monitorLocalSpeaking(stream: MediaStream | null) {
     if (!stream) return
+    // Filter out screen audio tracks - only monitor microphone
+    const audioTracks = stream.getAudioTracks()
+    const micTracks = audioTracks.filter(track => !isScreenAudioTrack(track))
+    if (micTracks.length === 0) return
+    
+    const micOnlyStream = new MediaStream(micTracks)
     const audioContext = new AudioContext()
-    const source = audioContext.createMediaStreamSource(stream)
+    const source = audioContext.createMediaStreamSource(micOnlyStream)
     const analyser = audioContext.createAnalyser()
     source.connect(analyser)
     analyser.fftSize = 512
@@ -831,9 +955,20 @@ export function useWebRTC() {
 
   function monitorSpeaking(peerId: string, stream: MediaStream) {
     if (peerAudioContexts[peerId]) peerAudioContexts[peerId].close().catch(() => undefined)
+    
+    // Filter out screen audio tracks - only monitor microphone
+    const audioTracks = stream.getAudioTracks()
+    const micTracks = audioTracks.filter(track => !isScreenAudioTrack(track))
+    if (micTracks.length === 0) {
+      // No microphone tracks, set speaking to false
+      speakingPeers.value[peerId] = false
+      return
+    }
+    
+    const micOnlyStream = new MediaStream(micTracks)
     const audioContext = new AudioContext()
     peerAudioContexts[peerId] = audioContext
-    const source = audioContext.createMediaStreamSource(stream)
+    const source = audioContext.createMediaStreamSource(micOnlyStream)
     const analyser = audioContext.createAnalyser()
     source.connect(analyser)
     analyser.fftSize = 512
@@ -883,6 +1018,7 @@ export function useWebRTC() {
     toggleMedia,
     startScreenShare,
     stopScreenShare,
+    onSoundEvent,
     watchStream,
     unwatchStream,
   }
