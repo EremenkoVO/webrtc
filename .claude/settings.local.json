@@ -19,7 +19,8 @@
       "Bash(/tmp/test_coreaudio2:*)",
       "Bash(/tmp/check_include.cpp:*)",
       "Bash(clang++:*)",
-      "Bash(/tmp/check_include:*)"
+      "Bash(/tmp/check_include:*)",
+      "Bash(npm run rebuild:*)"
     ],
     "deny": [],
     "ask": []
