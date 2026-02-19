@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { AuthService } from '@/api/index'
 import { useAuthStore } from '@/shared/stores/authStore'
+import SettingsModal from '@/widgets/settings/SettingsModal.vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { ref } from 'vue'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   username: string
@@ -9,6 +14,7 @@ const props = defineProps<{
 
 const authStore = useAuthStore()
 const router = useRouter()
+const showSettings = ref(false)
 
 function getInitials(name: string): string {
   if (!name) return '?'
@@ -52,18 +58,27 @@ async function logout() {
       <div class="text-sm font-semibold text-dc-text-heading truncate leading-tight">
         {{ props.username }}
       </div>
-      <div class="text-[11px] text-dc-text-muted leading-tight">Online</div>
+      <div class="text-[11px] text-dc-text-muted leading-tight">{{ t('common.online') }}</div>
     </div>
 
     <!-- Controls -->
     <div class="flex items-center gap-0.5">
       <button
+        type="button"
+        class="w-8 h-8 rounded flex items-center justify-center text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors"
+        :title="t('settings.title')"
+        @click="showSettings = true"
+      >
+        <font-awesome-icon icon="gear" class="text-[16px]" />
+      </button>
+      <button
         @click="logout"
         class="w-8 h-8 rounded flex items-center justify-center text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors"
-        title="Log out"
+        :title="t('auth.logOut')"
       >
         <font-awesome-icon icon="right-from-bracket" class="text-[16px]" />
       </button>
     </div>
+    <SettingsModal v-if="showSettings" @close="showSettings = false" />
   </div>
 </template>

@@ -7,7 +7,9 @@ import { useCallStore } from '@/shared/stores/callStore'
 import { useVoiceStateStore } from '@/shared/stores/voiceStateStore'
 import UserPanel from '@/widgets/user-panel/UserPanel.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const { clearErrors, parseApiError } = useApiErrors()
 const roomStore = useRoomStore()
 const sidebarStore = useSidebarStore()
@@ -118,7 +120,7 @@ watch(
       class="h-12 2xl:h-14 px-4 flex items-center shadow-[0_1px_0_rgba(4,4,5,0.2),0_1.5px_0_rgba(6,6,7,0.05),0_2px_0_rgba(4,4,5,0.05)] flex-shrink-0 hover:bg-dc-bg-hover transition-colors cursor-pointer"
     >
       <h1 class="text-[15px] font-semibold text-dc-text-heading truncate flex-1">
-        WebRTC Voice
+        {{ t('sidebar.appTitle') }}
       </h1>
       <button
         v-if="sidebarStore.isMobile"
@@ -136,7 +138,7 @@ watch(
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="Search"
+          :placeholder="t('common.search')"
           class="w-full px-2 py-1 rounded bg-dc-bg-tertiary text-dc-text text-sm placeholder-dc-text-muted border-none outline-none focus:ring-1 focus:ring-dc-blurple/40"
         />
       </div>
@@ -145,11 +147,11 @@ watch(
       <div class="flex items-center px-2 mb-1 group cursor-pointer" @click="showCreateInput = !showCreateInput">
         <font-awesome-icon icon="chevron-down" class="w-3 h-3 text-dc-text-muted mr-0.5 text-[10px]" />
         <span class="text-[11px] font-bold uppercase tracking-wider text-dc-text-muted group-hover:text-dc-text-secondary flex-1">
-          Voice Channels
+          {{ t('common.voiceChannels') }}
         </span>
         <button
           class="w-4 h-4 flex items-center justify-center text-dc-text-muted hover:text-dc-text-secondary opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Create Channel"
+          :title="t('common.createChannel')"
           @click.stop="showCreateInput = !showCreateInput"
         >
           <font-awesome-icon icon="plus" class="text-xs" />
@@ -165,7 +167,7 @@ watch(
               @keyup.enter="addChannel"
               @keyup.escape="showCreateInput = false; newChannelName = ''"
               type="text"
-              placeholder="channel-name"
+              :placeholder="t('common.channelNamePlaceholder')"
               autofocus
               class="flex-1 px-2 py-1.5 rounded bg-dc-bg-tertiary text-dc-text text-sm placeholder-dc-text-muted border-none outline-none focus:ring-1 focus:ring-dc-blurple/40"
             />
@@ -174,7 +176,7 @@ watch(
               :disabled="!newChannelName.trim() || isLoading"
               class="px-2 py-1.5 rounded bg-dc-green hover:bg-dc-green/80 disabled:opacity-40 text-white text-xs font-medium transition-colors"
             >
-              OK
+              {{ t('common.ok') }}
             </button>
           </div>
         </div>
@@ -182,7 +184,7 @@ watch(
 
       <!-- Loading -->
       <div v-if="isLoading && roomStore.channels.length === 0" class="px-2 py-8 text-center">
-        <div class="text-dc-text-muted text-sm">Loading channels...</div>
+        <div class="text-dc-text-muted text-sm">{{ t('sidebar.loadingChannels') }}</div>
       </div>
 
       <!-- Empty -->
@@ -191,7 +193,7 @@ watch(
         class="px-2 py-8 text-center"
       >
         <div class="text-dc-text-muted text-sm">
-          {{ searchQuery ? 'No channels found' : 'No channels yet' }}
+          {{ searchQuery ? t('common.noChannelsFound') : t('common.noChannelsYet') }}
         </div>
       </div>
 
@@ -209,7 +211,7 @@ watch(
             ]"
           >
             <font-awesome-icon icon="volume-high" class="w-5 h-5 flex-shrink-0 opacity-70 text-[16px]" />
-            <span class="flex-1 text-[15px] truncate font-medium leading-5">{{ ch.name || 'Unnamed' }}</span>
+            <span class="flex-1 text-[15px] truncate font-medium leading-5">{{ ch.name || t('common.unnamed') }}</span>
           </button>
 
           <!-- Participants list under channel -->
@@ -235,6 +237,13 @@ watch(
                 >
                   {{ getInitials(mate) }}
                 </div>
+                <!-- Connecting indicator -->
+                <div
+                  v-if="voiceStateStore.isConnecting(mate)"
+                  class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-dc-blurple border-2 border-dc-bg-secondary-alt flex items-center justify-center"
+                >
+                  <div class="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                </div>
               </div>
 
               <!-- Username -->
@@ -245,6 +254,12 @@ watch(
                 ]"
               >
                 {{ mate }}
+                <span
+                  v-if="voiceStateStore.isConnecting(mate)"
+                  class="ml-1.5 text-[10px] text-dc-text-muted"
+                >
+                  {{ t('common.connecting') }}
+                </span>
               </span>
 
               <!-- Screen sharing badge -->
@@ -253,7 +268,7 @@ watch(
                 class="flex items-center gap-0.5 px-1 py-px rounded bg-dc-red/20 text-dc-red text-[9px] font-bold uppercase leading-none flex-shrink-0"
               >
                 <font-awesome-icon icon="desktop" class="text-[8px]" />
-                Live
+                {{ t('common.live') }}
               </span>
 
               <!-- Muted mic icon -->
@@ -275,7 +290,7 @@ watch(
           class="w-full flex items-center justify-center gap-1 px-2 py-1 text-[11px] text-dc-text-muted hover:text-dc-text-secondary transition-colors"
         >
           <font-awesome-icon icon="arrows-rotate" :class="['text-[10px]', { 'animate-spin': isLoading }]" />
-          Refresh
+          {{ t('common.refresh') }}
         </button>
       </div>
     </div>
@@ -291,13 +306,13 @@ watch(
           <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-dc-green border-2 border-dc-bg-secondary-alt" />
         </div>
         <div class="flex-1 min-w-0">
-          <div class="text-xs font-semibold text-dc-green leading-tight">Voice Connected</div>
+          <div class="text-xs font-semibold text-dc-green leading-tight">{{ t('common.voiceConnected') }}</div>
           <div class="text-[11px] text-dc-text-muted truncate leading-tight">{{ roomStore.selectedChannelName }}</div>
         </div>
         <button
           @click="callStore.requestDisconnect()"
           class="w-7 h-7 flex items-center justify-center rounded hover:bg-dc-bg-hover text-dc-text-muted hover:text-dc-red transition-colors"
-          title="Disconnect"
+          :title="t('common.disconnect')"
         >
           <font-awesome-icon icon="phone-slash" class="text-sm" />
         </button>

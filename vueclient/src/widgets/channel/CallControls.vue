@@ -2,6 +2,9 @@
 <script setup lang="ts">
 import { useWebRTC, type PeerConnection } from '@/shared/lib/useWebRTC'
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   videoEnabled: boolean
@@ -69,7 +72,7 @@ function selectMicrophone(deviceId: string) {
               : 'bg-dc-red hover:bg-dc-red/80 text-white',
           ]"
           @click="toggleVideo"
-          :title="props.videoEnabled ? 'Turn Off Camera' : 'Turn On Camera'"
+          :title="props.videoEnabled ? t('call.turnOffCamera') : t('call.turnOnCamera')"
         >
           <font-awesome-icon :icon="props.videoEnabled ? 'video' : 'video-slash'" class="text-lg 2xl:text-xl" />
         </button>
@@ -92,7 +95,7 @@ function selectMicrophone(deviceId: string) {
                 :class="{ 'bg-dc-bg-active': currentCameraDeviceId === device.deviceId }"
                 @click="selectCamera(device.deviceId)"
               >
-                {{ device.label || `Camera ${videoDevices.indexOf(device) + 1}` }}
+                {{ device.label || `${t('call.camera')} ${videoDevices.indexOf(device) + 1}` }}
               </li>
             </ul>
           </Transition>
@@ -109,7 +112,7 @@ function selectMicrophone(deviceId: string) {
               : 'bg-dc-red hover:bg-dc-red/80 text-white',
           ]"
           @click="toggleAudio"
-          :title="props.audioEnabled ? 'Mute' : 'Unmute'"
+          :title="props.audioEnabled ? t('common.mute') : t('common.unmute')"
         >
           <font-awesome-icon :icon="props.audioEnabled ? 'microphone' : 'microphone-slash'" class="text-lg 2xl:text-xl" />
         </button>
@@ -132,7 +135,7 @@ function selectMicrophone(deviceId: string) {
                 :class="{ 'bg-dc-bg-active': currentMicrophoneDeviceId === device.deviceId }"
                 @click="selectMicrophone(device.deviceId)"
               >
-                {{ device.label || `Microphone ${audioDevices.indexOf(device) + 1}` }}
+                {{ device.label || `${t('call.microphone')} ${audioDevices.indexOf(device) + 1}` }}
               </li>
             </ul>
           </Transition>
@@ -144,27 +147,27 @@ function selectMicrophone(deviceId: string) {
         :class="[
           'w-10 h-10 2xl:w-12 2xl:h-12 rounded-full flex items-center justify-center transition-colors',
           props.isScreenSharing
-            ? 'bg-dc-green text-white'
+            ? 'bg-dc-red hover:bg-[#a12d2f] text-white'
             : 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text',
         ]"
         @click="props.isScreenSharing ? stopScreenShare() : emits('requestScreenShare')"
-        :title="props.isScreenSharing ? 'Stop Sharing' : 'Share Screen'"
+        :title="props.isScreenSharing ? t('call.stopSharing') : t('call.shareScreen')"
       >
-        <font-awesome-icon icon="desktop" class="text-lg 2xl:text-xl" />
+        <font-awesome-icon :icon="props.isScreenSharing ? 'circle-stop' : 'desktop'" class="text-lg 2xl:text-xl" />
       </button>
 
       <!-- Disconnect -->
       <button
         class="w-14 h-10 2xl:w-16 2xl:h-12 rounded-full bg-dc-red hover:bg-[#a12d2f] flex items-center justify-center transition-colors text-white"
         @click="emits('endCall')"
-        title="Disconnect"
+        :title="t('common.disconnect')"
       >
         <font-awesome-icon icon="phone-slash" class="text-lg" />
       </button>
     </div>
 
     <div class="mt-2 text-center text-[11px] text-dc-text-muted">
-      {{ remotePeers.length + 1 }} participant{{ remotePeers.length > 0 ? 's' : '' }}
+      {{ remotePeers.length + 1 }} {{ remotePeers.length > 0 ? t('common.participantsCount') : t('common.participant') }}
     </div>
   </div>
 </template>

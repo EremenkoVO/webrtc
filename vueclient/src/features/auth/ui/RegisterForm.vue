@@ -3,8 +3,10 @@ import { AuthService, type AuthTokens, type RegisterRequest } from '@/api/index'
 import { useApiErrors } from '@/shared/lib/useApiErrors'
 import { useAuthStore } from '@/shared/stores/authStore'
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const emit = defineEmits<{ (e: 'switch'): void }>()
+const { t } = useI18n()
 
 const { clearErrors, errorMessages, hasErrors, parseApiError } = useApiErrors()
 const authStore = useAuthStore()
@@ -51,7 +53,7 @@ const handleRegister = async () => {
 <template>
   <form @submit.prevent="handleRegister" class="space-y-5">
     <div class="text-center mb-2">
-      <h2 class="text-2xl font-bold text-dc-text-heading">Create an account</h2>
+      <h2 class="text-2xl font-bold text-dc-text-heading">{{ t('auth.createAccount') }}</h2>
     </div>
 
     <div
@@ -63,7 +65,7 @@ const handleRegister = async () => {
 
     <div class="space-y-1">
       <label class="block text-xs font-bold uppercase tracking-wide text-dc-text-secondary">
-        Username <span class="text-dc-red">*</span>
+        {{ t('auth.username') }} <span class="text-dc-red">*</span>
       </label>
       <input
         v-model="username"
@@ -76,7 +78,7 @@ const handleRegister = async () => {
 
     <div class="space-y-1">
       <label class="block text-xs font-bold uppercase tracking-wide text-dc-text-secondary">
-        Password <span class="text-dc-red">*</span>
+        {{ t('auth.password') }} <span class="text-dc-red">*</span>
       </label>
       <div class="relative">
         <input
@@ -91,14 +93,14 @@ const handleRegister = async () => {
           @click="showPassword = !showPassword"
           class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-dc-text-link hover:underline bg-transparent border-none px-2 py-1"
         >
-          {{ showPassword ? 'Hide' : 'Show' }}
+          {{ showPassword ? t('common.hide') : t('common.show') }}
         </button>
       </div>
     </div>
 
     <div class="space-y-1">
       <label class="block text-xs font-bold uppercase tracking-wide text-dc-text-secondary">
-        Confirm Password <span class="text-dc-red">*</span>
+        {{ t('auth.confirmPassword') }} <span class="text-dc-red">*</span>
       </label>
       <input
         v-model="confirmPassword"
@@ -127,7 +129,7 @@ const handleRegister = async () => {
           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
         />
       </svg>
-      Continue
+      {{ t('auth.continue') }}
     </button>
 
     <p class="text-sm text-dc-text-muted">
@@ -136,7 +138,7 @@ const handleRegister = async () => {
         @click="emit('switch')"
         class="text-dc-text-link hover:underline bg-transparent border-none text-sm"
       >
-        Already have an account?
+        {{ t('auth.alreadyHaveAccount') }}
       </button>
     </p>
   </form>

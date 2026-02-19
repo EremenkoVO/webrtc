@@ -8,6 +8,8 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
   const mutedUsers = ref<Record<string, boolean>>({})
   // username -> is screen sharing
   const screenSharingUsers = ref<Record<string, boolean>>({})
+  // username -> is connecting
+  const connectingUsers = ref<Record<string, boolean>>({})
 
   function updateSpeaking(states: Record<string, boolean>) {
     speakingUsers.value = { ...states }
@@ -19,6 +21,10 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
 
   function updateScreenSharing(states: Record<string, boolean>) {
     screenSharingUsers.value = { ...states }
+  }
+
+  function updateConnecting(states: Record<string, boolean>) {
+    connectingUsers.value = { ...states }
   }
 
   function isSpeaking(username: string): boolean {
@@ -33,10 +39,15 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
     return screenSharingUsers.value[username] || false
   }
 
+  function isConnecting(username: string): boolean {
+    return connectingUsers.value[username] || false
+  }
+
   function clear() {
     speakingUsers.value = {}
     mutedUsers.value = {}
     screenSharingUsers.value = {}
+    connectingUsers.value = {}
   }
 
   return {
@@ -46,9 +57,11 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
     updateSpeaking,
     updateMuted,
     updateScreenSharing,
+    updateConnecting,
     isSpeaking,
     isMuted,
     isScreenSharing,
+    isConnecting,
     clear,
   }
 })

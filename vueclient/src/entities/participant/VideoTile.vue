@@ -1,6 +1,10 @@
 <!-- eslint-disable @typescript-eslint/no-explicit-any -->
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
+import { useI18n } from 'vue-i18n'
+import CustomVideoPlayer from '@/shared/ui/CustomVideoPlayer.vue'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   conditionVideo: any
@@ -11,7 +15,8 @@ const props = defineProps<{
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
-const videoRef = ref<HTMLVideoElement | null>(null)
+const videoPlayerRef = ref<InstanceType<typeof CustomVideoPlayer> | null>(null)
+const videoRef = computed(() => videoPlayerRef.value?.videoElement || null)
 const audioRef = ref<HTMLAudioElement | null>(null)
 const audioStreamRef = ref<HTMLAudioElement | null>(null)
 const isMuted = ref(Boolean(props.muted))
@@ -39,9 +44,10 @@ const volumeIcon = computed(() => {
 
 watchEffect(() => {
   const stream = (props.stream as MediaStream | null) ?? null
-  if (videoRef.value && videoRef.value.srcObject !== stream) {
-    videoRef.value.srcObject = stream
-    videoRef.value.muted = true
+  const videoEl = videoRef.value
+  if (videoEl && videoEl.srcObject !== stream) {
+    videoEl.srcObject = stream
+    videoEl.muted = true
   }
   if (audioStreamRef.value && stream) {
     const audioTracks = stream.getAudioTracks()
@@ -55,21 +61,50 @@ watchEffect(() => {
   }
 })
 
-watch(() => props.muted, (value) => {
-  if (typeof value === 'boolean') { isMuted.value = value; applyMuteState() }
-})
-watch(() => micVolume.value, () => applyMuteState())
-watch(() => screenVolume.value, () => applyMuteState())
-watch(() => isMuted.value, () => applyMuteState())
+watch(
+  () => props.muted,
+  (value) => {
+    if (typeof value === 'boolean') {
+      isMuted.value = value
+      applyMuteState()
+    }
+  },
+)
+watch(
+  () => micVolume.value,
+  () => applyMuteState(),
+)
+watch(
+  () => screenVolume.value,
+  () => applyMuteState(),
+)
+watch(
+  () => isMuted.value,
+  () => applyMuteState(),
+)
 
 watch(
-  () => (props.stream as MediaStream | null)?.getAudioTracks().map((t) => t.id).join(',') ?? '',
+  () =>
+    (props.stream as MediaStream | null)
+      ?.getAudioTracks()
+      .map((t) => t.id)
+      .join(',') ?? '',
   () => rebuildAudioGraph(),
   { immediate: true },
 )
-watch(() => props.stream, () => rebuildAudioGraph(), { immediate: true })
-watch(() => processedAudioStream.value, () => syncAudioElement())
-watch(() => audioRef.value, () => syncAudioElement())
+watch(
+  () => props.stream,
+  () => rebuildAudioGraph(),
+  { immediate: true },
+)
+watch(
+  () => processedAudioStream.value,
+  () => syncAudioElement(),
+)
+watch(
+  () => audioRef.value,
+  () => syncAudioElement(),
+)
 
 function teardownAudioGraph() {
   processedAudioStream.value = null
@@ -79,8 +114,14 @@ function teardownAudioGraph() {
   screenGainNode.value = null
   cleanupResumeHandler()
   needsActivation.value = false
-  if (audioRef.value) { audioRef.value.pause(); audioRef.value.srcObject = null }
-  if (audioContextRef.value) { audioContextRef.value.close().catch(() => undefined); audioContextRef.value = null }
+  if (audioRef.value) {
+    audioRef.value.pause()
+    audioRef.value.srcObject = null
+  }
+  if (audioContextRef.value) {
+    audioContextRef.value.close().catch(() => undefined)
+    audioContextRef.value = null
+  }
   applyMuteState()
 }
 
@@ -104,8 +145,12 @@ function rebuildAudioGraph() {
   const destination = context.createMediaStreamDestination()
   const micGain = context.createGain()
   const screenGain = context.createGain()
-  micTracks.forEach((t) => { context.createMediaStreamSource(new MediaStream([t])).connect(micGain) })
-  screenTracks.forEach((t) => { context.createMediaStreamSource(new MediaStream([t])).connect(screenGain) })
+  micTracks.forEach((t) => {
+    context.createMediaStreamSource(new MediaStream([t])).connect(micGain)
+  })
+  screenTracks.forEach((t) => {
+    context.createMediaStreamSource(new MediaStream([t])).connect(screenGain)
+  })
   micGain.connect(destination)
   screenGain.connect(destination)
   audioContextRef.value = context
@@ -122,11 +167,17 @@ function applyMuteState() {
   if (micGainNode.value) micGainNode.value.gain.value = isMuted.value ? 0 : micVolume.value
   if (screenGainNode.value) screenGainNode.value.gain.value = isMuted.value ? 0 : screenVolume.value
   if (videoRef.value) videoRef.value.muted = true
-  if (audioRef.value) { audioRef.value.muted = isMuted.value; audioRef.value.volume = 1 }
+  if (audioRef.value) {
+    audioRef.value.muted = isMuted.value
+    audioRef.value.volume = 1
+  }
   if (!isMuted.value) ensureAudioPlayback()
 }
 
-function toggleMute() { isMuted.value = !isMuted.value; hideContextMenu() }
+function toggleMute() {
+  isMuted.value = !isMuted.value
+  hideContextMenu()
+}
 function handleMicVolumeInput(e: Event) {
   const v = Math.min(Math.max(Number((e.target as HTMLInputElement).value) / 100, 0), 1)
   micVolume.value = v
@@ -140,7 +191,10 @@ function handleScreenVolumeInput(e: Event) {
 
 async function enterFullscreen() {
   const el = videoRef.value ?? containerRef.value
-  if (el?.requestFullscreen) try { await el.requestFullscreen() } catch {}
+  if (el?.requestFullscreen)
+    try {
+      await el.requestFullscreen()
+    } catch {}
   hideContextMenu()
 }
 
@@ -152,7 +206,9 @@ function openContextMenu(event: MouseEvent) {
   contextMenu.value = { visible: true, x: event.clientX - rect.left, y: event.clientY - rect.top }
   nextTick(adjustMenuPosition)
 }
-function hideContextMenu() { contextMenu.value.visible = false }
+function hideContextMenu() {
+  contextMenu.value.visible = false
+}
 
 function handleOutsideClick(event: MouseEvent) {
   if (!contextMenu.value.visible) return
@@ -172,15 +228,25 @@ async function attemptResumePlayback() {
   if (resumePromise) return resumePromise
   resumePromise = (async () => {
     const ctx = audioContextRef.value
-    if (ctx && ctx.state === 'suspended') try { await ctx.resume() } catch {}
+    if (ctx && ctx.state === 'suspended')
+      try {
+        await ctx.resume()
+      } catch {}
     const el = audioRef.value
-    if (el) try { await el.play() } catch {}
+    if (el)
+      try {
+        await el.play()
+      } catch {}
     const running = !audioContextRef.value || audioContextRef.value.state === 'running'
     const playing = !audioRef.value || !audioRef.value.paused || audioRef.value.muted
     needsActivation.value = !(running && playing)
     if (!needsActivation.value) cleanupResumeHandler()
   })()
-  try { await resumePromise } finally { resumePromise = null }
+  try {
+    await resumePromise
+  } finally {
+    resumePromise = null
+  }
 }
 
 function ensureAudioPlayback() {
@@ -200,7 +266,8 @@ function cleanupResumeHandler() {
   }
 }
 function syncAudioElement() {
-  const el = audioRef.value, s = processedAudioStream.value
+  const el = audioRef.value,
+    s = processedAudioStream.value
   if (!el || !s) return
   if (el.srcObject !== s) el.srcObject = s
   ensureAudioPlayback()
@@ -227,12 +294,15 @@ onBeforeUnmount(() => {
     @contextmenu="openContextMenu"
     @click="hideContextMenu"
   >
-    <video
+    <CustomVideoPlayer
       v-if="conditionVideo"
-      ref="videoRef"
-      autoplay playsinline
-      class="w-full h-full object-contain"
-      @dblclick="enterFullscreen"
+      ref="videoPlayerRef"
+      :stream="(stream as MediaStream | null)"
+      :muted="true"
+      :autoplay="true"
+      :playsinline="true"
+      :show-controls="false"
+      class="w-full h-full"
     />
     <div v-else class="flex flex-col items-center justify-center gap-2">
       <font-awesome-icon icon="user" class="text-6xl text-dc-text-muted" />
@@ -254,43 +324,72 @@ onBeforeUnmount(() => {
           class="flex items-center gap-2 px-2 py-1.5 rounded text-sm text-dc-text hover:bg-dc-bg-hover transition-colors text-left"
           @click="toggleMute"
         >
-          {{ isMuted ? 'Unmute' : 'Mute' }}
+          {{ isMuted ? t('common.unmute') : t('common.mute') }}
         </button>
 
         <div v-if="hasMicAudio" class="flex flex-col gap-1 px-1">
-          <span class="text-[10px] uppercase tracking-wide text-dc-text-muted">Mic Volume</span>
-          <input type="range" min="0" max="100" step="1" :value="Math.round(micVolume * 100)"
-            class="accent-dc-blurple cursor-pointer" @input="handleMicVolumeInput" @click.stop />
+          <span class="text-[10px] uppercase tracking-wide text-dc-text-muted">{{
+            t('common.micVolume')
+          }}</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            :value="Math.round(micVolume * 100)"
+            class="accent-dc-blurple cursor-pointer"
+            @input="handleMicVolumeInput"
+            @click.stop
+          />
         </div>
 
         <div v-if="hasScreenAudio" class="flex flex-col gap-1 px-1">
-          <span class="text-[10px] uppercase tracking-wide text-dc-text-muted">Stream Volume</span>
-          <input type="range" min="0" max="100" step="1" :value="Math.round(screenVolume * 100)"
-            class="accent-dc-blurple cursor-pointer" @input="handleScreenVolumeInput" @click.stop />
+          <span class="text-[10px] uppercase tracking-wide text-dc-text-muted">{{
+            t('common.streamVolume')
+          }}</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            :value="Math.round(screenVolume * 100)"
+            class="accent-dc-blurple cursor-pointer"
+            @input="handleScreenVolumeInput"
+            @click.stop
+          />
         </div>
 
         <button
           class="flex items-center gap-2 px-2 py-1.5 rounded text-sm text-dc-text hover:bg-dc-bg-hover transition-colors text-left"
           @click="enterFullscreen"
         >
-          Fullscreen
+          {{ t('common.fullscreen') }}
         </button>
       </div>
     </Transition>
 
     <!-- Activation prompt -->
-    <div v-if="needsActivation && !isMuted" class="absolute bottom-3 left-1/2 -translate-x-1/2 z-30">
+    <div
+      v-if="needsActivation && !isMuted"
+      class="absolute bottom-3 left-1/2 -translate-x-1/2 z-30"
+    >
       <button
         class="px-3 py-1.5 rounded bg-dc-blurple hover:bg-dc-blurple-hover text-white text-xs font-medium shadow-lg transition-colors"
         @click.stop="attemptResumePlayback"
       >
-        Enable Sound
+        {{ t('common.enableSound') }}
       </button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 </style>

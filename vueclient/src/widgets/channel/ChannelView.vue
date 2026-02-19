@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { SignalingService, type ErrorResponse, type RoomJoinResponse } from '@/api'
-import connectSound from '@/assets/sound/connect.wav'
+import connectSound from '@/assets/sound/connect.mp3'
+import disconnectSound from '@/assets/sound/disconnect.mp3'
+import screencastStartSound from '@/assets/sound/screencast-start.mp3'
 import { useWebRTC } from '@/shared/lib/useWebRTC'
 import { useCallStore } from '@/shared/stores/callStore'
 import { useChatStore } from '@/shared/stores/chatStore'
@@ -8,6 +10,7 @@ import { useRoomStore } from '@/shared/stores/roomStore'
 import { useSidebarStore } from '@/shared/stores/sidebarStore'
 import { useSignalingStore } from '@/shared/stores/signalingStore'
 import { useVoiceStateStore } from '@/shared/stores/voiceStateStore'
+import { useSettingsStore } from '@/shared/stores/settingsStore'
 import UserBadge from '@/entities/participant/UserBadge.vue'
 import VideoTile from '@/entities/participant/VideoTile.vue'
 import ParticipantCard from '@/entities/participant/ParticipantCard.vue'
@@ -15,6 +18,9 @@ import CallControls from './CallControls.vue'
 import ScreenShareModal, { type ScreenShareOptions } from './ScreenShareModal.vue'
 import ChatPanel from '@/widgets/chat/ChatPanel.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{ userName: string | undefined }>()
 
@@ -24,6 +30,7 @@ const callStore = useCallStore()
 const chatStore = useChatStore()
 const sidebarStore = useSidebarStore()
 const voiceStateStore = useVoiceStateStore()
+const settingsStore = useSettingsStore()
 
 const {
   localStream, remotePeers, peerStates, peerPlayback, peerAudioStreams,
@@ -36,6 +43,8 @@ const {
 const videoEnabled = ref(false)
 const audioEnabled = ref(true)
 const audioElement = ref<HTMLAudioElement | null>(null)
+const disconnectAudioElement = ref<HTMLAudioElement | null>(null)
+const screencastAudioElement = ref<HTMLAudioElement | null>(null)
 const currentCameraDeviceId = ref<string | null>(null)
 const currentMicrophoneDeviceId = ref<string | null>(null)
 const videoStreamIndex = ref(0)
@@ -86,14 +95,14 @@ const availableScreenShares = computed(() => {
 
 type PeerWithoutVideo = {
   peerId: string; name: string; isMuted: boolean; isSpeaking: boolean
-  isLocal: boolean; volume?: number; audioStream?: MediaStream
+  isLocal: boolean; volume?: number; audioStream?: MediaStream; isConnecting?: boolean
 }
 
 const peersWithoutVideo = computed<PeerWithoutVideo[]>(() => {
   const result: PeerWithoutVideo[] = []
   const localClientId = signalingStore.clientId
   if ((!localStream.value || localStream.value.getVideoTracks().length === 0) && localClientId) {
-    result.push({ peerId: localClientId, name: props.userName || 'You', isMuted: !audioEnabled.value, isSpeaking: isLocalSpeaking.value, isLocal: true })
+    result.push({ peerId: localClientId, name: props.userName || t('common.you'), isMuted: !audioEnabled.value, isSpeaking: isLocalSpeaking.value, isLocal: true })
   }
   roomStore.participants.forEach((participant) => {
     const peerId = participant.client_id || ''
@@ -107,9 +116,12 @@ const peersWithoutVideo = computed<PeerWithoutVideo[]>(() => {
       let isMuted = true
       if (peerState && typeof peerState.microphone === 'boolean') isMuted = !peerState.microphone
       else if (playback) isMuted = playback.muted
+      const hasPeerState = peerState !== undefined
+      const isConnecting = !peer || !hasPeerState
       result.push({
         peerId, name: name || peerId, isMuted, isSpeaking: speakingPeers.value[peerId] || false,
         isLocal: false, volume: playback?.volume ?? 1, audioStream: peerAudioStreams.value[peerId],
+        isConnecting,
       })
     }
   })
@@ -162,20 +174,35 @@ async function toggleMicrophone() {
 async function startCall() {
   if (!roomStore.selectedChannelId) return
   await connectToRoom(roomStore.selectedChannelId)
+  const preferredMic = currentMicrophoneDeviceId.value || settingsStore.defaultMicrophoneId
+  const preferredCamera = currentCameraDeviceId.value || settingsStore.defaultCameraId
   try {
     await joinRoomWithMedia(roomStore.selectedChannelId, props.userName, {
-      video: videoEnabled.value,
-      audio: audioEnabled.value ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
+      video: videoEnabled.value
+        ? (preferredCamera ? { deviceId: { ideal: preferredCamera } } : true)
+        : false,
+      audio: audioEnabled.value
+        ? {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            ...(preferredMic ? { deviceId: { ideal: preferredMic } } : {}),
+          }
+        : false,
     })
     callStore.setStateCall(true)
     roomStore.getListChannels()
-    toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
+    toggleMedia(videoEnabled.value, audioEnabled.value, preferredCamera || '')
   } catch (error) {
     console.error('Failed to start call:', error)
   }
 }
 
 function endCall() {
+  // Play disconnect sound if enabled
+  if (settingsStore.soundOnConnect && disconnectAudioElement.value) {
+    disconnectAudioElement.value.play().catch(() => {})
+  }
   leaveRoom(); stopMedia(); roomStore.getListChannels()
   videoEnabled.value = false; audioEnabled.value = true; callStore.setStateCall(false)
   voiceStateStore.clear()
@@ -189,6 +216,10 @@ async function handleStartScreenShare(options: ScreenShareOptions) {
   showScreenShareModal.value = false
   try {
     await startScreenShare(options)
+    // Play screencast start sound if enabled
+    if (settingsStore.soundOnConnect && screencastAudioElement.value) {
+      screencastAudioElement.value.play().catch(() => {})
+    }
   } catch (error) {
     console.error('Failed to start screen share:', error)
   }
@@ -216,11 +247,17 @@ async function connectToRoom(id: string | undefined) {
 watch(() => roomStore.selectedChannelId, (newId, oldId) => {
   if (oldId && newId !== oldId && callStore.isInCall) endCall()
 })
+watch(() => callStore.disconnectRequested, (requested) => {
+  if (requested && callStore.isInCall) {
+    endCall()
+    callStore.clearDisconnectRequest()
+  }
+})
 watch(() => callStore.isInCall, (inCall) => {
-  if (inCall && audioElement.value) audioElement.value.play().catch(() => {})
+  if (inCall && settingsStore.soundOnConnect && audioElement.value) audioElement.value.play().catch(() => {})
 })
 watch(() => remotePeers.value.length, (n, o) => {
-  if (n > o && audioElement.value) audioElement.value.play().catch(() => {})
+  if (n > o && settingsStore.soundOnConnect && audioElement.value) audioElement.value.play().catch(() => {})
 })
 
 watch(() => roomStore.selectedChannelId, async (newId, oldId) => {
@@ -275,6 +312,50 @@ watch(
   { deep: true },
 )
 
+// Sync connecting state to voiceStateStore
+watch(
+  [() => roomStore.participants, remotePeers, peerStates, () => signalingStore.room_mates, () => callStore.isInCall],
+  () => {
+    if (!callStore.isInCall) { voiceStateStore.updateConnecting({}); return }
+    const states: Record<string, boolean> = {}
+    const localClientId = signalingStore.clientId
+    roomStore.participants.forEach((participant) => {
+      const peerId = participant.client_id || ''
+      if (peerId === localClientId) return
+      const name = participant.username || peerId
+      const peer = remotePeers.value.find((p) => p.peerId === peerId)
+      const hasPeerState = peerStates.value[peerId] !== undefined
+      // Participant is connecting if they're in the list but don't have a peer connection or peer state yet
+      const isConnecting = !peer || !hasPeerState
+      if (name) states[name] = isConnecting
+    })
+    voiceStateStore.updateConnecting(states)
+  },
+  { deep: true },
+)
+
+// Auto-unwatch screen sharing streams when they stop
+watch(
+  () => [peerStates.value, remotePeers.value, watchingStreams.value],
+  () => {
+    // Create a copy of watchingStreams to avoid modification during iteration
+    const streamsToCheck = Array.from(watchingStreams.value)
+    
+    streamsToCheck.forEach((peerId) => {
+      const peerState = peerStates.value[peerId]
+      const isScreenSharing = peerState?.screen === true
+      const peer = remotePeers.value.find((p) => p.peerId === peerId)
+      const hasVideoTrack = peer?.remoteStream && peer.remoteStream.getVideoTracks().length > 0
+      
+      // If screen sharing stopped or video track disappeared, unwatch
+      if (!isScreenSharing || !hasVideoTrack) {
+        unwatchStream(peerId)
+      }
+    })
+  },
+  { deep: true },
+)
+
 // Sync muted state to voiceStateStore for sidebar
 watch(
   [peerStates, audioEnabled, () => signalingStore.room_mates, () => callStore.isInCall],
@@ -291,9 +372,19 @@ watch(
   { deep: true },
 )
 
-onMounted(() => {
-  fetchVideoDevices(); fetchAudioDevices()
+onMounted(async () => {
+  await fetchVideoDevices()
+  await fetchAudioDevices()
   if (roomStore.selectedChannelId) roomStore.getRoomParticipants(roomStore.selectedChannelId)
+  // Apply default devices from settings
+  if (!currentMicrophoneDeviceId.value && settingsStore.defaultMicrophoneId) {
+    const exists = audioDevices.value.some((d) => d.deviceId === settingsStore.defaultMicrophoneId)
+    if (exists) currentMicrophoneDeviceId.value = settingsStore.defaultMicrophoneId
+  }
+  if (!currentCameraDeviceId.value && settingsStore.defaultCameraId) {
+    const exists = videoDevices.value.some((d) => d.deviceId === settingsStore.defaultCameraId)
+    if (exists) currentCameraDeviceId.value = settingsStore.defaultCameraId
+  }
 })
 
 onBeforeUnmount(() => {
@@ -322,12 +413,12 @@ onBeforeUnmount(() => {
         <font-awesome-icon icon="volume-high" class="text-dc-text-muted flex-shrink-0 text-[16px]" />
 
         <h1 class="text-[15px] font-semibold text-dc-text-heading truncate flex-1">
-          {{ roomStore.selectedChannelName || 'Select a channel' }}
+          {{ roomStore.selectedChannelName || t('channel.selectChannel') }}
         </h1>
 
         <div v-if="roomStore.selectedChannelId" class="flex items-center gap-2">
           <div :class="['w-2 h-2 rounded-full', signalingStore.isConnected ? 'bg-dc-green' : 'bg-dc-red']" />
-          <span class="text-xs text-dc-text-muted hidden sm:inline">{{ signalingStore.isConnected ? 'Connected' : 'Disconnected' }}</span>
+          <span class="text-xs text-dc-text-muted hidden sm:inline">{{ signalingStore.isConnected ? t('common.connected') : t('common.disconnected') }}</span>
         </div>
 
         <!-- Mobile chat toggle -->
@@ -335,7 +426,7 @@ onBeforeUnmount(() => {
           v-if="roomStore.selectedChannelId"
           @click="sidebarStore.toggleChat()"
           class="w-7 h-7 flex items-center justify-center text-dc-text-muted hover:text-dc-text transition-colors"
-          title="Toggle Chat"
+          :title="t('channel.toggleChat')"
         >
           <font-awesome-icon icon="comment" class="text-lg" />
         </button>
@@ -345,21 +436,23 @@ onBeforeUnmount(() => {
       <div v-if="!roomStore.selectedChannelId" class="flex-1 flex items-center justify-center bg-dc-bg-primary">
         <div class="text-center max-w-sm px-8">
           <font-awesome-icon icon="volume-high" class="text-7xl mx-auto mb-4 text-dc-text-muted/30" />
-          <h2 class="text-xl font-semibold text-dc-text-heading mb-2">No channel selected</h2>
-          <p class="text-dc-text-muted text-sm">Select a voice channel from the sidebar to get started</p>
+          <h2 class="text-xl font-semibold text-dc-text-heading mb-2">{{ t('channel.noChannelSelected') }}</h2>
+          <p class="text-dc-text-muted text-sm">{{ t('channel.selectVoiceChannelHint') }}</p>
         </div>
       </div>
 
       <!-- Channel content -->
       <template v-else>
         <audio ref="audioElement" :src="connectSound" />
+        <audio ref="disconnectAudioElement" :src="disconnectSound" />
+        <audio ref="screencastAudioElement" :src="screencastStartSound" />
 
         <div class="flex-1 overflow-auto bg-dc-bg-primary">
           <!-- Not in call -->
           <div v-if="!callStore.isInCall" class="flex items-center justify-center h-full min-h-[200px]">
             <div class="text-center px-4 max-w-md">
               <div v-if="roomStore.roommates.length" class="mb-6">
-                <p class="text-dc-text-muted mb-3 text-sm">Connected participants:</p>
+                <p class="text-dc-text-muted mb-3 text-sm">{{ t('channel.connectedParticipants') }}</p>
                 <div class="flex flex-wrap gap-2 justify-center">
                   <span
                     v-for="(user, i) in roomStore.roommates" :key="i"
@@ -370,7 +463,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div v-else class="mb-6">
-                <p class="text-dc-text-muted text-sm">No one is in this channel yet</p>
+                <p class="text-dc-text-muted text-sm">{{ t('channel.noOneInChannel') }}</p>
               </div>
 
               <button
@@ -378,7 +471,7 @@ onBeforeUnmount(() => {
                 :disabled="!roomStore.selectedChannelId"
                 class="px-8 py-3 rounded-full bg-dc-green hover:bg-dc-green/80 disabled:opacity-40 text-white font-medium text-sm transition-colors shadow-lg"
               >
-                Join Voice
+                {{ t('channel.joinVoice') }}
               </button>
             </div>
           </div>
@@ -391,7 +484,7 @@ onBeforeUnmount(() => {
               class="flex-shrink-0 px-4 py-3 border-b border-dc-separator/40 bg-dc-bg-secondary"
             >
               <h3 class="text-xs font-bold uppercase tracking-wider text-dc-text-muted mb-3">
-                Screen Sharing Available
+                {{ t('channel.screenSharingAvailable') }}
               </h3>
               <div class="flex flex-wrap gap-3">
                 <div
@@ -401,13 +494,13 @@ onBeforeUnmount(() => {
                 >
                   <font-awesome-icon icon="desktop" class="text-dc-blurple text-base" />
                   <span class="text-sm font-medium text-dc-text-heading">{{ share.name }}</span>
-                  <span class="text-xs text-dc-text-muted">is sharing their screen</span>
+                  <span class="text-xs text-dc-text-muted">{{ t('channel.isSharingScreen') }}</span>
                   <button
                     @click="watchStream(share.peerId)"
                     class="ml-auto px-4 py-1.5 rounded text-xs font-medium bg-dc-blurple hover:bg-dc-blurple-hover text-white transition-colors flex items-center gap-1.5"
                   >
                     <font-awesome-icon icon="desktop" class="text-xs" />
-                    <span>Watch</span>
+                    <span>{{ t('channel.watch') }}</span>
                   </button>
                 </div>
               </div>
@@ -442,15 +535,15 @@ onBeforeUnmount(() => {
                     v-if="!peer.isLocal && peerStates[peer.peerId]?.screen === true && watchingStreams.has(peer.peerId)"
                     @click="unwatchStream(peer.peerId)"
                     class="absolute top-2 right-2 z-10 px-2 py-1 rounded bg-dc-bg-floating/90 hover:bg-dc-bg-floating text-white text-xs font-medium transition-colors flex items-center gap-1"
-                    title="Stop watching"
+                    :title="t('channel.stopWatching')"
                   >
                     <font-awesome-icon icon="xmark" class="text-xs" />
-                    <span>Unwatch</span>
+                    <span>{{ t('channel.unwatch') }}</span>
                   </button>
                   <UserBadge
                     v-if="peer.isLocal"
                     :condition-show="!audioEnabled"
-                    :name="`You (${props.userName})`"
+                    :name="`${t('common.you')} (${props.userName})`"
                     :speaking="isLocalSpeaking"
                   />
                   <UserBadge
@@ -470,7 +563,7 @@ onBeforeUnmount(() => {
             >
               <div class="max-w-[1800px] mx-auto w-full flex flex-col justify-center min-h-full sm:min-h-0">
                 <h3 v-if="peersWithVideo.length > 0" class="text-[11px] font-bold uppercase tracking-wider text-dc-text-muted mb-3 px-2">
-                  Participants
+                  {{ t('common.participants') }}
                 </h3>
                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 3xl:grid-cols-8 gap-2 lg:gap-3 2xl:gap-4 place-content-center">
                   <ParticipantCard
@@ -478,6 +571,7 @@ onBeforeUnmount(() => {
                     :name="p.name" :is-muted="p.isMuted" :is-speaking="p.isSpeaking"
                     :is-local="p.isLocal" :peer-id="p.peerId"
                     :volume="p.volume" :audio-stream="p.audioStream"
+                    :is-connecting="p.isConnecting"
                     @update:muted="handlePeerMuteChange(p.peerId, $event)"
                     @update:volume="handlePeerVolumeChange(p.peerId, $event)"
                   />
@@ -487,7 +581,7 @@ onBeforeUnmount(() => {
 
             <!-- Empty in call -->
             <div v-if="peersWithVideo.length === 0 && peersWithoutVideo.length === 0 && availableScreenShares.length === 0" class="flex-1 flex items-center justify-center">
-              <p class="text-dc-text-muted text-sm">Waiting for participants...</p>
+              <p class="text-dc-text-muted text-sm">{{ t('channel.waitingForParticipants') }}</p>
             </div>
           </div>
         </div>
@@ -524,11 +618,11 @@ onBeforeUnmount(() => {
     <!-- Chat panel (mobile overlay) -->
     <Transition name="slide-left">
       <div
-        v-if="!sidebarStore.chatOpen === false && sidebarStore.isMobile"
+        v-if="sidebarStore.chatOpen && sidebarStore.isMobile"
         class="lg:hidden fixed inset-0 z-50 flex flex-col bg-dc-bg-primary"
       >
         <div class="h-12 px-4 flex items-center justify-between border-b border-dc-separator/40">
-          <h2 class="text-[15px] font-semibold text-dc-text-heading">Chat</h2>
+          <h2 class="text-[15px] font-semibold text-dc-text-heading">{{ t('channel.chat') }}</h2>
           <button
             @click="sidebarStore.toggleChat()"
             class="w-7 h-7 flex items-center justify-center text-dc-text-muted hover:text-dc-text transition-colors"

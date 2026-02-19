@@ -17,6 +17,9 @@ export interface ChatMessage {
   username: string
   text: string
   timestamp: string
+  id?: string // Optional message ID for editing/deleting
+  edited?: boolean // Whether message was edited
+  reactions?: Record<string, string[]> // emoji -> array of userIds who reacted
 }
 
 export interface ChatHistoryMessage {
@@ -53,8 +56,31 @@ export interface JoinedMessage {
   type: 'joined'
   room: string
   clientId: string
+  userId?: string
   username: string
   timestamp: string
+}
+
+export interface MessageEditedMessage {
+  type: 'message_edited'
+  room: string
+  messageId: string
+  text: string
+  timestamp: string
+}
+
+export interface MessageDeletedMessage {
+  type: 'message_deleted'
+  room: string
+  messageId: string
+}
+
+export interface ReactionUpdatedMessage {
+  type: 'reaction_updated'
+  room: string
+  messageId: string
+  emoji: string
+  reactions: Record<string, string[]> // emoji -> array of clientIds
 }
 
 export type ChatWebSocketMessage =
@@ -64,6 +90,9 @@ export type ChatWebSocketMessage =
   | UserLeftMessage
   | TypingMessage
   | JoinedMessage
+  | MessageEditedMessage
+  | MessageDeletedMessage
+  | ReactionUpdatedMessage
   | { type: 'error'; message: string }
 
 export const useChatStore = defineStore('chat', () => {
@@ -76,6 +105,7 @@ export const useChatStore = defineStore('chat', () => {
   const maxReconnectAttempts = 5
   const reconnectTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
   const clientId = ref<string | null>(null)
+  const userId = ref<string | null>(null)
   const username = ref<string | null>(null)
   const notificationsEnabled = ref<boolean>(
     localStorage.getItem('chatNotificationsEnabled') !== 'false',
@@ -120,6 +150,7 @@ export const useChatStore = defineStore('chat', () => {
         typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : localStorage.getItem('token') || ''
       const url = `${wsUrl}?token=${encodeURIComponent(token)}&room=${encodeURIComponent(roomId)}&username=${encodeURIComponent(userName)}`
 
+      console.log('Connecting to chat WebSocket:', url)
       ws.value = new WebSocket(url)
 
       ws.value.onopen = () => {
@@ -138,9 +169,12 @@ export const useChatStore = defineStore('chat', () => {
 
       ws.value.onerror = (error) => {
         console.error('Chat WebSocket error:', error)
+        console.error('WebSocket URL was:', url)
+        connectionState.value = 'disconnected'
       }
 
-      ws.value.onclose = () => {
+      ws.value.onclose = (event) => {
+        console.log('Chat WebSocket closed:', event.code, event.reason)
         connectionState.value = 'disconnected'
         ws.value = null
         if (currentRoomId.value && reconnectAttempts.value < maxReconnectAttempts) {
@@ -201,10 +235,58 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function editMessage(messageId: string, newText: string) {
+    if (!ws.value || ws.value.readyState !== WebSocket.OPEN) return false
+    if (!newText.trim()) return false
+    try {
+      ws.value.send(JSON.stringify({ type: 'edit_message', messageId, text: newText.trim() }))
+      return true
+    } catch (error) {
+      console.error('Failed to edit message:', error)
+      return false
+    }
+  }
+
+  function deleteMessage(messageId: string) {
+    if (!ws.value || ws.value.readyState !== WebSocket.OPEN) return false
+    try {
+      ws.value.send(JSON.stringify({ type: 'delete_message', messageId }))
+      return true
+    } catch (error) {
+      console.error('Failed to delete message:', error)
+      return false
+    }
+  }
+
+  function addReaction(messageId: string, emoji: string) {
+    if (!ws.value || ws.value.readyState !== WebSocket.OPEN) return false
+    if (!emoji) return false
+    try {
+      ws.value.send(JSON.stringify({ type: 'add_reaction', messageId, emoji }))
+      return true
+    } catch (error) {
+      console.error('Failed to add reaction:', error)
+      return false
+    }
+  }
+
+  function removeReaction(messageId: string, emoji: string) {
+    if (!ws.value || ws.value.readyState !== WebSocket.OPEN) return false
+    if (!emoji) return false
+    try {
+      ws.value.send(JSON.stringify({ type: 'remove_reaction', messageId, emoji }))
+      return true
+    } catch (error) {
+      console.error('Failed to remove reaction:', error)
+      return false
+    }
+  }
+
   function handleMessage(message: ChatWebSocketMessage) {
     switch (message.type) {
       case 'joined':
         clientId.value = message.clientId
+        userId.value = message.userId || message.clientId
         username.value = message.username
         typingUsers.value.clear()
         break
@@ -251,6 +333,57 @@ export const useChatStore = defineStore('chat', () => {
         }
         break
 
+      case 'message_edited': {
+        const roomId = message.room || currentRoomId.value
+        if (roomId) {
+          const roomMessages = messagesByRoom.value.get(roomId) || []
+          const messageIndex = roomMessages.findIndex((m) => m.id === message.messageId || (m.from === clientId.value && m.timestamp === message.timestamp))
+          if (messageIndex !== -1) {
+            roomMessages[messageIndex] = { ...roomMessages[messageIndex], text: message.text, edited: true }
+            messagesByRoom.value.set(roomId, roomMessages)
+          }
+        }
+        break
+      }
+
+      case 'message_deleted': {
+        const roomId = message.room || currentRoomId.value
+        if (roomId) {
+          const roomMessages = messagesByRoom.value.get(roomId) || []
+          const filteredMessages = roomMessages.filter((m) => {
+            // If message has an ID, compare by ID
+            if (m.id) {
+              return m.id !== message.messageId
+            }
+            // Otherwise, compare by from + timestamp (fallback for messages without ID)
+            const messageKey = `${m.from}-${m.timestamp}`
+            const deletedKey = message.messageId
+            return messageKey !== deletedKey
+          })
+          messagesByRoom.value.set(roomId, filteredMessages)
+        }
+        break
+      }
+
+      case 'reaction_updated': {
+        const roomId = message.room || currentRoomId.value
+        if (roomId) {
+          const roomMessages = messagesByRoom.value.get(roomId) || []
+          const messageIndex = roomMessages.findIndex((m) => 
+            m.id === message.messageId || 
+            (!m.id && `${m.from}-${m.timestamp}` === message.messageId)
+          )
+          if (messageIndex !== -1) {
+            roomMessages[messageIndex] = { 
+              ...roomMessages[messageIndex], 
+              reactions: message.reactions 
+            }
+            messagesByRoom.value.set(roomId, roomMessages)
+          }
+        }
+        break
+      }
+
       case 'error':
         console.error('Chat error:', message.message)
         break
@@ -281,6 +414,7 @@ export const useChatStore = defineStore('chat', () => {
     messages,
     typingUsers,
     clientId,
+    userId,
     username,
     notificationsEnabled,
     isConnected,
@@ -290,6 +424,10 @@ export const useChatStore = defineStore('chat', () => {
     disconnect,
     sendMessage,
     sendTyping,
+    editMessage,
+    deleteMessage,
+    addReaction,
+    removeReaction,
     setNotificationsEnabled,
     requestNotificationPermission: requestPermission,
     clearMessages,

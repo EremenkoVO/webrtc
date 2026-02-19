@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watchEffect, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   name: string
@@ -9,6 +12,7 @@ const props = defineProps<{
   peerId?: string
   volume?: number
   audioStream?: MediaStream
+  isConnecting?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -93,11 +97,24 @@ function handleVolumeInput(event: Event) {
         v-if="isSpeaking"
         class="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-dc-green border-[3px] border-dc-bg-secondary-alt"
       />
+      <!-- Connecting indicator -->
+      <div
+        v-if="isConnecting && !isSpeaking"
+        class="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-dc-blurple border-[3px] border-dc-bg-secondary-alt flex items-center justify-center"
+      >
+        <div class="w-2 h-2 bg-white rounded-full animate-pulse" />
+      </div>
     </div>
 
     <!-- Name -->
     <div class="text-xs 2xl:text-sm font-medium text-dc-text truncate max-w-full px-1 text-center">
-      {{ isLocal ? `${name} (You)` : name }}
+      {{ isLocal ? `${name} (${t('common.you')})` : name }}
+      <span
+        v-if="isConnecting"
+        class="block text-[10px] text-dc-text-muted mt-0.5"
+      >
+        {{ t('common.connecting') }}
+      </span>
     </div>
 
     <!-- Mic status -->
@@ -123,10 +140,10 @@ function handleVolumeInput(event: Event) {
           class="flex items-center gap-2 px-2 py-1.5 rounded text-sm text-dc-text hover:bg-dc-bg-hover transition-colors text-left w-full"
           @click="toggleMute(); showMenu = false"
         >
-          {{ localMuted ? 'Unmute' : 'Mute' }}
+          {{ localMuted ? t('common.unmute') : t('common.mute') }}
         </button>
         <div class="flex flex-col gap-1">
-          <span class="text-[10px] uppercase tracking-wide text-dc-text-muted">Volume</span>
+          <span class="text-[10px] uppercase tracking-wide text-dc-text-muted">{{ t('common.volume') }}</span>
           <input
             type="range" min="0" max="100" step="1"
             :value="Math.round(localVolume * 100)"

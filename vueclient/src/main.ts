@@ -8,6 +8,8 @@ import {
   faBars, faHashtag, faPaperPlane, faUser,
   faRightFromBracket, faArrowsRotate, faComment,
   faWindowMaximize, faWindowRestore, faVolumeMute,
+  faPlay, faPause, faVolumeLow, faGear, faCircleStop,
+  faPencil, faTrash, faFaceSmile,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 
@@ -18,6 +20,7 @@ import vClickOutside from 'click-outside-vue3'
 import { OpenAPI } from './api'
 import App from './app/App.vue'
 import router from './app/router'
+import i18n from './shared/i18n'
 
 library.add(
   faVolumeHigh, faMicrophone, faMicrophoneSlash,
@@ -26,6 +29,8 @@ library.add(
   faBars, faHashtag, faPaperPlane, faUser,
   faRightFromBracket, faArrowsRotate, faComment,
   faWindowMaximize, faWindowRestore, faVolumeMute,
+  faPlay, faPause, faVolumeLow, faGear, faCircleStop,
+  faPencil, faTrash, faFaceSmile,
 )
 
 OpenAPI.TOKEN = localStorage.getItem('token') || ''
@@ -34,6 +39,7 @@ const app = createApp(App)
 
 app.component('font-awesome-icon', FontAwesomeIcon)
 app.use(createPinia())
+app.use(i18n)
 app.use(vClickOutside)
 app.use(router)
 
