@@ -12,7 +12,16 @@ const props = defineProps<{
   stream: any
   keyId: string
   muted: boolean | undefined
+  volume?: number
   isScreenSharing?: boolean
+  showHidePreview?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'stopWatching'): void
+  (e: 'update:volume', volume: number): void
+  (e: 'update:muted', muted: boolean): void
+  (e: 'hidePreview'): void
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
@@ -22,8 +31,6 @@ const audioRef = ref<HTMLAudioElement | null>(null)
 const audioStreamRef = ref<HTMLAudioElement | null>(null)
 const screenAudioRef = ref<HTMLAudioElement | null>(null)
 const isMuted = ref(Boolean(props.muted))
-const micVolume = ref(1)
-const screenVolume = ref(1)
 const hasMicAudio = ref(false)
 const hasScreenAudio = ref(false)
 const contextMenu = ref({ visible: false, x: 0, y: 0 })
@@ -36,13 +43,6 @@ const needsActivation = ref(false)
 let resumePlaybackHandler: ((event: Event) => void) | null = null
 let resumePromise: Promise<void> | null = null
 
-const volumeIcon = computed(() => {
-  const effectiveMic = hasMicAudio.value ? micVolume.value : 0
-  const effectiveScreen = hasScreenAudio.value ? screenVolume.value : 0
-  const level = isMuted.value ? 0 : Math.max(effectiveMic, effectiveScreen)
-  if (level === 0) return 'muted'
-  return level < 0.5 ? 'low' : 'high'
-})
 
 const isFullscreen = computed(() => {
   if (typeof document === 'undefined') return false
@@ -75,11 +75,7 @@ watch(
   },
 )
 watch(
-  () => micVolume.value,
-  () => applyMuteState(),
-)
-watch(
-  () => screenVolume.value,
+  () => props.volume,
   () => applyMuteState(),
 )
 watch(
@@ -115,6 +111,15 @@ watch(
 watch(
   () => screenAudioRef.value,
   () => syncScreenAudioElement(),
+)
+
+watch(
+  () => needsActivation.value && !isMuted.value,
+  () => {
+    if (needsActivation.value) {
+      attemptResumePlayback()
+    }
+  },
 )
 
 function teardownAudioGraph() {
@@ -215,9 +220,10 @@ function rebuildAudioGraph() {
 
 function applyMuteState() {
   const muted = isMuted.value
+  const vol = props.volume ?? 1
   // Control microphone volume through gain node
   if (micGainNode.value) {
-    micGainNode.value.gain.value = muted ? 0 : micVolume.value
+    micGainNode.value.gain.value = muted ? 0 : vol
   }
   // Control screen audio volume through audio element volume
   if (videoRef.value) {
@@ -229,7 +235,7 @@ function applyMuteState() {
   }
   if (screenAudioRef.value && screenAudioStream.value) {
     screenAudioRef.value.muted = muted
-    screenAudioRef.value.volume = muted ? 0 : screenVolume.value
+    screenAudioRef.value.volume = muted ? 0 : vol
   }
 
   if (!muted) {
@@ -239,15 +245,16 @@ function applyMuteState() {
 
 function toggleMute() {
   isMuted.value = !isMuted.value
+  emit('update:muted', isMuted.value)
   hideContextMenu()
 }
-function handleMicVolumeInput(volume: number) {
-  micVolume.value = Math.min(Math.max(volume, 0), 1)
-  if (micVolume.value > 0 && isMuted.value) isMuted.value = false
-}
-function handleScreenVolumeInput(volume: number) {
-  screenVolume.value = Math.min(Math.max(volume, 0), 1)
-  if (screenVolume.value > 0 && isMuted.value) isMuted.value = false
+function handleVolumeInput(volume: number) {
+  const clamped = Math.min(Math.max(volume, 0), 1)
+  if (clamped > 0 && isMuted.value) {
+    isMuted.value = false
+    emit('update:muted', false)
+  }
+  emit('update:volume', clamped)
 }
 
 async function enterFullscreen() {
@@ -298,8 +305,8 @@ function adjustMenuPosition() {
     contextMenu.value = { ...contextMenu.value, x: menuX - cr.left, y: menuY - cr.top }
   } else {
     // Normal mode - use container coordinates
-    let x = Math.min(Math.max(contextMenu.value.x, 8), Math.max(cr.width - mr.width - 8, 0))
-    let y = Math.min(Math.max(contextMenu.value.y, 8), Math.max(cr.height - mr.height - 8, 0))
+    const x = Math.min(Math.max(contextMenu.value.x, 8), Math.max(cr.width - mr.width - 8, 0))
+    const y = Math.min(Math.max(contextMenu.value.y, 8), Math.max(cr.height - mr.height - 8, 0))
     contextMenu.value = { ...contextMenu.value, x, y }
   }
 }
@@ -369,7 +376,7 @@ function syncScreenAudioElement() {
     if (el.srcObject !== s) {
       el.srcObject = s
       el.muted = isMuted.value
-      el.volume = isMuted.value ? 0 : screenVolume.value
+      el.volume = isMuted.value ? 0 : (props.volume ?? 1)
       el.play().catch(() => {})
     }
   } else {
@@ -410,14 +417,14 @@ onBeforeUnmount(() => {
       :autoplay="true"
       :playsinline="true"
       :show-controls="true"
-      :has-mic-audio="hasMicAudio"
-      :has-screen-audio="hasScreenAudio"
-      :mic-volume="micVolume"
-      :screen-volume="screenVolume"
+      :volume="props.volume ?? 1"
+      :is-screen-share="props.isScreenSharing"
+      :show-hide-preview="props.showHidePreview"
       class="w-full h-full"
       @contextmenu="openContextMenu"
-      @mic-volume-change="handleMicVolumeInput"
-      @screen-volume-change="handleScreenVolumeInput"
+      @volume-change="handleVolumeInput"
+      @stop-watching="emit('stopWatching')"
+      @hide-preview="emit('hidePreview')"
     />
     <div v-else class="flex flex-col items-center justify-center gap-2">
       <font-awesome-icon icon="user" class="text-6xl text-dc-text-muted" />
@@ -455,19 +462,6 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </Transition>
-
-    <!-- Activation prompt -->
-    <div
-      v-if="needsActivation && !isMuted"
-      class="absolute bottom-3 left-1/2 -translate-x-1/2 z-30"
-    >
-      <button
-        class="px-3 py-1.5 rounded bg-dc-blurple hover:bg-dc-blurple-hover text-white text-xs font-medium shadow-lg transition-colors"
-        @click.stop="attemptResumePlayback"
-      >
-        {{ t('common.enableSound') }}
-      </button>
-    </div>
   </div>
 </template>
 

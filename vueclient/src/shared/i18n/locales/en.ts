@@ -32,6 +32,10 @@ export default {
     streamVolume: 'Stream Volume',
     fullscreen: 'Fullscreen',
     enableSound: 'Enable Sound',
+    isStreaming: 'is sharing their screen',
+    watchStream: 'Watch Stream',
+    stopWatching: 'Stop Watching',
+    joinChannel: 'Join Channel',
   },
   auth: {
     login: 'Log In',
@@ -94,6 +98,9 @@ export default {
     stopSharing: 'Stop Sharing',
     camera: 'Camera',
     microphone: 'Microphone',
+    youAreStreaming: 'You are sharing your screen',
+    showPreview: 'Show preview',
+    hidePreview: 'Hide preview',
   },
   screenShare: {
     title: 'Share Your Screen',

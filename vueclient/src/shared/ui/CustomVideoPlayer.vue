@@ -12,20 +12,18 @@ const props = withDefaults(
     autoplay?: boolean
     playsinline?: boolean
     showControls?: boolean
-    hasMicAudio?: boolean
-    hasScreenAudio?: boolean
-    micVolume?: number
-    screenVolume?: number
+    volume?: number
+    isScreenShare?: boolean
+    showHidePreview?: boolean
   }>(),
   {
     muted: false,
     autoplay: true,
     playsinline: true,
     showControls: true,
-    hasMicAudio: false,
-    hasScreenAudio: false,
-    micVolume: 1,
-    screenVolume: 1,
+    volume: 1,
+    isScreenShare: false,
+    showHidePreview: false,
   },
 )
 
@@ -34,8 +32,9 @@ const emit = defineEmits<{
   (e: 'pause'): void
   (e: 'fullscreenchange', isFullscreen: boolean): void
   (e: 'contextmenu', event: MouseEvent): void
-  (e: 'micVolumeChange', volume: number): void
-  (e: 'screenVolumeChange', volume: number): void
+  (e: 'volumeChange', volume: number): void
+  (e: 'stopWatching'): void
+  (e: 'hidePreview'): void
 }>()
 
 const videoRef = ref<HTMLVideoElement | null>(null)
@@ -45,8 +44,14 @@ const isPlaying = ref(false)
 const isFullscreen = ref(false)
 const controlsTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
 const isHovering = ref(false)
-const showMicVolumeSlider = ref(false)
-const showScreenVolumeSlider = ref(false)
+const showVolumeSlider = ref(false)
+
+const volumeIcon = computed(() => {
+  const v = props.volume ?? 1
+  if (v === 0) return 'volume-xmark'
+  if (v < 0.5) return 'volume-low'
+  return 'volume-high'
+})
 
 const isLive = computed(() => {
   if (!videoRef.value) return true
@@ -86,7 +91,7 @@ function showControls() {
 }
 
 function hideControls() {
-  if (isHovering.value || showMicVolumeSlider.value || showScreenVolumeSlider.value) return
+  if (isHovering.value || showVolumeSlider.value) return
   controlsVisible.value = false
 }
 
@@ -95,7 +100,7 @@ function resetControlsTimeout() {
   // В полноэкранном режиме элементы управления остаются видимыми дольше
   const timeout = isFullscreen.value ? 5000 : 3000
   controlsTimeout.value = setTimeout(() => {
-    if (!isHovering.value && !showMicVolumeSlider.value && !showScreenVolumeSlider.value) {
+    if (!isHovering.value && !showVolumeSlider.value) {
       hideControls()
     }
   }, timeout)
@@ -108,7 +113,7 @@ function handleMouseEnter() {
 
 function handleMouseLeave() {
   isHovering.value = false
-  if (!showMicVolumeSlider.value && !showScreenVolumeSlider.value) {
+  if (!showVolumeSlider.value) {
     resetControlsTimeout()
   }
 }
@@ -161,16 +166,10 @@ function handleFullscreenChange() {
   }
 }
 
-function handleMicVolumeInput(e: Event) {
+function handleVolumeInput(e: Event) {
   const target = e.target as HTMLInputElement
   const newVolume = Number(target.value) / 100
-  emit('micVolumeChange', newVolume)
-}
-
-function handleScreenVolumeInput(e: Event) {
-  const target = e.target as HTMLInputElement
-  const newVolume = Number(target.value) / 100
-  emit('screenVolumeChange', newVolume)
+  emit('volumeChange', newVolume)
 }
 
 watch(
@@ -259,7 +258,7 @@ onBeforeUnmount(() => {
     <!-- Controls overlay -->
     <Transition name="fade">
       <div
-        v-if="controlsVisible || showMicVolumeSlider || showScreenVolumeSlider"
+        v-if="controlsVisible || showVolumeSlider"
         class="absolute inset-0 z-10 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none"
       >
         <!-- Progress bar (only for non-live) -->
@@ -309,91 +308,73 @@ onBeforeUnmount(() => {
 
           <div class="flex-1" />
 
-          <!-- Volume Controls -->
-          <div class="relative flex items-center gap-2">
-            <!-- Mic Volume -->
-            <div
-              v-if="props.hasMicAudio"
-              class="relative flex items-center"
-              @mouseenter="showMicVolumeSlider = true"
-              @mouseleave="showMicVolumeSlider = false"
-            >
-              <button
-                class="w-10 h-10 flex items-center justify-center text-white hover:text-dc-blurple transition-colors rounded-full hover:bg-white/10 flex-shrink-0"
-                :class="{ 'w-12 h-12': isFullscreen }"
-                :title="t('common.micVolume')"
-              >
-                <font-awesome-icon
-                  icon="microphone"
-                  :class="[
-                    isFullscreen ? 'text-lg' : 'text-sm',
-                    props.micVolume === 0 || props.muted ? 'opacity-50' : '',
-                  ]"
-                />
-              </button>
-              <Transition name="slide-up">
-                <div
-                  v-if="showMicVolumeSlider"
-                  class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex flex-col items-center px-3 py-2 bg-dc-bg-floating rounded-lg shadow-xl"
-                  :class="{ 'px-4 py-3': isFullscreen }"
-                >
-                  <span class="text-xs text-white/80 mb-1">{{ t('common.micVolume') }}</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    :value="Math.round(props.micVolume * 100)"
-                    class="accent-dc-blurple cursor-pointer"
-                    :class="isFullscreen ? 'w-32 h-2' : 'w-24 h-2'"
-                    @input="handleMicVolumeInput"
-                  />
-                </div>
-              </Transition>
-            </div>
+          <!-- Hide Preview (local stream preview while screen sharing) -->
+          <button
+            v-if="props.showHidePreview"
+            @click="emit('hidePreview')"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-black/70 hover:bg-black/90 text-white font-semibold transition-colors flex-shrink-0"
+            :class="isFullscreen ? 'text-sm' : 'text-xs'"
+            :title="t('call.hidePreview')"
+          >
+            <font-awesome-icon icon="eye-slash" />
+            <span>{{ t('call.hidePreview') }}</span>
+          </button>
 
-            <!-- Screen Audio Volume -->
-            <div
-              v-if="props.hasScreenAudio"
-              class="relative flex items-center"
-              @mouseenter="showScreenVolumeSlider = true"
-              @mouseleave="showScreenVolumeSlider = false"
+          <!-- Stop Watching (screen share only) -->
+          <button
+            v-if="props.isScreenShare"
+            @click="emit('stopWatching')"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-dc-red hover:bg-dc-red/80 text-white font-semibold transition-colors flex-shrink-0"
+            :class="isFullscreen ? 'text-sm' : 'text-xs'"
+            :title="t('channel.stopWatching')"
+          >
+            <font-awesome-icon icon="xmark" />
+            <span>{{ t('channel.stopWatching') }}</span>
+          </button>
+
+          <!-- Volume -->
+          <div
+            class="relative flex items-center"
+            @mouseenter="showVolumeSlider = true"
+            @mouseleave="showVolumeSlider = false"
+          >
+            <button
+              class="w-10 h-10 flex items-center justify-center text-white hover:text-dc-blurple transition-colors rounded-full hover:bg-white/10 flex-shrink-0"
+              :class="{ 'w-12 h-12': isFullscreen }"
+              :title="t('common.volume')"
             >
-              <button
-                class="w-10 h-10 flex items-center justify-center text-white hover:text-dc-blurple transition-colors rounded-full hover:bg-white/10 flex-shrink-0"
-                :class="{ 'w-12 h-12': isFullscreen }"
-                :title="t('common.streamVolume')"
+              <font-awesome-icon
+                :icon="volumeIcon"
+                :class="isFullscreen ? 'text-lg' : 'text-sm'"
+              />
+            </button>
+            <Transition name="slide-up">
+              <div
+                v-if="showVolumeSlider"
+                class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex flex-col items-center px-3 py-3 bg-dc-bg-floating rounded-lg shadow-xl gap-1"
+                :class="{ 'px-4 py-4': isFullscreen }"
+                @click.stop
               >
-                <font-awesome-icon
-                  icon="desktop"
-                  :class="[
-                    isFullscreen ? 'text-xl 2xl:text-2xl' : 'text-lg 2xl:text-xl',
-                    props.screenVolume === 0 || props.muted ? 'opacity-50' : '',
-                  ]"
+                <span class="text-[10px] text-white/60 font-mono tabular-nums">
+                  {{ Math.round((props.volume ?? 1) * 100) }}%
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  :value="Math.round((props.volume ?? 1) * 100)"
+                  class="accent-dc-blurple cursor-pointer"
+                  :style="{
+                    writingMode: 'vertical-lr',
+                    transform: 'rotate(180deg)',
+                    height: isFullscreen ? '120px' : '80px',
+                    width: '20px',
+                  }"
+                  @input="handleVolumeInput"
                 />
-              </button>
-              <Transition name="slide-up">
-                <div
-                  v-if="showScreenVolumeSlider"
-                  class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex flex-col items-center px-4 py-3 bg-dc-bg-floating rounded-lg shadow-xl"
-                  :class="{ 'px-5 py-4': isFullscreen }"
-                >
-                  <span class="text-sm 2xl:text-base text-white/80 mb-2">{{
-                    t('common.streamVolume')
-                  }}</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    :value="Math.round(props.screenVolume * 100)"
-                    class="accent-dc-blurple cursor-pointer"
-                    :class="isFullscreen ? 'w-40 h-3' : 'w-32 h-2.5'"
-                    @input="handleScreenVolumeInput"
-                  />
-                </div>
-              </Transition>
-            </div>
+              </div>
+            </Transition>
           </div>
 
           <!-- Fullscreen -->

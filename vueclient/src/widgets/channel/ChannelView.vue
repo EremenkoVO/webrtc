@@ -3,22 +3,22 @@ import { SignalingService, type ErrorResponse, type RoomJoinResponse } from '@/a
 import connectSound from '@/assets/sound/connect.mp3'
 import disconnectSound from '@/assets/sound/disconnect.mp3'
 import screencastStartSound from '@/assets/sound/screencast-start.mp3'
+import ParticipantCard from '@/entities/participant/ParticipantCard.vue'
+import UserBadge from '@/entities/participant/UserBadge.vue'
+import VideoTile from '@/entities/participant/VideoTile.vue'
 import { useWebRTC } from '@/shared/lib/useWebRTC'
 import { useCallStore } from '@/shared/stores/callStore'
 import { useChatStore } from '@/shared/stores/chatStore'
 import { useRoomStore } from '@/shared/stores/roomStore'
+import { useSettingsStore } from '@/shared/stores/settingsStore'
 import { useSidebarStore } from '@/shared/stores/sidebarStore'
 import { useSignalingStore } from '@/shared/stores/signalingStore'
 import { useVoiceStateStore } from '@/shared/stores/voiceStateStore'
-import { useSettingsStore } from '@/shared/stores/settingsStore'
-import UserBadge from '@/entities/participant/UserBadge.vue'
-import VideoTile from '@/entities/participant/VideoTile.vue'
-import ParticipantCard from '@/entities/participant/ParticipantCard.vue'
-import CallControls from './CallControls.vue'
-import ScreenShareModal, { type ScreenShareOptions } from './ScreenShareModal.vue'
 import ChatPanel from '@/widgets/chat/ChatPanel.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import CallControls from './CallControls.vue'
+import ScreenShareModal, { type ScreenShareOptions } from './ScreenShareModal.vue'
 
 const { t } = useI18n()
 
@@ -58,6 +58,7 @@ const {
   watchingStreams,
   watchStream,
   unwatchStream,
+  onSoundEvent,
 } = useWebRTC()
 
 const videoEnabled = ref(false)
@@ -79,17 +80,23 @@ type PeerWithVideo = {
   isLocal: boolean
 }
 
+const showParticipantsPanel = ref(true)
+const showLocalPreview = ref(false)
+
 const peersWithVideo = computed<PeerWithVideo[]>(() => {
   const result: PeerWithVideo[] = []
   const localClientId = signalingStore.clientId
   if (localStream.value && localStream.value.getVideoTracks().length > 0 && localClientId) {
-    result.push({
-      peerId: localClientId,
-      connection: null,
-      remoteStream: localStream.value,
-      room_mates: {},
-      isLocal: true,
-    })
+    // Skip local tile when screen sharing and preview is disabled
+    if (!isScreenSharing.value || showLocalPreview.value) {
+      result.push({
+        peerId: localClientId,
+        connection: null,
+        remoteStream: localStream.value,
+        room_mates: {},
+        isLocal: true,
+      })
+    }
   }
   remotePeers.value.forEach((peer) => {
     if (peer.remoteStream && peer.remoteStream.getVideoTracks().length > 0) {
@@ -111,14 +118,15 @@ const peersWithVideo = computed<PeerWithVideo[]>(() => {
   return result
 })
 
+// Set of peer IDs whose streams we're currently watching (computed for reliable reactivity)
+const watchingPeerIds = computed(() => new Set(watchingStreams.value))
+
 // Available screen sharing streams (not being watched)
 const availableScreenShares = computed(() => {
   return remotePeers.value
     .filter((peer) => {
       const isScreenSharing = peerStates.value[peer.peerId]?.screen === true
-      // Show available streams even if video track hasn't arrived yet
-      // Video track will be blocked in ontrack until user watches
-      return isScreenSharing && !watchingStreams.value.has(peer.peerId)
+      return isScreenSharing && !watchingPeerIds.value.has(peer.peerId)
     })
     .map((peer) => {
       const name =
@@ -181,34 +189,38 @@ const peersWithoutVideo = computed<PeerWithoutVideo[]>(() => {
   return result
 })
 
-const videoTileClass = computed(() => {
-  const base =
-    'relative bg-dc-bg-secondary-alt rounded-lg overflow-hidden aspect-video transition-all duration-300'
-  const count = peersWithVideo.value.length
-  if (count === 1)
-    return (
-      base +
-      ' w-full sm:w-[85%] md:w-[75%] lg:w-[65%] xl:w-[60%] 2xl:w-[55%] 3xl:w-[50%] max-w-[1200px]'
-    )
-  if (count <= 2)
-    return (
-      base +
-      ' w-full sm:w-[48%] md:w-[47%] lg:w-[46%] xl:w-[45%] 2xl:w-[44%] 3xl:w-[42%] max-w-[960px]'
-    )
-  if (count <= 4)
-    return (
-      base +
-      ' w-full sm:w-[48%] md:w-[47%] lg:w-[47%] xl:w-[46%] 2xl:w-[46%] 3xl:w-[44%] max-w-[760px]'
-    )
-  if (count <= 6)
-    return (
-      base +
-      ' w-full sm:w-[48%] md:w-[31%] lg:w-[31%] xl:w-[31%] 2xl:w-[31%] 3xl:w-[30%] max-w-[620px]'
-    )
-  return (
-    base +
-    ' w-full sm:w-[48%] md:w-[31%] lg:w-[23%] xl:w-[23%] 2xl:w-[22%] 3xl:w-[19%] max-w-[520px]'
-  )
+// Compute grid columns/rows to fill available space with tiles
+const videoGridStyle = computed(() => {
+  const n = peersWithVideo.value.length
+  if (n === 0) return {}
+  let cols: number
+  let rows: number
+  if (n === 1) {
+    cols = 1
+    rows = 1
+  } else if (n === 2) {
+    cols = 2
+    rows = 1
+  } else if (n <= 4) {
+    cols = 2
+    rows = 2
+  } else if (n <= 6) {
+    cols = 3
+    rows = 2
+  } else if (n <= 9) {
+    cols = 3
+    rows = 3
+  } else if (n <= 12) {
+    cols = 4
+    rows = 3
+  } else {
+    cols = 4
+    rows = Math.ceil(n / 4)
+  }
+  return {
+    gridTemplateColumns: `repeat(${cols}, 1fr)`,
+    gridTemplateRows: `repeat(${rows}, 1fr)`,
+  }
 })
 
 function selectCamera(deviceId: string) {
@@ -358,15 +370,10 @@ watch(
 watch(
   () => callStore.isInCall,
   (inCall) => {
-    if (inCall && settingsStore.soundOnConnect && audioElement.value)
+    if (inCall && settingsStore.soundOnConnect && audioElement.value) {
+      audioElement.value.currentTime = 0
       audioElement.value.play().catch(() => {})
-  },
-)
-watch(
-  () => remotePeers.value.length,
-  (n, o) => {
-    if (n > o && settingsStore.soundOnConnect && audioElement.value)
-      audioElement.value.play().catch(() => {})
+    }
   },
 )
 
@@ -476,19 +483,16 @@ watch(
 
 // Auto-unwatch screen sharing streams when they stop
 watch(
-  () => [peerStates.value, remotePeers.value, watchingStreams.value],
+  [peerStates, () => Array.from(watchingStreams.value)],
   () => {
-    // Create a copy of watchingStreams to avoid modification during iteration
+    // Copy to avoid mutation-during-iteration
     const streamsToCheck = Array.from(watchingStreams.value)
-
     streamsToCheck.forEach((peerId) => {
-      const peerState = peerStates.value[peerId]
-      const isScreenSharing = peerState?.screen === true
-      const peer = remotePeers.value.find((p) => p.peerId === peerId)
-      const hasVideoTrack = peer?.remoteStream && peer.remoteStream.getVideoTracks().length > 0
-
-      // If screen sharing stopped or video track disappeared, unwatch
-      if (!isScreenSharing || !hasVideoTrack) {
+      // Unwatch only when the peer has explicitly stopped sharing (or disconnected)
+      // Do NOT use hasVideoTrack here — that causes a race where the watcher fires
+      // before the video track arrives and immediately kills the watching session.
+      const isStillSharing = peerStates.value[peerId]?.screen === true
+      if (!isStillSharing) {
         unwatchStream(peerId)
       }
     })
@@ -517,6 +521,83 @@ watch(
   { deep: true },
 )
 
+// Sync volume/mute from voiceStateStore (sidebar) → useWebRTC
+watch(
+  () => voiceStateStore.peerVolumeSettings,
+  (settings) => {
+    for (const [username, { volume, muted }] of Object.entries(settings)) {
+      const peerId = Object.entries(signalingStore.room_mates).find(
+        ([, name]) => name === username,
+      )?.[0]
+      if (!peerId) continue
+      setPeerVolume(peerId, volume)
+      setPeerMuted(peerId, muted)
+    }
+  },
+  { deep: true },
+)
+
+// Watch request from sidebar: watch a peer's screen share stream
+watch(
+  () => voiceStateStore.watchRequest,
+  (username) => {
+    if (!username) return
+    const peerId = Object.entries(signalingStore.room_mates).find(
+      ([, name]) => name === username,
+    )?.[0]
+    if (peerId) watchStream(peerId)
+    voiceStateStore.watchRequest = null
+  },
+)
+
+// Unwatch request from sidebar
+watch(
+  () => voiceStateStore.unwatchRequest,
+  (username) => {
+    if (!username) return
+    const peerId = Object.entries(signalingStore.room_mates).find(
+      ([, name]) => name === username,
+    )?.[0]
+    if (peerId) unwatchStream(peerId)
+    voiceStateStore.unwatchRequest = null
+  },
+)
+
+// Sync screen share streams + watching usernames to voiceStateStore for sidebar
+watch(
+  [watchingStreams, peerStates, remotePeers],
+  () => {
+    // Sync watching usernames (peerId → username mapping)
+    const newWatchingUsernames = new Set<string>()
+    for (const peerId of watchingStreams.value) {
+      const username = signalingStore.room_mates[peerId]
+      if (username) newWatchingUsernames.add(username)
+    }
+    voiceStateStore.setWatchingUsernames(newWatchingUsernames)
+
+    // Sync live preview streams
+    for (const peerId of watchingStreams.value) {
+      if (peerStates.value[peerId]?.screen) {
+        const peer = remotePeers.value.find((p) => p.peerId === peerId)
+        const username = signalingStore.room_mates[peerId]
+        if (username && peer?.remoteStream) {
+          voiceStateStore.setScreenShareStream(username, peer.remoteStream)
+        }
+      }
+    }
+    // Clear streams for peers who stopped sharing
+    for (const username of Object.keys(voiceStateStore.screenShareStreams)) {
+      const peerId = Object.entries(signalingStore.room_mates).find(([, n]) => n === username)?.[0]
+      if (!peerId || !peerStates.value[peerId]?.screen) {
+        voiceStateStore.setScreenShareStream(username, null)
+      }
+    }
+  },
+  { deep: true },
+)
+
+let cleanupSoundHandler: (() => void) | null = null
+
 onMounted(async () => {
   await fetchVideoDevices()
   await fetchAudioDevices()
@@ -530,10 +611,23 @@ onMounted(async () => {
     const exists = videoDevices.value.some((d) => d.deviceId === settingsStore.defaultCameraId)
     if (exists) currentCameraDeviceId.value = settingsStore.defaultCameraId
   }
+
+  cleanupSoundHandler = onSoundEvent((eventType) => {
+    if (!settingsStore.soundOnConnect) return
+    const playEl = (el: HTMLAudioElement | null) => {
+      if (!el) return
+      el.currentTime = 0
+      el.play().catch(() => {})
+    }
+    if (eventType === 'connect') playEl(audioElement.value)
+    else if (eventType === 'disconnect') playEl(disconnectAudioElement.value)
+    else if (eventType === 'screen-share-start') playEl(screencastAudioElement.value)
+  })
 })
 
 onBeforeUnmount(() => {
   if (participantsRefreshInterval) clearInterval(participantsRefreshInterval)
+  cleanupSoundHandler?.()
   if (callStore.isInCall) endCall()
   stopMedia()
   leaveRoom()
@@ -613,11 +707,11 @@ onBeforeUnmount(() => {
         <audio ref="disconnectAudioElement" :src="disconnectSound" />
         <audio ref="screencastAudioElement" :src="screencastStartSound" />
 
-        <div class="flex-1 overflow-auto bg-dc-bg-primary">
+        <div class="flex-1 min-h-0 flex flex-col bg-dc-bg-primary">
           <!-- Not in call -->
           <div
             v-if="!callStore.isInCall"
-            class="flex items-center justify-center h-full min-h-[200px]"
+            class="flex-1 flex items-center justify-center min-h-[200px] overflow-y-auto"
           >
             <div class="text-center px-4 max-w-md">
               <div v-if="roomStore.roommates.length" class="mb-6">
@@ -649,11 +743,8 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- In call -->
-          <div
-            v-else
-            class="flex flex-col min-h-0 h-auto sm:h-full overflow-hidden overflow-y-auto"
-          >
-            <!-- Available Screen Shares (at top for visibility) -->
+          <div v-else class="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <!-- Available Screen Shares bar -->
             <div
               v-if="availableScreenShares.length > 0"
               class="flex-shrink-0 px-4 py-3 border-b border-dc-separator/40 bg-dc-bg-secondary"
@@ -681,116 +772,160 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- Video grid -->
+            <!-- "You are streaming" banner (when screen sharing and own preview is hidden) -->
             <div
-              v-if="peersWithVideo.length > 0"
-              class="flex-shrink-0 sm:flex-1 sm:min-h-0 flex flex-wrap justify-center content-center items-center gap-2 sm:gap-3 lg:gap-4 2xl:gap-5 p-2 sm:p-4 lg:p-6 2xl:p-8"
+              v-if="isScreenSharing && !showLocalPreview"
+              class="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-dc-red/10 border-b border-dc-red/20"
             >
-              <template v-for="(peer, index) in peersWithVideo" :key="peer.peerId || index">
-                <div :class="videoTileClass">
-                  <VideoTile
-                    v-if="peer.isLocal && localStream"
-                    :condition-video="true"
-                    :condition-audio="localStream.getAudioTracks().length > 0"
-                    :stream="localStream"
-                    :key-id="localStream.id"
-                    :muted="true"
-                  />
-                  <VideoTile
-                    v-else
-                    :condition-video="true"
-                    :condition-audio="peer.remoteStream?.getAudioTracks().length"
-                    :stream="peer.remoteStream!"
-                    :key-id="peer.peerId"
-                    :muted="peerPlayback[peer.peerId]?.muted ?? false"
-                    :volume="peerPlayback[peer.peerId]?.volume ?? 1"
-                    :audio-stream="peerAudioStreams[peer.peerId]"
-                    @update:muted="handlePeerMuteChange(peer.peerId, $event)"
-                    @update:volume="handlePeerVolumeChange(peer.peerId, $event)"
-                  />
-                  <!-- Unwatch button for screen sharing streams -->
-                  <button
-                    v-if="
-                      !peer.isLocal &&
-                      peerStates[peer.peerId]?.screen === true &&
-                      watchingStreams.has(peer.peerId)
-                    "
-                    @click="unwatchStream(peer.peerId)"
-                    class="absolute top-2 right-2 z-10 px-2 py-1 rounded bg-dc-bg-floating/90 hover:bg-dc-bg-floating text-white text-xs font-medium transition-colors flex items-center gap-1"
-                    :title="t('channel.stopWatching')"
-                  >
-                    <font-awesome-icon icon="xmark" class="text-xs" />
-                    <span>{{ t('channel.unwatch') }}</span>
-                  </button>
-                  <UserBadge
-                    v-if="peer.isLocal"
-                    :condition-show="!audioEnabled"
-                    :name="`${t('common.you')} (${props.userName})`"
-                    :speaking="isLocalSpeaking"
-                  />
-                  <UserBadge
-                    v-else
-                    :condition-show="
-                      peerStates[peer.peerId] &&
-                      typeof peerStates[peer.peerId]?.microphone === 'boolean' &&
-                      !peerStates[peer.peerId]?.microphone
-                    "
-                    :name="
-                      roomStore.participants.find((p) => p.client_id === peer.peerId)?.username ||
-                      peer.peerId
-                    "
-                    :speaking="speakingPeers[peer.peerId]"
-                  />
-                </div>
-              </template>
+              <div class="flex items-center gap-1.5">
+                <div class="w-2 h-2 rounded-full bg-dc-red animate-pulse" />
+                <span class="text-dc-red text-xs font-bold uppercase tracking-wide">{{
+                  t('common.live')
+                }}</span>
+              </div>
+              <span class="text-dc-text-muted text-sm flex-1">{{ t('call.youAreStreaming') }}</span>
+              <button
+                @click="showLocalPreview = true"
+                class="flex items-center gap-1.5 px-3 py-1 rounded text-xs bg-dc-bg-floating hover:bg-dc-bg-hover text-dc-text transition-colors"
+              >
+                <font-awesome-icon icon="eye" class="text-[10px]" />
+                {{ t('call.showPreview') }}
+              </button>
             </div>
 
-            <!-- Participants without video -->
-            <div
-              v-if="peersWithoutVideo.length > 0"
-              class="flex-shrink-0 sm:flex-1 min-h-[180px] sm:min-h-0 overflow-y-auto p-2 sm:p-4 lg:p-6 2xl:p-8"
-            >
-              <div
-                class="max-w-[1800px] mx-auto w-full flex flex-col justify-center min-h-full sm:min-h-0"
-              >
-                <h3
-                  v-if="peersWithVideo.length > 0"
-                  class="text-[11px] font-bold uppercase tracking-wider text-dc-text-muted mb-3 px-2"
-                >
-                  {{ t('common.participants') }}
-                </h3>
+            <!-- Main area: video tiles -->
+            <template v-if="peersWithVideo.length > 0">
+              <!-- Video grid — fills all remaining space -->
+              <div class="flex-1 min-h-0 relative">
                 <div
-                  class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 3xl:grid-cols-8 gap-2 lg:gap-3 2xl:gap-4 place-content-center"
+                  class="absolute inset-2 sm:inset-3 lg:inset-4 grid gap-2 sm:gap-3"
+                  :style="videoGridStyle"
                 >
-                  <ParticipantCard
-                    v-for="(p, i) in peersWithoutVideo"
-                    :key="p.peerId || i"
-                    :name="p.name"
-                    :is-muted="p.isMuted"
-                    :is-speaking="p.isSpeaking"
-                    :is-local="p.isLocal"
-                    :peer-id="p.peerId"
-                    :volume="p.volume"
-                    :audio-stream="p.audioStream"
-                    :is-connecting="p.isConnecting"
-                    @update:muted="handlePeerMuteChange(p.peerId, $event)"
-                    @update:volume="handlePeerVolumeChange(p.peerId, $event)"
-                  />
+                  <template v-for="(peer, index) in peersWithVideo" :key="peer.peerId || index">
+                    <div class="relative rounded-lg overflow-hidden bg-dc-bg-secondary-alt">
+                      <VideoTile
+                        v-if="peer.isLocal && localStream"
+                        :condition-video="true"
+                        :condition-audio="localStream.getAudioTracks().length > 0"
+                        :stream="localStream"
+                        :key-id="localStream.id"
+                        :muted="true"
+                        :show-hide-preview="isScreenSharing"
+                        @hide-preview="showLocalPreview = false"
+                      />
+                      <VideoTile
+                        v-else
+                        :condition-video="true"
+                        :condition-audio="peer.remoteStream?.getAudioTracks().length"
+                        :stream="peer.remoteStream!"
+                        :key-id="peer.peerId"
+                        :muted="peerPlayback[peer.peerId]?.muted ?? false"
+                        :volume="peerPlayback[peer.peerId]?.volume ?? 1"
+                        :audio-stream="peerAudioStreams[peer.peerId]"
+                        :is-screen-sharing="watchingPeerIds.has(peer.peerId)"
+                        @update:muted="handlePeerMuteChange(peer.peerId, $event)"
+                        @update:volume="handlePeerVolumeChange(peer.peerId, $event)"
+                        @stop-watching="unwatchStream(peer.peerId)"
+                      />
+                      <UserBadge
+                        v-if="peer.isLocal"
+                        :condition-show="!audioEnabled"
+                        :name="`${t('common.you')} (${props.userName})`"
+                        :speaking="isLocalSpeaking"
+                      />
+                      <UserBadge
+                        v-else
+                        :condition-show="
+                          peerStates[peer.peerId] &&
+                          typeof peerStates[peer.peerId]?.microphone === 'boolean' &&
+                          !peerStates[peer.peerId]?.microphone
+                        "
+                        :name="
+                          roomStore.participants.find((p) => p.client_id === peer.peerId)
+                            ?.username || peer.peerId
+                        "
+                        :speaking="speakingPeers[peer.peerId]"
+                      />
+                    </div>
+                  </template>
                 </div>
               </div>
-            </div>
+
+              <!-- Participants without video — collapsible strip at bottom -->
+              <div
+                v-if="peersWithoutVideo.length > 0"
+                class="flex-shrink-0 border-t border-dc-separator/30"
+              >
+                <button
+                  @click="showParticipantsPanel = !showParticipantsPanel"
+                  class="w-full flex items-center justify-between px-4 py-2 hover:bg-dc-bg-hover/40 transition-colors"
+                >
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-dc-text-muted">
+                    {{ t('common.participants') }} · {{ peersWithoutVideo.length }}
+                  </span>
+                  <font-awesome-icon
+                    :icon="showParticipantsPanel ? 'chevron-down' : 'chevron-up'"
+                    class="text-dc-text-muted text-xs"
+                  />
+                </button>
+                <div
+                  v-if="showParticipantsPanel"
+                  class="px-3 pb-3 flex flex-wrap justify-center gap-2"
+                >
+                  <div
+                    v-for="(p, i) in peersWithoutVideo"
+                    :key="p.peerId || i"
+                    class="w-[calc(50%-4px)] sm:w-[152px]"
+                  >
+                    <ParticipantCard
+                      :name="p.name"
+                      :is-muted="p.isMuted"
+                      :is-speaking="p.isSpeaking"
+                      :is-local="p.isLocal"
+                      :peer-id="p.peerId"
+                      :volume="p.volume"
+                      :audio-stream="p.audioStream"
+                      :is-connecting="p.isConnecting"
+                      @update:muted="handlePeerMuteChange(p.peerId, $event)"
+                      @update:volume="handlePeerVolumeChange(p.peerId, $event)"
+                    />
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- No video tiles — participants fill the area -->
+            <template v-else-if="peersWithoutVideo.length > 0">
+              <div class="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 flex items-center">
+                <div class="w-full flex flex-wrap justify-center gap-2 lg:gap-3 content-center">
+                  <div
+                    v-for="(p, i) in peersWithoutVideo"
+                    :key="p.peerId || i"
+                    class="w-[calc(50%-4px)] sm:w-[152px] lg:w-[168px] 2xl:w-[184px]"
+                  >
+                    <ParticipantCard
+                      :name="p.name"
+                      :is-muted="p.isMuted"
+                      :is-speaking="p.isSpeaking"
+                      :is-local="p.isLocal"
+                      :peer-id="p.peerId"
+                      :volume="p.volume"
+                      :audio-stream="p.audioStream"
+                      :is-connecting="p.isConnecting"
+                      @update:muted="handlePeerMuteChange(p.peerId, $event)"
+                      @update:volume="handlePeerVolumeChange(p.peerId, $event)"
+                    />
+                  </div>
+                </div>
+              </div>
+            </template>
 
             <!-- Empty in call -->
-            <div
-              v-if="
-                peersWithVideo.length === 0 &&
-                peersWithoutVideo.length === 0 &&
-                availableScreenShares.length === 0
-              "
-              class="flex-1 flex items-center justify-center"
-            >
-              <p class="text-dc-text-muted text-sm">{{ t('channel.waitingForParticipants') }}</p>
-            </div>
+            <template v-else>
+              <div class="flex-1 flex items-center justify-center">
+                <p class="text-dc-text-muted text-sm">{{ t('channel.waitingForParticipants') }}</p>
+              </div>
+            </template>
           </div>
         </div>
 

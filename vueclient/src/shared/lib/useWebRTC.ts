@@ -466,6 +466,7 @@ export function useWebRTC() {
         setTimeout(() => {
           if (message.from) broadcastStateTo(message.from, { ...localState.value, screen: isScreenSharing.value })
         }, 1000)
+        triggerSoundEvent('connect')
       }
     })
 
@@ -492,7 +493,16 @@ export function useWebRTC() {
     })
 
     signalingStore.onMessage(SignalingMessage.type.LEAVE, (message) => {
-      if (message.from) removePeer(message.from)
+      if (message.from) {
+        removePeer(message.from)
+        triggerSoundEvent('disconnect')
+      }
+    })
+
+    signalingStore.onMessage('sound-event', (message) => {
+      if (message.payload && 'type' in message.payload) {
+        triggerSoundEvent(message.payload.type as string)
+      }
     })
   }
 
@@ -523,6 +533,7 @@ export function useWebRTC() {
     peerStates.value = {}
     peerPlayback.value = {}
     peerAudioStreams.value = {}
+    watchingStreams.value = new Set()
     localState.value = { video: false, microphone: true }
   }
 
@@ -634,55 +645,49 @@ export function useWebRTC() {
 
   function watchStream(peerId: string) {
     watchingStreams.value.add(peerId)
+    triggerSoundEvent('connect')
     const peer = peers.value.get(peerId)
-    if (peer) {
-      // Check if video track already exists in connection receivers but wasn't added to remoteStream
-      const receivers = peer.connection.getReceivers()
-      const videoReceiver = receivers.find(r => r.track && r.track.kind === 'video' && r.track.readyState === 'live')
-      
-      if (videoReceiver && videoReceiver.track) {
-        // Video track already exists, add it to remoteStream
-        const existingStream = peer.remoteStream || new MediaStream()
-        // Add audio tracks if they exist
-        receivers.forEach(r => {
-          if (r.track && r.track.kind === 'audio' && !existingStream.getAudioTracks().includes(r.track)) {
-            existingStream.addTrack(r.track)
-          }
-        })
-        // Add video track
-        if (!existingStream.getVideoTracks().includes(videoReceiver.track)) {
-          existingStream.addTrack(videoReceiver.track)
-          updatePeerRemoteStream(peerId, existingStream)
-          console.log('[watchStream] Added existing video track to remoteStream for peer:', peerId)
-        } else {
-          // Track already in stream, just ensure it's updated
-          updatePeerRemoteStream(peerId, existingStream)
-          console.log('[watchStream] Video track already in remoteStream for peer:', peerId)
-        }
-      } else {
-        // No video track in receivers yet, trigger renegotiation
-        console.log('[watchStream] No video track found, triggering renegotiation for peer:', peerId)
-        createOfferSafe(peerId)
-      }
-    } else {
+    if (!peer) {
       console.warn('[watchStream] Peer not found:', peerId)
+      return
+    }
+
+    // Check if a live video track already exists in the connection's receivers
+    const receivers = peer.connection.getReceivers()
+    const videoReceiver = receivers.find(
+      (r) => r.track && r.track.kind === 'video' && r.track.readyState === 'live',
+    )
+
+    if (videoReceiver?.track) {
+      // Build a new MediaStream so Vue detects the change (avoid mutating the same reference)
+      const existingTracks = peer.remoteStream ? peer.remoteStream.getTracks() : []
+      const newStream = new MediaStream()
+      // Re-add existing non-video tracks (audio)
+      existingTracks
+        .filter((t) => t.kind !== 'video')
+        .forEach((t) => newStream.addTrack(t))
+      // Add the live video track
+      newStream.addTrack(videoReceiver.track)
+      updatePeerRemoteStream(peerId, newStream)
+      console.log('[watchStream] Composed new stream with existing video track for peer:', peerId)
+    } else {
+      // No live video track yet — trigger renegotiation so the sender includes it
+      console.log('[watchStream] No live video track found, triggering renegotiation for peer:', peerId)
+      createOfferSafe(peerId)
     }
   }
 
   function unwatchStream(peerId: string) {
     watchingStreams.value.delete(peerId)
-    // Remove video tracks from remote stream (but don't stop them - they may be reused)
     const peer = peers.value.get(peerId)
     if (peer && peer.remoteStream) {
-      const videoTracks = peer.remoteStream.getVideoTracks()
-      videoTracks.forEach(track => {
-        peer.remoteStream!.removeTrack(track)
-        // Don't stop the track - it's still being sent and can be reused
-        // track.stop() would make it unusable for reconnection
-      })
-      // Update peer's remote stream
-      updatePeerRemoteStream(peerId, peer.remoteStream)
-      console.log('[unwatchStream] Removed video tracks from remoteStream for peer:', peerId)
+      // Build a new MediaStream with only audio tracks (drop video so the tile disappears).
+      // Do NOT stop the video tracks — the sender keeps them alive and they can be reused
+      // if the user clicks Watch again.
+      const audioOnlyStream = new MediaStream()
+      peer.remoteStream.getAudioTracks().forEach((t) => audioOnlyStream.addTrack(t))
+      updatePeerRemoteStream(peerId, audioOnlyStream)
+      console.log('[unwatchStream] Replaced remote stream with audio-only for peer:', peerId)
     }
   }
 

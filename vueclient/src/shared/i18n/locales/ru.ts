@@ -32,6 +32,10 @@ export default {
     streamVolume: 'Громкость потока',
     fullscreen: 'Полный экран',
     enableSound: 'Включить звук',
+    isStreaming: 'делится экраном',
+    watchStream: 'Смотреть стрим',
+    stopWatching: 'Остановить просмотр',
+    joinChannel: 'Войти в канал',
   },
   auth: {
     login: 'Войти',
@@ -94,6 +98,9 @@ export default {
     stopSharing: 'Прекратить показ',
     camera: 'Камера',
     microphone: 'Микрофон',
+    youAreStreaming: 'Вы транслируете свой экран',
+    showPreview: 'Показать превью',
+    hidePreview: 'Скрыть превью',
   },
   screenShare: {
     title: 'Поделиться экраном',

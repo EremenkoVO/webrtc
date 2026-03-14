@@ -10,6 +10,16 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
   const screenSharingUsers = ref<Record<string, boolean>>({})
   // username -> is connecting
   const connectingUsers = ref<Record<string, boolean>>({})
+  // username -> {volume, muted} — sidebar-controlled per-peer playback
+  const peerVolumeSettings = ref<Record<string, { volume: number; muted: boolean }>>({})
+  // username -> MediaStream (screen share preview, set by ChannelView)
+  const screenShareStreams = ref<Record<string, MediaStream | null>>({})
+  // sidebar requests ChannelView to watchStream for this username
+  const watchRequest = ref<string | null>(null)
+  // sidebar requests ChannelView to unwatchStream for this username
+  const unwatchRequest = ref<string | null>(null)
+  // usernames whose streams are currently being watched (set by ChannelView)
+  const watchingUsernames = ref<Set<string>>(new Set())
 
   function updateSpeaking(states: Record<string, boolean>) {
     speakingUsers.value = { ...states }
@@ -43,17 +53,59 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
     return connectingUsers.value[username] || false
   }
 
+  function setPeerVolume(username: string, volume: number) {
+    const prev = peerVolumeSettings.value[username]
+    peerVolumeSettings.value = {
+      ...peerVolumeSettings.value,
+      [username]: { volume, muted: prev?.muted ?? false },
+    }
+  }
+
+  function setPeerMuted(username: string, muted: boolean) {
+    const prev = peerVolumeSettings.value[username]
+    peerVolumeSettings.value = {
+      ...peerVolumeSettings.value,
+      [username]: { volume: prev?.volume ?? 1, muted },
+    }
+  }
+
+  function setScreenShareStream(username: string, stream: MediaStream | null) {
+    screenShareStreams.value = { ...screenShareStreams.value, [username]: stream }
+  }
+
+  function requestWatch(username: string) {
+    watchRequest.value = username
+  }
+
+  function requestUnwatch(username: string) {
+    unwatchRequest.value = username
+  }
+
+  function setWatchingUsernames(usernames: Set<string>) {
+    watchingUsernames.value = new Set(usernames)
+  }
+
   function clear() {
     speakingUsers.value = {}
     mutedUsers.value = {}
     screenSharingUsers.value = {}
     connectingUsers.value = {}
+    peerVolumeSettings.value = {}
+    screenShareStreams.value = {}
+    watchRequest.value = null
+    unwatchRequest.value = null
+    watchingUsernames.value = new Set()
   }
 
   return {
     speakingUsers,
     mutedUsers,
     screenSharingUsers,
+    peerVolumeSettings,
+    screenShareStreams,
+    watchRequest,
+    unwatchRequest,
+    watchingUsernames,
     updateSpeaking,
     updateMuted,
     updateScreenSharing,
@@ -62,6 +114,12 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
     isMuted,
     isScreenSharing,
     isConnecting,
+    setPeerVolume,
+    setPeerMuted,
+    setScreenShareStream,
+    requestWatch,
+    requestUnwatch,
+    setWatchingUsernames,
     clear,
   }
 })
