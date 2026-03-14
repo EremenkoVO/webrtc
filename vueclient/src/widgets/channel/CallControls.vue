@@ -9,6 +9,7 @@ const { t } = useI18n()
 const props = defineProps<{
   videoEnabled: boolean
   audioEnabled: boolean
+  isDeafened: boolean
   isScreenSharing: boolean
   stopScreenShare: any
   videoStreamIndex: number
@@ -28,6 +29,7 @@ const emits = defineEmits<{
   (e: 'update:selectMicrophone', value: string): void
   (e: 'update:toggleMicrophone'): void
   (e: 'update:toggleVideo'): void
+  (e: 'toggleDeafen'): void
   (e: 'requestScreenShare'): void
 }>()
 
@@ -160,6 +162,20 @@ function selectMicrophone(deviceId: string) {
           </Transition>
         </div>
       </div>
+
+      <!-- Deafen -->
+      <button
+        :class="[
+          'w-12 h-12 sm:w-10 sm:h-10 2xl:w-12 2xl:h-12 rounded-full flex items-center justify-center transition-colors',
+          props.isDeafened
+            ? 'bg-dc-red hover:bg-dc-red/80 text-white'
+            : 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text',
+        ]"
+        @click="emits('toggleDeafen')"
+        :title="props.isDeafened ? t('common.undeafen') : t('common.deafen')"
+      >
+        <font-awesome-icon icon="headset" class="text-xl sm:text-lg 2xl:text-xl" />
+      </button>
 
       <!-- Screen share -->
       <button

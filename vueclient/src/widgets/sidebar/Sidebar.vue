@@ -7,6 +7,7 @@ import { useSidebarStore } from '@/shared/stores/sidebarStore'
 import { useSignalingStore } from '@/shared/stores/signalingStore'
 import { useVoiceStateStore } from '@/shared/stores/voiceStateStore'
 import UserPanel from '@/widgets/user-panel/UserPanel.vue'
+import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -80,26 +81,6 @@ async function refreshChannels() {
 
 function handleResize() {
   sidebarStore.checkMobile()
-}
-
-function getInitials(name: string): string {
-  return name.charAt(0).toUpperCase()
-}
-
-function getAvatarColor(name: string): string {
-  const colors = [
-    '#5865f2',
-    '#57f287',
-    '#fee75c',
-    '#eb459e',
-    '#ed4245',
-    '#f47b67',
-    '#e78284',
-    '#3ba55d',
-  ]
-  let hash = 0
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  return colors[Math.abs(hash) % colors.length]
 }
 
 // Context menu helpers
@@ -361,12 +342,11 @@ watch(
               <div class="relative flex-shrink-0">
                 <div
                   :class="[
-                    'w-7 h-7 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs sm:text-[10px] font-semibold text-white transition-all duration-200',
+                    'w-7 h-7 sm:w-6 sm:h-6 rounded-full overflow-hidden transition-all duration-200',
                     voiceStateStore.isSpeaking(mate) ? 'ring-[2.5px] ring-dc-green' : '',
                   ]"
-                  :style="{ backgroundColor: getAvatarColor(mate) }"
                 >
-                  {{ getInitials(mate) }}
+                  <UserAvatar :username="mate" />
                 </div>
                 <!-- Connecting indicator -->
                 <div
@@ -404,6 +384,12 @@ watch(
                 {{ t('common.live') }}
               </span>
 
+              <!-- Deafened icon -->
+              <font-awesome-icon
+                v-if="voiceStateStore.isDeafened(mate)"
+                icon="headset"
+                class="text-sm sm:text-[11px] flex-shrink-0 text-dc-red/80"
+              />
               <!-- Muted mic icon -->
               <font-awesome-icon
                 v-if="voiceStateStore.isMuted(mate)"

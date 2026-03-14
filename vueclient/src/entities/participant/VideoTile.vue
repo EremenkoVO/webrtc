@@ -15,6 +15,7 @@ const props = defineProps<{
   volume?: number
   isScreenSharing?: boolean
   showHidePreview?: boolean
+  isDeafened?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -80,6 +81,10 @@ watch(
 )
 watch(
   () => isMuted.value,
+  () => applyMuteState(),
+)
+watch(
+  () => props.isDeafened,
   () => applyMuteState(),
 )
 watch(
@@ -220,19 +225,20 @@ function rebuildAudioGraph() {
 
 function applyMuteState() {
   const muted = isMuted.value
+  const deafened = props.isDeafened ?? false
   const vol = props.volume ?? 1
-  // Control microphone volume through gain node
+  // Microphone: muted by explicit mute OR by deafen
   if (micGainNode.value) {
-    micGainNode.value.gain.value = muted ? 0 : vol
+    micGainNode.value.gain.value = (muted || deafened) ? 0 : vol
   }
-  // Control screen audio volume through audio element volume
   if (videoRef.value) {
     videoRef.value.muted = true
   }
   if (audioRef.value) {
-    audioRef.value.muted = muted
+    audioRef.value.muted = muted || deafened
     audioRef.value.volume = 1
   }
+  // Screen audio: only muted by explicit mute, NOT by deafen
   if (screenAudioRef.value && screenAudioStream.value) {
     screenAudioRef.value.muted = muted
     screenAudioRef.value.volume = muted ? 0 : vol

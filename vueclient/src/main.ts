@@ -10,6 +10,7 @@ import {
   faWindowMaximize, faWindowRestore, faVolumeMute,
   faPlay, faPause, faVolumeLow, faGear, faCircleStop,
   faPencil, faTrash, faFaceSmile, faEye, faEyeSlash,
+  faHeadset,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 
@@ -31,6 +32,7 @@ library.add(
   faWindowMaximize, faWindowRestore, faVolumeMute,
   faPlay, faPause, faVolumeLow, faGear, faCircleStop,
   faPencil, faTrash, faFaceSmile, faEye, faEyeSlash,
+  faHeadset,
 )
 
 OpenAPI.TOKEN = localStorage.getItem('token') || ''

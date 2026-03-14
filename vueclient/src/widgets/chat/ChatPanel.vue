@@ -4,6 +4,7 @@ import { useRoomStore } from '@/shared/stores/roomStore'
 import { useSignalingStore } from '@/shared/stores/signalingStore'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import MessageContent from './MessageContent.vue'
 
 const { t } = useI18n()
@@ -380,11 +381,6 @@ function getReactionTooltip(
   return `${users.slice(0, 2).join(', ')} and ${users.length - 2} more`
 }
 
-function getInitials(name: string): string {
-  if (!name) return '?'
-  return name.substring(0, 2).toUpperCase()
-}
-
 function getAvatarColor(name: string): string {
   const colors = [
     '#5865f2',
@@ -515,11 +511,8 @@ onBeforeUnmount(() => {
           <!-- First message in group - show avatar + name -->
           <div class="flex gap-4">
             <!-- Avatar (only for first message) -->
-            <div
-              class="w-12 h-12 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white text-base sm:text-sm font-semibold flex-shrink-0 mt-0.5"
-              :style="{ backgroundColor: getAvatarColor(group.username) }"
-            >
-              {{ getInitials(group.username) }}
+            <div class="w-12 h-12 sm:w-10 sm:h-10 rounded-full overflow-hidden flex-shrink-0 mt-0.5">
+              <UserAvatar :username="group.username" />
             </div>
 
             <div class="flex-1 min-w-0">

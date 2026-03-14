@@ -70,7 +70,13 @@ func (app *API) init(ctx context.Context) error {
 		Middlewares: []api.MiddlewareFunc{authenticator.Middleware},
 	})
 
-	finalHandler := handler.LoggingMiddleware(handler.CORS(apiHandler))
+	// Custom mux for endpoints not in the generated API (avatar upload/serve)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/me/avatar", authenticator.RequireAuth(serverWrapper.UploadAvatar))
+	mux.HandleFunc("GET /api/v1/avatars/{username}", serverWrapper.GetAvatar)
+	mux.Handle("/", apiHandler)
+
+	finalHandler := handler.LoggingMiddleware(handler.CORS(mux))
 
 	app.httpServer = &http.Server{
 		Addr:    app.config.ListenAddr(),

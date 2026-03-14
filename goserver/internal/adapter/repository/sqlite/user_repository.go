@@ -39,11 +39,11 @@ func (r *userRepository) FindByUsername(ctx context.Context, username string) (*
 }
 
 func (r *userRepository) FindByID(ctx context.Context, id int) (*domain.User, error) {
-	query := `SELECT id, username, password, created_at FROM users WHERE id = ?`
+	query := `SELECT id, username, password, created_at, avatar, avatar_content_type FROM users WHERE id = ?`
 	row := r.db.QueryRowContext(ctx, query, id)
 
 	var user domain.User
-	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.CreatedAt)
+	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.CreatedAt, &user.AvatarData, &user.AvatarContentType)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -61,4 +61,24 @@ func (r *userRepository) UserExists(ctx context.Context, username string) (bool,
 	err := r.db.QueryRowContext(ctx, query, username).Scan(&exists)
 
 	return exists, err
+}
+
+func (r *userRepository) UpdateAvatar(ctx context.Context, userID int, data []byte, contentType string) error {
+	query := `UPDATE users SET avatar = ?, avatar_content_type = ? WHERE id = ?`
+	_, err := r.db.ExecContext(ctx, query, data, contentType, userID)
+	return err
+}
+
+func (r *userRepository) GetAvatarByUsername(ctx context.Context, username string) ([]byte, string, error) {
+	query := `SELECT avatar, avatar_content_type FROM users WHERE username = ?`
+	var data []byte
+	var contentType string
+	err := r.db.QueryRowContext(ctx, query, username).Scan(&data, &contentType)
+	if err == sql.ErrNoRows {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	return data, contentType, nil
 }

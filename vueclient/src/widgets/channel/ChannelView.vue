@@ -55,6 +55,7 @@ const {
   leaveRoom,
   setPeerVolume,
   setPeerMuted,
+  setDeafened,
   watchingStreams,
   watchStream,
   unwatchStream,
@@ -63,6 +64,8 @@ const {
 
 const videoEnabled = ref(false)
 const audioEnabled = ref(true)
+const isDeafened = ref(false)
+const micMutedBeforeDeafen = ref(false)
 const audioElement = ref<HTMLAudioElement | null>(null)
 const disconnectAudioElement = ref<HTMLAudioElement | null>(null)
 const screencastAudioElement = ref<HTMLAudioElement | null>(null)
@@ -295,6 +298,24 @@ async function startCall() {
   }
 }
 
+function toggleDeafen() {
+  if (!isDeafened.value) {
+    // Remember whether mic was already muted before deafening
+    micMutedBeforeDeafen.value = !audioEnabled.value
+    isDeafened.value = true
+    voiceStateStore.setLocalDeafened(true)
+    setDeafened(true)
+    // Mute mic if it was on
+    if (audioEnabled.value) toggleMicrophone()
+  } else {
+    isDeafened.value = false
+    voiceStateStore.setLocalDeafened(false)
+    setDeafened(false)
+    // Unmute mic only if it was on before deafening
+    if (!micMutedBeforeDeafen.value && !audioEnabled.value) toggleMicrophone()
+  }
+}
+
 function endCall() {
   // Play disconnect sound if enabled
   if (settingsStore.soundOnConnect && disconnectAudioElement.value) {
@@ -305,6 +326,8 @@ function endCall() {
   roomStore.getListChannels()
   videoEnabled.value = false
   audioEnabled.value = true
+  isDeafened.value = false
+  micMutedBeforeDeafen.value = false
   callStore.setStateCall(false)
   voiceStateStore.clear()
 }
@@ -517,6 +540,27 @@ watch(
       if (name && typeof state.microphone === 'boolean') states[name] = !state.microphone
     }
     voiceStateStore.updateMuted(states)
+  },
+  { deep: true },
+)
+
+// Sync deafened state to voiceStateStore for sidebar
+watch(
+  [peerStates, isDeafened, () => signalingStore.room_mates, () => callStore.isInCall],
+  () => {
+    if (!callStore.isInCall) {
+      voiceStateStore.updateDeafened({})
+      return
+    }
+    const states: Record<string, boolean> = {}
+    if (props.userName) states[props.userName] = isDeafened.value
+    for (const [peerId, state] of Object.entries(peerStates.value)) {
+      const name =
+        signalingStore.room_mates[peerId] ||
+        roomStore.participants.find((p) => p.client_id === peerId)?.username
+      if (name && typeof state.deafened === 'boolean') states[name] = state.deafened
+    }
+    voiceStateStore.updateDeafened(states)
   },
   { deep: true },
 )
@@ -823,6 +867,7 @@ onBeforeUnmount(() => {
                         :volume="peerPlayback[peer.peerId]?.volume ?? 1"
                         :audio-stream="peerAudioStreams[peer.peerId]"
                         :is-screen-sharing="watchingPeerIds.has(peer.peerId)"
+                        :is-deafened="isDeafened"
                         @update:muted="handlePeerMuteChange(peer.peerId, $event)"
                         @update:volume="handlePeerVolumeChange(peer.peerId, $event)"
                         @stop-watching="unwatchStream(peer.peerId)"
@@ -886,6 +931,7 @@ onBeforeUnmount(() => {
                       :volume="p.volume"
                       :audio-stream="p.audioStream"
                       :is-connecting="p.isConnecting"
+                      :is-deafened="isDeafened"
                       @update:muted="handlePeerMuteChange(p.peerId, $event)"
                       @update:volume="handlePeerVolumeChange(p.peerId, $event)"
                     />
@@ -912,6 +958,7 @@ onBeforeUnmount(() => {
                       :volume="p.volume"
                       :audio-stream="p.audioStream"
                       :is-connecting="p.isConnecting"
+                      :is-deafened="isDeafened"
                       @update:muted="handlePeerMuteChange(p.peerId, $event)"
                       @update:volume="handlePeerVolumeChange(p.peerId, $event)"
                     />
@@ -936,6 +983,7 @@ onBeforeUnmount(() => {
           :remote-peers="remotePeers"
           :videoEnabled="videoEnabled"
           :audioEnabled="audioEnabled"
+          :isDeafened="isDeafened"
           :videoStreamIndex="videoStreamIndex"
           :currentCameraDeviceId="currentCameraDeviceId"
           :currentMicrophoneDeviceId="currentMicrophoneDeviceId"
@@ -943,6 +991,7 @@ onBeforeUnmount(() => {
           :stopScreenShare="stopScreenShare"
           @endCall="endCall"
           @requestScreenShare="handleRequestScreenShare"
+          @toggleDeafen="toggleDeafen"
           @update:toggleVideo="toggleVideo"
           @update:toggleMicrophone="toggleMicrophone"
           @update:videoEnabled="(v: boolean) => (videoEnabled = v)"

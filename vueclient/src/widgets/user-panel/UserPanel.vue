@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { AuthService } from '@/api/index'
 import { useAuthStore } from '@/shared/stores/authStore'
+import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import SettingsModal from '@/widgets/settings/SettingsModal.vue'
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -16,31 +17,6 @@ const authStore = useAuthStore()
 const router = useRouter()
 const showSettings = ref(false)
 
-function getInitials(name: string): string {
-  if (!name) return '?'
-  return name.substring(0, 2).toUpperCase()
-}
-
-function getAvatarColor(name: string): string {
-  const colors = [
-    '#5865f2',
-    '#3ba55c',
-    '#faa61a',
-    '#ed4245',
-    '#eb459e',
-    '#57f287',
-    '#fee75c',
-    '#5865f2',
-    '#eb459e',
-    '#ed4245',
-  ]
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return colors[Math.abs(hash) % colors.length]
-}
-
 async function logout() {
   try {
     await AuthService.logoutUser()
@@ -54,11 +30,8 @@ async function logout() {
 <template>
   <div class="flex items-center gap-2 px-2 py-1.5 bg-dc-bg-secondary-alt">
     <!-- Avatar -->
-    <div
-      class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-      :style="{ backgroundColor: getAvatarColor(props.username) }"
-    >
-      {{ getInitials(props.username) }}
+    <div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+      <UserAvatar :username="props.username" />
     </div>
 
     <!-- User info -->

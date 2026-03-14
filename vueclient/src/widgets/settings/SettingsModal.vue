@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { useSettingsStore } from '@/shared/stores/settingsStore'
+import { useSettingsStore, THEMES, type Theme } from '@/shared/stores/settingsStore'
 import { useChatStore } from '@/shared/stores/chatStore'
+import { useAvatarStore } from '@/shared/stores/avatarStore'
 import { setLocale, SUPPORTED_LOCALES, type SupportedLocale } from '@/shared/i18n'
 import { useWebRTC } from '@/shared/lib/useWebRTC'
-import { onMounted, watch } from 'vue'
+import { UserService } from '@/api'
+import AvatarEditor from '@/features/avatar/AvatarEditor.vue'
+import UserAvatar from '@/shared/ui/UserAvatar.vue'
+import { onMounted, ref, watch } from 'vue'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
 const chatStore = useChatStore()
+const avatarStore = useAvatarStore()
 
 watch(
   () => settings.notificationsEnabled,
@@ -26,10 +31,27 @@ const labels: Record<SupportedLocale, string> = {
   ru: 'Русский',
 }
 
+const showAvatarEditor = ref(false)
+const currentUsername = ref<string | null>(null)
+
 onMounted(async () => {
   await fetchAudioDevices()
   await fetchVideoDevices()
+  try {
+    const profile = await UserService.getCurrentUser()
+    if (profile && 'username' in profile && profile.username) {
+      currentUsername.value = profile.username
+    }
+  } catch {
+    // ignore
+  }
 })
+
+async function handleAvatarSave(blob: Blob) {
+  await UserService.uploadAvatar(blob)
+  if (currentUsername.value) avatarStore.refresh(currentUsername.value)
+  showAvatarEditor.value = false
+}
 
 function selectLocale(locale: SupportedLocale) {
   setLocale(locale)
@@ -75,6 +97,28 @@ function handleCameraChange(e: Event) {
 
           <!-- Content -->
           <div class="px-6 py-4 space-y-6 overflow-y-auto dc-scrollbar-thin">
+            <!-- Avatar -->
+            <div class="flex flex-col items-center gap-3 pb-2 border-b border-dc-separator/30">
+              <div
+                class="relative group w-20 h-20 rounded-full cursor-pointer flex-shrink-0"
+                @click="showAvatarEditor = true"
+              >
+                <div class="w-full h-full rounded-full overflow-hidden bg-dc-bg-tertiary flex items-center justify-center ring-2 ring-dc-separator/40">
+                  <UserAvatar v-if="currentUsername" :username="currentUsername" />
+                  <font-awesome-icon v-else icon="user" class="text-3xl text-dc-text-muted" />
+                </div>
+                <div class="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <font-awesome-icon icon="camera" class="text-white text-xl" />
+                </div>
+              </div>
+              <button
+                class="text-xs font-medium text-dc-blurple hover:text-dc-blurple-hover transition-colors"
+                @click="showAvatarEditor = true"
+              >
+                {{ t('settings.avatar.change') }}
+              </button>
+            </div>
+
             <!-- Default microphone -->
             <div>
               <label class="block text-sm font-medium text-dc-text-heading mb-2">
@@ -128,6 +172,39 @@ function handleCameraChange(e: Event) {
                   @click="selectLocale(loc)"
                 >
                   {{ labels[loc] }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Theme -->
+            <div>
+              <label class="block text-sm font-medium text-dc-text-heading mb-2">
+                {{ t('settings.theme') }}
+              </label>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  v-for="th in THEMES"
+                  :key="th.id"
+                  type="button"
+                  @click="settings.setTheme(th.id as Theme)"
+                  :class="[
+                    'flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 text-left transition-colors',
+                    settings.theme === th.id
+                      ? 'border-dc-blurple bg-dc-blurple/10'
+                      : 'border-dc-separator/40 hover:border-dc-separator bg-dc-bg-tertiary/50',
+                  ]"
+                >
+                  <div class="flex rounded overflow-hidden flex-shrink-0">
+                    <div class="w-3.5 h-7" :style="{ background: th.colors[0] }" />
+                    <div class="w-3.5 h-7" :style="{ background: th.colors[1] }" />
+                    <div class="w-3.5 h-7" :style="{ background: th.colors[2] }" />
+                  </div>
+                  <span class="flex-1 text-sm font-medium text-dc-text-heading">{{ th.label }}</span>
+                  <font-awesome-icon
+                    v-if="settings.theme === th.id"
+                    icon="check"
+                    class="text-dc-blurple text-sm flex-shrink-0"
+                  />
                 </button>
               </div>
             </div>
@@ -187,6 +264,12 @@ function handleCameraChange(e: Event) {
       </div>
     </Transition>
   </Teleport>
+
+  <AvatarEditor
+    v-if="showAvatarEditor"
+    @save="handleAvatarSave"
+    @close="showAvatarEditor = false"
+  />
 </template>
 
 <style scoped>

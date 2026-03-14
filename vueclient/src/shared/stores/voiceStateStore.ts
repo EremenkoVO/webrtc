@@ -8,6 +8,8 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
   const mutedUsers = ref<Record<string, boolean>>({})
   // username -> is screen sharing
   const screenSharingUsers = ref<Record<string, boolean>>({})
+  // username -> is deafened
+  const deafenedUsers = ref<Record<string, boolean>>({})
   // username -> is connecting
   const connectingUsers = ref<Record<string, boolean>>({})
   // username -> {volume, muted} — sidebar-controlled per-peer playback
@@ -18,6 +20,8 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
   const watchRequest = ref<string | null>(null)
   // sidebar requests ChannelView to unwatchStream for this username
   const unwatchRequest = ref<string | null>(null)
+  // whether the local user has deafened themselves
+  const isLocalDeafened = ref(false)
   // usernames whose streams are currently being watched (set by ChannelView)
   const watchingUsernames = ref<Set<string>>(new Set())
 
@@ -31,6 +35,10 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
 
   function updateScreenSharing(states: Record<string, boolean>) {
     screenSharingUsers.value = { ...states }
+  }
+
+  function updateDeafened(states: Record<string, boolean>) {
+    deafenedUsers.value = { ...states }
   }
 
   function updateConnecting(states: Record<string, boolean>) {
@@ -47,6 +55,10 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
 
   function isScreenSharing(username: string): boolean {
     return screenSharingUsers.value[username] || false
+  }
+
+  function isDeafened(username: string): boolean {
+    return deafenedUsers.value[username] || false
   }
 
   function isConnecting(username: string): boolean {
@@ -81,6 +93,10 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
     unwatchRequest.value = username
   }
 
+  function setLocalDeafened(v: boolean) {
+    isLocalDeafened.value = v
+  }
+
   function setWatchingUsernames(usernames: Set<string>) {
     watchingUsernames.value = new Set(usernames)
   }
@@ -89,12 +105,14 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
     speakingUsers.value = {}
     mutedUsers.value = {}
     screenSharingUsers.value = {}
+    deafenedUsers.value = {}
     connectingUsers.value = {}
     peerVolumeSettings.value = {}
     screenShareStreams.value = {}
     watchRequest.value = null
     unwatchRequest.value = null
     watchingUsernames.value = new Set()
+    isLocalDeafened.value = false
   }
 
   return {
@@ -109,7 +127,9 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
     updateSpeaking,
     updateMuted,
     updateScreenSharing,
+    updateDeafened,
     updateConnecting,
+    isDeafened,
     isSpeaking,
     isMuted,
     isScreenSharing,
@@ -117,9 +137,11 @@ export const useVoiceStateStore = defineStore('voiceState', () => {
     setPeerVolume,
     setPeerMuted,
     setScreenShareStream,
+    isLocalDeafened,
     requestWatch,
     requestUnwatch,
     setWatchingUsernames,
+    setLocalDeafened,
     clear,
   }
 })

@@ -126,6 +126,29 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// RequireAuth wraps a HandlerFunc with Bearer token authentication.
+// Used for custom routes outside the generated oapi-codegen handler.
+func (a *Authenticator) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			sendAuthError(w, domain.ErrUnauthorized)
+			return
+		}
+
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		userID, err := a.authService.ValidateToken(r.Context(), token)
+		if err != nil {
+			sendAuthError(w, domain.ErrUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), contextKeyUserID, userID)
+		ctx = context.WithValue(ctx, contextKeyToken, token)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
 func sendAuthError(w http.ResponseWriter, err error) {
 	WriteErrorResponse(w, http.StatusUnauthorized, domain.ToErrorResponse(err))
 }

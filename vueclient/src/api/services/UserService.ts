@@ -28,4 +28,23 @@ export class UserService {
             },
         });
     }
+
+    /**
+     * Upload avatar for the current user.
+     * Sends multipart/form-data with field "avatar". Max 5 MB.
+     * Content-Type is auto-detected server-side (JPEG, PNG, WebP, GIF).
+     */
+    public static async uploadAvatar(blob: Blob): Promise<void> {
+        const token = typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : ''
+        const formData = new FormData()
+        formData.append('avatar', blob, 'avatar.jpg')
+        const res = await fetch(`${OpenAPI.BASE}/api/v1/me/avatar`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+        })
+        if (!res.ok) {
+            throw new Error(`Avatar upload failed: ${res.status}`)
+        }
+    }
 }

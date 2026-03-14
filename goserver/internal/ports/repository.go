@@ -12,6 +12,8 @@ type UserRepository interface {
 	FindByUsername(ctx context.Context, username string) (*domain.User, error)
 	FindByID(ctx context.Context, id int) (*domain.User, error)
 	UserExists(ctx context.Context, username string) (bool, error)
+	UpdateAvatar(ctx context.Context, userID int, data []byte, contentType string) error
+	GetAvatarByUsername(ctx context.Context, username string) ([]byte, string, error)
 }
 
 type AccessTokenRepository interface {

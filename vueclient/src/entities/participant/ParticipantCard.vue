@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect } from 'vue'
+import UserAvatar from '@/shared/ui/UserAvatar.vue'
+import { ref, watch, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -13,6 +14,7 @@ const props = defineProps<{
   volume?: number
   audioStream?: MediaStream
   isConnecting?: boolean
+  isDeafened?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -24,29 +26,6 @@ const audioRef = ref<HTMLAudioElement | null>(null)
 const localMuted = ref(props.isMuted)
 const localVolume = ref(props.volume ?? 1)
 const showMenu = ref(false)
-
-const avatarInitials = computed(() => {
-  if (!props.name) return '?'
-  return props.name.substring(0, 2).toUpperCase()
-})
-
-function getAvatarColor(name: string): string {
-  const colors = [
-    '#5865f2',
-    '#3ba55c',
-    '#faa61a',
-    '#ed4245',
-    '#eb459e',
-    '#57f287',
-    '#fee75c',
-    '#9b59b6',
-    '#e91e63',
-    '#1abc9c',
-  ]
-  let hash = 0
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  return colors[Math.abs(hash) % colors.length]
-}
 
 watch(
   () => props.isMuted,
@@ -67,15 +46,15 @@ watchEffect(() => {
   if (stream && stream.getAudioTracks().length > 0) {
     audioRef.value.srcObject = new MediaStream(stream.getAudioTracks())
     audioRef.value.muted = false
-    audioRef.value.volume = localMuted.value ? 0 : localVolume.value
+    audioRef.value.volume = (localMuted.value || props.isDeafened) ? 0 : localVolume.value
     audioRef.value.play().catch(() => {})
   } else {
     audioRef.value.srcObject = null
   }
 })
 
-watch([() => localMuted.value, () => localVolume.value], () => {
-  if (audioRef.value) audioRef.value.volume = localMuted.value ? 0 : localVolume.value
+watch([() => localMuted.value, () => localVolume.value, () => props.isDeafened], () => {
+  if (audioRef.value) audioRef.value.volume = (localMuted.value || props.isDeafened) ? 0 : localVolume.value
 })
 
 function toggleMute() {
@@ -106,11 +85,10 @@ function handleVolumeInput(event: Event) {
     <audio v-if="!isLocal" ref="audioRef" autoplay playsinline />
 
     <!-- Avatar -->
-    <div
-      class="w-14 h-14 2xl:w-16 2xl:h-16 rounded-full flex items-center justify-center text-white text-lg 2xl:text-xl font-semibold mb-2 relative"
-      :style="{ backgroundColor: getAvatarColor(name) }"
-    >
-      {{ avatarInitials }}
+    <div class="w-14 h-14 2xl:w-16 2xl:h-16 rounded-full mb-2 relative">
+      <div class="absolute inset-0 rounded-full overflow-hidden">
+        <UserAvatar :username="name" />
+      </div>
       <div
         v-if="isSpeaking"
         class="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-dc-green border-[3px] border-dc-bg-secondary-alt"

@@ -26,7 +26,7 @@ export function useWebRTC() {
   const signalingStore = useSignalingStore()
 
   const localStream = ref<MediaStream | null>(null)
-  const localState = ref({ video: false, microphone: true })
+  const localState = ref({ video: false, microphone: true, deafened: false })
   const peers = ref<Map<string, PeerConnection>>(new Map())
   const speakingPeers = ref<Record<string, boolean>>({})
   const isMediaInitialized = ref(false)
@@ -100,6 +100,11 @@ export function useWebRTC() {
       ...peerPlayback.value,
       [peerId]: { ...peerPlayback.value[peerId], volume },
     }
+  }
+
+  function setDeafened(v: boolean) {
+    localState.value = { ...localState.value, deafened: v }
+    broadcastState({ deafened: v })
   }
 
   function setPeerMuted(peerId: string, muted: boolean) {
@@ -534,7 +539,7 @@ export function useWebRTC() {
     peerPlayback.value = {}
     peerAudioStreams.value = {}
     watchingStreams.value = new Set()
-    localState.value = { video: false, microphone: true }
+    localState.value = { video: false, microphone: true, deafened: false }
   }
 
   async function switchCamera(deviceId: string) {
@@ -694,7 +699,7 @@ export function useWebRTC() {
   async function toggleMedia(videoEnable: boolean, microphoneEnable: boolean, deviceId: string) {
     const previousState = { ...localState.value }
     try {
-      localState.value = { video: videoEnable, microphone: microphoneEnable }
+      localState.value = { ...localState.value, video: videoEnable, microphone: microphoneEnable }
       if (!localStream.value) return
 
       const videoChanged = previousState.video !== videoEnable
@@ -1016,6 +1021,7 @@ export function useWebRTC() {
     leaveRoom,
     createOffer,
     removePeer,
+    setDeafened,
     setPeerVolume,
     setPeerMuted,
     switchCamera,

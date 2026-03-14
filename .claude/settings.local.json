@@ -8,7 +8,8 @@
       "Read(/E:\\Projects\\webrtc\\server\\websocket/**)",
       "Read(/E:\\Projects\\webrtc\\server\\websocket/**)",
       "Read(/E:\\Projects\\webrtc\\webrtc-vue\\src\\composables/**)",
-      "Read(/E:\\Projects\\webrtc\\webrtc-vue\\src\\composables/**)"
+      "Read(/E:\\Projects\\webrtc\\webrtc-vue\\src\\composables/**)",
+      "Bash(cd /Users/vadim/Projects/webrtc/vueclient && npm run type-check 2>&1)"
     ],
     "deny": [],
     "ask": []

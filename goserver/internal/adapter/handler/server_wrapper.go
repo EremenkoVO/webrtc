@@ -7,7 +7,6 @@ import (
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
 	"github.com/EremenkoVO/webrtc/goserver/internal/gen/api"
-	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/utils"
 	"github.com/EremenkoVO/webrtc/goserver/internal/ports"
 )
 
@@ -29,6 +28,14 @@ func NewServerWrapper(
 	}
 }
 
+// userProfileResponse extends the generated UserProfile with avatar_url.
+// Used instead of api.UserProfile to avoid editing generated files.
+type userProfileResponse struct {
+	ID        string  `json:"id"`
+	Username  string  `json:"username"`
+	AvatarURL *string `json:"avatar_url,omitempty"`
+}
+
 // Conversion functions
 func convertToAuthTokens(tokens *domain.AuthTokens) api.AuthTokens {
 	return api.AuthTokens{
@@ -39,11 +46,16 @@ func convertToAuthTokens(tokens *domain.AuthTokens) api.AuthTokens {
 	}
 }
 
-func convertToUserProfile(profile *domain.User) api.UserProfile {
-	return api.UserProfile{
-		Id:       utils.ToPtr(strconv.Itoa(profile.ID)),
-		Username: &profile.Username,
+func convertToUserProfile(profile *domain.User) userProfileResponse {
+	resp := userProfileResponse{
+		ID:       strconv.Itoa(profile.ID),
+		Username: profile.Username,
 	}
+	if len(profile.AvatarData) > 0 {
+		url := "/api/v1/avatars/" + profile.Username
+		resp.AvatarURL = &url
+	}
+	return resp
 }
 
 func WriteJSONResponse[T any](w http.ResponseWriter, status int, resp T) {
