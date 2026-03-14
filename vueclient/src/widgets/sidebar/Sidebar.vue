@@ -461,7 +461,7 @@ watch(
 
   <!-- Stream preview portal (right of sidebar) -->
   <Teleport to="body">
-    <Transition name="fade">
+    <Transition name="popup">
       <div
         v-if="hoveredStreamUser && voiceStateStore.isScreenSharing(hoveredStreamUser)"
         class="fixed z-[150] w-52 bg-dc-bg-floating border border-dc-separator rounded-lg shadow-xl overflow-hidden"
@@ -516,6 +516,7 @@ watch(
 
   <!-- Context menu portal -->
   <Teleport to="body">
+    <Transition name="popup">
     <div
       v-if="contextMenuUser"
       v-click-outside="closeContextMenu"
@@ -526,6 +527,7 @@ watch(
       <div class="px-2 py-1 text-[11px] font-semibold text-dc-text-muted uppercase tracking-wide truncate">
         {{ contextMenuUser }}
       </div>
+
       <div class="border-t border-dc-separator my-0.5" />
       <button
         class="flex items-center gap-2 px-2 py-1.5 rounded text-sm text-dc-text-secondary hover:bg-dc-bg-hover hover:text-dc-text transition-colors text-left"
@@ -548,6 +550,7 @@ watch(
         />
       </div>
     </div>
+    </Transition>
   </Teleport>
 </template>
 

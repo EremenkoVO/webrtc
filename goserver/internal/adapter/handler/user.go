@@ -1,11 +1,39 @@
 package handler
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
 )
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// ChangePassword handles POST /api/v1/me/password
+func (s *ServerWrapper) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(contextKeyUserID).(int)
+	if !ok {
+		WriteErrorResponse(w, http.StatusUnauthorized, domain.ToErrorResponse(domain.ErrUnauthorized))
+		return
+	}
+
+	var req changePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, domain.ToErrorResponse(domain.ErrValidation))
+		return
+	}
+
+	if err := s.userService.ChangePassword(r.Context(), userID, req.CurrentPassword, req.NewPassword); err != nil {
+		WriteErrorResponse(w, domain.GetStatusCode(err), domain.ToErrorResponse(err))
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
 
 const maxAvatarSize = 5 << 20 // 5 MB
 

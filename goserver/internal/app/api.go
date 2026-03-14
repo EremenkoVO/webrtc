@@ -73,6 +73,7 @@ func (app *API) init(ctx context.Context) error {
 	// Custom mux for endpoints not in the generated API (avatar upload/serve)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/me/avatar", authenticator.RequireAuth(serverWrapper.UploadAvatar))
+	mux.HandleFunc("POST /api/v1/me/password", authenticator.RequireAuth(serverWrapper.ChangePassword))
 	mux.HandleFunc("GET /api/v1/avatars/{username}", serverWrapper.GetAvatar)
 	mux.Handle("/", apiHandler)
 

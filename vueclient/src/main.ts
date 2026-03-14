@@ -4,13 +4,13 @@ import { library } from '@fortawesome/fontawesome-svg-core'
 import {
   faVolumeHigh, faMicrophone, faMicrophoneSlash,
   faVideo, faVideoSlash, faDesktop, faPhoneSlash,
-  faXmark, faChevronDown, faChevronUp, faPlus,
+  faXmark, faChevronDown, faChevronUp, faChevronLeft, faChevronRight, faPlus,
   faBars, faHashtag, faPaperPlane, faUser,
   faRightFromBracket, faArrowsRotate, faComment,
   faWindowMaximize, faWindowRestore, faVolumeMute,
   faPlay, faPause, faVolumeLow, faGear, faCircleStop,
   faPencil, faTrash, faFaceSmile, faEye, faEyeSlash,
-  faHeadset,
+  faHeadset, faBell, faLock, faCheck, faCamera,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 
@@ -26,13 +26,13 @@ import i18n from './shared/i18n'
 library.add(
   faVolumeHigh, faMicrophone, faMicrophoneSlash,
   faVideo, faVideoSlash, faDesktop, faPhoneSlash,
-  faXmark, faChevronDown, faChevronUp, faPlus,
+  faXmark, faChevronDown, faChevronUp, faChevronLeft, faChevronRight, faPlus,
   faBars, faHashtag, faPaperPlane, faUser,
   faRightFromBracket, faArrowsRotate, faComment,
   faWindowMaximize, faWindowRestore, faVolumeMute,
   faPlay, faPause, faVolumeLow, faGear, faCircleStop,
   faPencil, faTrash, faFaceSmile, faEye, faEyeSlash,
-  faHeadset,
+  faHeadset, faBell, faLock, faCheck, faCamera,
 )
 
 OpenAPI.TOKEN = localStorage.getItem('token') || ''

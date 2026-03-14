@@ -12,6 +12,12 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+const visible = ref(true)
+function close() {
+  visible.value = false
+  setTimeout(() => emit('close'), 200)
+}
+
 const CANVAS_SIZE = 300
 const OUTPUT_SIZE = 256
 
@@ -185,12 +191,14 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
+    <Transition name="modal">
     <div
+      v-if="visible"
       class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-      @click.self="emit('close')"
+      @click.self="close"
     >
       <div
-        class="bg-dc-bg-secondary rounded-xl shadow-2xl w-full max-w-sm mx-4 border border-dc-separator/40 overflow-hidden"
+        class="modal-content bg-dc-bg-secondary rounded-xl shadow-2xl w-full max-w-sm mx-4 border border-dc-separator/40 overflow-hidden"
         @click.stop
       >
         <!-- Header -->
@@ -200,7 +208,7 @@ onBeforeUnmount(() => {
           </h3>
           <button
             class="w-7 h-7 flex items-center justify-center rounded hover:bg-dc-bg-hover text-dc-text-muted hover:text-dc-text transition-colors"
-            @click="emit('close')"
+            @click="close"
           >
             <font-awesome-icon icon="xmark" />
           </button>
@@ -286,7 +294,7 @@ onBeforeUnmount(() => {
         <div class="px-5 py-4 border-t border-dc-separator/40 flex gap-3 justify-end">
           <button
             class="px-4 py-2 rounded text-sm text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors"
-            @click="step === 'crop' ? (step = 'select') : emit('close')"
+            @click="step === 'crop' ? (step = 'select') : close()"
           >
             {{ t('common.cancel') }}
           </button>
@@ -301,5 +309,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    </Transition>
   </Teleport>
 </template>

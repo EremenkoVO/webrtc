@@ -69,6 +69,12 @@ func (r *userRepository) UpdateAvatar(ctx context.Context, userID int, data []by
 	return err
 }
 
+func (r *userRepository) UpdatePassword(ctx context.Context, userID int, hashedPassword string) error {
+	query := `UPDATE users SET password = ? WHERE id = ?`
+	_, err := r.db.ExecContext(ctx, query, hashedPassword, userID)
+	return err
+}
+
 func (r *userRepository) GetAvatarByUsername(ctx context.Context, username string) ([]byte, string, error) {
 	query := `SELECT avatar, avatar_content_type FROM users WHERE username = ?`
 	var data []byte

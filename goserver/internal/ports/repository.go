@@ -14,6 +14,7 @@ type UserRepository interface {
 	UserExists(ctx context.Context, username string) (bool, error)
 	UpdateAvatar(ctx context.Context, userID int, data []byte, contentType string) error
 	GetAvatarByUsername(ctx context.Context, username string) ([]byte, string, error)
+	UpdatePassword(ctx context.Context, userID int, hashedPassword string) error
 }
 
 type AccessTokenRepository interface {

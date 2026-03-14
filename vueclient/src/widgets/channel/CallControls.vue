@@ -93,10 +93,10 @@ function selectMicrophone(deviceId: string) {
               :class="['text-[10px] transition-transform', { 'rotate-180': cameraMenuOpen }]"
             />
           </button>
-          <Transition name="fade">
+          <Transition name="dropdown">
             <ul
               v-if="cameraMenuOpen"
-              class="absolute right-0 bottom-12 w-52 bg-dc-bg-floating rounded-lg shadow-xl z-50 py-1.5 max-h-48 overflow-y-auto"
+              class="absolute right-0 bottom-12 w-52 bg-dc-bg-floating rounded-lg shadow-xl z-50 py-1.5 max-h-48 overflow-y-auto border border-dc-separator/40"
               v-click-outside="() => (cameraMenuOpen = false)"
             >
               <li
@@ -143,10 +143,10 @@ function selectMicrophone(deviceId: string) {
               ]"
             />
           </button>
-          <Transition name="fade">
+          <Transition name="dropdown">
             <ul
               v-if="microphoneMenuOpen"
-              class="absolute right-0 bottom-12 w-52 bg-dc-bg-floating rounded-lg shadow-xl z-50 py-1.5 max-h-48 overflow-y-auto"
+              class="absolute right-0 bottom-12 w-52 bg-dc-bg-floating rounded-lg shadow-xl z-50 py-1.5 max-h-48 overflow-y-auto border border-dc-separator/40"
               v-click-outside="() => (microphoneMenuOpen = false)"
             >
               <li
@@ -211,13 +211,3 @@ function selectMicrophone(deviceId: string) {
   </div>
 </template>
 
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-</style>

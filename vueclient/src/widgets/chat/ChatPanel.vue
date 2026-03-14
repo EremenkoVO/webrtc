@@ -452,10 +452,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full w-full bg-dc-bg-primary">
+  <div class="flex flex-col h-full w-full bg-dc-bg-secondary">
     <!-- Header -->
     <div
-      class="h-12 2xl:h-14 px-4 flex items-center gap-2 shadow-[0_1px_0_rgba(4,4,5,0.2),0_1.5px_0_rgba(6,6,7,0.05)] flex-shrink-0"
+      class="h-12 2xl:h-14 px-4 flex items-center gap-2 border-b border-dc-separator/40 flex-shrink-0"
     >
       <font-awesome-icon icon="hashtag" class="text-dc-text-muted text-[16px]" />
       <span class="text-[15px] font-semibold text-dc-text-heading">{{ t('chat.chat') }}</span>
@@ -503,6 +503,7 @@ onBeforeUnmount(() => {
 
       <!-- Message list (Discord-style) -->
       <div v-else class="py-4">
+        <TransitionGroup name="message" tag="div">
         <div
           v-for="(group, gi) in groupedMessages"
           :key="`${group.from}-${group.timestamp}-${gi}`"
@@ -623,7 +624,7 @@ onBeforeUnmount(() => {
 
                       <!-- Tooltip with user names -->
                       <div
-                        class="absolute bottom-full right-0 mb-2 px-2 py-1.5 bg-dc-bg-floating border border-dc-separator rounded text-xs text-dc-text opacity-0 group-hover/reaction:opacity-100 pointer-events-none transition-opacity z-20 shadow-lg max-w-[200px] whitespace-normal"
+                        class="absolute bottom-full right-0 mb-2 px-2 py-1.5 bg-dc-bg-floating border border-dc-separator rounded text-xs text-dc-text opacity-0 group-hover/reaction:opacity-100 group-hover/reaction:translate-y-0 translate-y-1 pointer-events-none transition-all duration-150 z-20 shadow-lg max-w-[200px] whitespace-normal"
                       >
                         <div class="flex flex-col gap-0.5">
                           <div class="font-semibold mb-1 text-dc-text-heading">
@@ -677,6 +678,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
+        </TransitionGroup>
       </div>
     </div>
 
@@ -731,7 +733,7 @@ onBeforeUnmount(() => {
 
     <!-- Reaction picker (teleported to body) -->
     <Teleport to="body">
-      <Transition name="fade">
+      <Transition name="popup">
         <div
           v-if="showReactionPickerFor && reactionPickerPosition"
           ref="reactionPickerRef"

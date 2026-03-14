@@ -47,4 +47,20 @@ export class UserService {
             throw new Error(`Avatar upload failed: ${res.status}`)
         }
     }
+
+    public static async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+        const token = typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : ''
+        const res = await fetch(`${OpenAPI.BASE}/api/v1/me/password`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+        })
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}))
+            throw { status: res.status, body }
+        }
+    }
 }
