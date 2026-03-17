@@ -71,3 +71,11 @@ app.use(vClickOutside)
 app.use(router)
 
 app.mount('#app')
+
+// Reload the page when a new Service Worker takes control,
+// so users always get the latest version of the app.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload()
+  })
+}
