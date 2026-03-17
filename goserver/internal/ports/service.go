@@ -30,3 +30,16 @@ type RoomService interface {
 	GetRoomParticipants(roomID string) []*domain.Client
 	HandleWebSocketConnection(conn *websocket.Conn)
 }
+
+type AdminService interface {
+	GetSetupStatus(ctx context.Context) (bool, error)
+	Setup(ctx context.Context, username, password string) (*domain.AuthTokens, error)
+	GetUserRole(ctx context.Context, userID int) (string, error)
+	ListUsers(ctx context.Context) ([]*domain.User, error)
+	DeleteUser(ctx context.Context, adminID, targetID int) error
+	UpdateUserRole(ctx context.Context, adminID, targetID int, role string) error
+	ListRooms(ctx context.Context) ([]*domain.Room, error)
+	DeleteRoom(ctx context.Context, adminID int, roomID string) error
+	GetStats(ctx context.Context) (*domain.AdminStats, error)
+	GetAuditLog(ctx context.Context, limit int) ([]*domain.AuditEvent, error)
+}

@@ -31,6 +31,7 @@ func (s *userService) GetProfile(ctx context.Context, userID int) (*domain.User,
 		Username:          user.Username,
 		AvatarData:        user.AvatarData,
 		AvatarContentType: user.AvatarContentType,
+		Role:              user.Role,
 	}, nil
 }
 

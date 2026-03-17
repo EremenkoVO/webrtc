@@ -53,9 +53,15 @@ var (
 		StatusCode: 401,
 	}
 	ErrUnauthorized = &AppError{Code: "UNAUTHORIZED", Message: "Missing or invalid access token", StatusCode: 401}
+	ErrForbidden    = &AppError{Code: "FORBIDDEN", Message: "Insufficient permissions", StatusCode: 403}
 	ErrUserExists   = &AppError{
 		Code:       "USER_EXISTS",
 		Message:    "User with this username already exists",
+		StatusCode: 409,
+	}
+	ErrAdminAlreadyInitialized = &AppError{
+		Code:       "ADMIN_ALREADY_INITIALIZED",
+		Message:    "Admin panel is already initialized",
 		StatusCode: 409,
 	}
 	ErrInvalidRefreshToken = &AppError{Code: "INVALID_REFRESH_TOKEN", Message: "Invalid refresh token", StatusCode: 401}

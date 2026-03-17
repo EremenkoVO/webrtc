@@ -11,29 +11,36 @@ import (
 )
 
 type ServerWrapper struct {
-	authService ports.AuthService
-	userService ports.UserService
-	roomService ports.RoomService
+	authService  ports.AuthService
+	userService  ports.UserService
+	roomService  ports.RoomService
+	adminService ports.AdminService
+	auditRepo    ports.AuditRepository
 }
 
 func NewServerWrapper(
 	authService ports.AuthService,
 	userService ports.UserService,
 	roomService ports.RoomService,
+	adminService ports.AdminService,
+	auditRepo ports.AuditRepository,
 ) *ServerWrapper {
 	return &ServerWrapper{
-		authService: authService,
-		userService: userService,
-		roomService: roomService,
+		authService:  authService,
+		userService:  userService,
+		roomService:  roomService,
+		adminService: adminService,
+		auditRepo:    auditRepo,
 	}
 }
 
-// userProfileResponse extends the generated UserProfile with avatar_url.
+// userProfileResponse extends the generated UserProfile with avatar_url and role.
 // Used instead of api.UserProfile to avoid editing generated files.
 type userProfileResponse struct {
 	ID        string  `json:"id"`
 	Username  string  `json:"username"`
 	AvatarURL *string `json:"avatar_url,omitempty"`
+	Role      string  `json:"role"`
 }
 
 // Conversion functions
@@ -50,6 +57,7 @@ func convertToUserProfile(profile *domain.User) userProfileResponse {
 	resp := userProfileResponse{
 		ID:       strconv.Itoa(profile.ID),
 		Username: profile.Username,
+		Role:     profile.Role,
 	}
 	if len(profile.AvatarData) > 0 {
 		url := "/api/v1/avatars/" + profile.Username

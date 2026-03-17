@@ -3,7 +3,7 @@ import { AuthService } from '@/api/index'
 import { useAuthStore } from '@/shared/stores/authStore'
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import SettingsModal from '@/widgets/settings/SettingsModal.vue'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -16,6 +16,7 @@ const props = defineProps<{
 const authStore = useAuthStore()
 const router = useRouter()
 const showSettings = ref(false)
+const isAdmin = computed(() => authStore.userRole === 'admin')
 
 async function logout() {
   try {
@@ -28,7 +29,7 @@ async function logout() {
 </script>
 
 <template>
-  <div class="flex items-center gap-2 px-2 py-1.5 bg-dc-bg-secondary-alt">
+  <div class="flex items-center gap-2 px-2 py-4 bg-dc-bg-secondary-alt">
     <!-- Avatar -->
     <div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
       <UserAvatar :username="props.username" />
@@ -44,6 +45,15 @@ async function logout() {
 
     <!-- Controls -->
     <div class="flex items-center gap-0.5">
+      <button
+        v-if="isAdmin"
+        type="button"
+        class="w-8 h-8 rounded flex items-center justify-center text-dc-text-muted hover:text-dc-blurple hover:bg-dc-bg-hover transition-colors"
+        :title="t('admin.title')"
+        @click="router.push('/admin')"
+      >
+        <font-awesome-icon icon="shield-halved" class="text-[16px]" />
+      </button>
       <button
         type="button"
         class="w-8 h-8 rounded flex items-center justify-center text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors"

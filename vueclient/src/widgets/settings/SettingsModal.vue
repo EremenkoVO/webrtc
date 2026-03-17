@@ -68,6 +68,19 @@ const labels: Record<SupportedLocale, string> = { en: 'English', ru: 'Русск
 const showAvatarEditor = ref(false)
 const currentUsername = ref<string | null>(null)
 
+// Electron server URL
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+const serverUrlInput = ref(localStorage.getItem('serverUrl') ?? '')
+const serverUrlSaved = ref(false)
+
+function saveServerUrl() {
+  const url = serverUrlInput.value.trim()
+  localStorage.setItem('serverUrl', url)
+  window.electronAPI?.setServerUrl(url)
+  serverUrlSaved.value = true
+  setTimeout(() => { serverUrlSaved.value = false }, 3000)
+}
+
 // Password state
 const currentPassword = ref('')
 const newPassword = ref('')
@@ -578,6 +591,34 @@ function selectSectionMobile(s: Section) {
                           {{ passwordLoading ? t('common.loading') : t('settings.savePassword') }}
                         </button>
                       </form>
+                    </div>
+
+                    <!-- Server URL (Electron only) -->
+                    <div v-if="isElectron" class="mt-8 pt-6 border-t border-dc-separator/40">
+                      <p class="text-sm font-semibold text-dc-text-heading mb-1">
+                        {{ t('settings.serverUrl') }}
+                      </p>
+                      <p class="text-xs text-dc-text-muted mb-4">{{ t('settings.serverUrlDesc') }}</p>
+                      <div class="flex gap-2">
+                        <input
+                          v-model="serverUrlInput"
+                          type="url"
+                          :placeholder="t('settings.serverUrlPlaceholder')"
+                          class="flex-1 px-3 py-2 rounded bg-dc-bg-tertiary text-dc-text border border-dc-separator/40 outline-none focus:ring-2 focus:ring-dc-blurple/40 text-sm"
+                        />
+                        <button
+                          type="button"
+                          @click="saveServerUrl"
+                          class="px-4 py-2 rounded bg-dc-blurple hover:bg-dc-blurple-hover text-white text-sm font-medium transition-colors flex-shrink-0"
+                        >
+                          {{ t('settings.savePassword') }}
+                        </button>
+                      </div>
+                      <Transition name="fade">
+                        <p v-if="serverUrlSaved" class="mt-2 text-xs text-dc-green">
+                          {{ t('settings.serverUrlSaved') }}
+                        </p>
+                      </Transition>
                     </div>
                   </template>
                 </div>

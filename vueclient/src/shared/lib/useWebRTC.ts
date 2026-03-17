@@ -744,46 +744,39 @@ export function useWebRTC() {
   async function startScreenShare(options?: {
     resolution?: { width: number; height: number } | null
     frameRate?: number | null
+    /** Pre-built tracks from Electron's desktopCapturer (skips getDisplayMedia) */
+    videoTrack?: MediaStreamTrack
+    audioTrack?: MediaStreamTrack | null
   }) {
     try {
       if (isScreenSharing.value) return
-      
-      // Prepare display media options - requesting both video and audio
-      const videoConstraints: MediaTrackConstraints = {}
-      if (options?.resolution) {
-        videoConstraints.width = { ideal: options.resolution.width }
-        videoConstraints.height = { ideal: options.resolution.height }
-      }
-      if (options?.frameRate) {
-        videoConstraints.frameRate = { ideal: options.frameRate }
-      }
 
-      const displayMediaOptions: MediaStreamConstraints = {
-        video: Object.keys(videoConstraints).length > 0 ? videoConstraints : true,
-        audio: true, // Requesting audio - browser dialog will let user choose to include system audio
-      }
+      let screenVideoTrack: MediaStreamTrack
+      let screenAudioTrack: MediaStreamTrack | null
 
-      // Request screen share stream with audio
-      const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions)
-      
-      // Extract video and audio tracks from the stream
-      const screenVideoTrack = screenStream.getVideoTracks()[0]
-      if (!screenVideoTrack) {
-        throw new Error('No screen video track available')
-      }
-      
-      // Get audio track from screen stream if user selected it in browser dialog
-      const audioTracks = screenStream.getAudioTracks()
-      const screenAudioTrack: MediaStreamTrack | null = audioTracks[0] || null
-      
-      if (!screenAudioTrack) {
-        console.log('No audio track returned from getDisplayMedia - user may not have selected audio in browser dialog')
-        console.log('Available tracks:', screenStream.getTracks().map(t => ({ 
-          kind: t.kind, 
-          label: t.label, 
-          enabled: t.enabled, 
-          muted: t.muted 
-        })))
+      if (options?.videoTrack) {
+        // Electron path: caller already captured the stream
+        screenVideoTrack = options.videoTrack
+        screenAudioTrack = options.audioTrack ?? null
+      } else {
+        // Browser path: let the browser show its native picker
+        const videoConstraints: MediaTrackConstraints = {}
+        if (options?.resolution) {
+          videoConstraints.width  = { ideal: options.resolution.width }
+          videoConstraints.height = { ideal: options.resolution.height }
+        }
+        if (options?.frameRate) {
+          videoConstraints.frameRate = { ideal: options.frameRate }
+        }
+
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: Object.keys(videoConstraints).length > 0 ? videoConstraints : true,
+          audio: true,
+        })
+
+        screenVideoTrack = screenStream.getVideoTracks()[0]
+        if (!screenVideoTrack) throw new Error('No screen video track available')
+        screenAudioTrack = screenStream.getAudioTracks()[0] ?? null
       }
       
       if (screenAudioTrack) {
@@ -792,7 +785,10 @@ export function useWebRTC() {
 
       previousVideoTrack = localStream.value?.getVideoTracks()[0] || null
       previousAudioTrack = localStream.value?.getAudioTracks()[0] || null
-      screenShareStream = screenStream
+      screenShareStream = new MediaStream([
+        screenVideoTrack,
+        ...(screenAudioTrack ? [screenAudioTrack] : []),
+      ])
       activeScreenAudioTrack = screenAudioTrack
 
       // Create composed stream with screen video and microphone (screen audio is sent separately)

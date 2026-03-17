@@ -17,7 +17,9 @@ import { useVoiceStateStore } from '@/shared/stores/voiceStateStore'
 import ChatPanel from '@/widgets/chat/ChatPanel.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { startElectronCapture, stopElectronCapture } from '@/shared/lib/useElectronCapture'
 import CallControls from './CallControls.vue'
+import ElectronScreenPicker from './ElectronScreenPicker.vue'
 import ScreenShareModal, { type ScreenShareOptions } from './ScreenShareModal.vue'
 
 const { t } = useI18n()
@@ -74,6 +76,8 @@ const currentMicrophoneDeviceId = ref<string | null>(null)
 const videoStreamIndex = ref(0)
 const showChatMobile = ref(false)
 const showScreenShareModal = ref(false)
+const showElectronPicker   = ref(false)
+const isElectron           = !!window.electronAPI
 
 type PeerWithVideo = {
   peerId: string
@@ -333,14 +337,17 @@ function endCall() {
 }
 
 function handleRequestScreenShare() {
-  showScreenShareModal.value = true
+  if (isElectron) {
+    showElectronPicker.value = true
+  } else {
+    showScreenShareModal.value = true
+  }
 }
 
 async function handleStartScreenShare(options: ScreenShareOptions) {
   showScreenShareModal.value = false
   try {
     await startScreenShare(options)
-    // Play screencast start sound if enabled
     if (settingsStore.soundOnConnect && screencastAudioElement.value) {
       screencastAudioElement.value.play().catch(() => {})
     }
@@ -349,8 +356,29 @@ async function handleStartScreenShare(options: ScreenShareOptions) {
   }
 }
 
+async function handleStartElectronCapture(params: {
+  sourceId: string
+  sourceType: 'screen' | 'window'
+  captureAudio: boolean
+  resolution?: { width: number; height: number } | null
+  frameRate?: number | null
+}) {
+  showElectronPicker.value = false
+  try {
+    const { videoTrack, audioTrack } = await startElectronCapture(params)
+    await startScreenShare({ videoTrack, audioTrack, resolution: params.resolution, frameRate: params.frameRate })
+    if (settingsStore.soundOnConnect && screencastAudioElement.value) {
+      screencastAudioElement.value.play().catch(() => {})
+    }
+  } catch (error) {
+    console.error('Failed to start electron screen share:', error)
+    stopElectronCapture()
+  }
+}
+
 function handleCancelScreenShare() {
   showScreenShareModal.value = false
+  showElectronPicker.value   = false
 }
 
 function isErrorResponse(r: RoomJoinResponse | ErrorResponse): r is ErrorResponse {
@@ -1032,7 +1060,14 @@ onBeforeUnmount(() => {
       </div>
     </Transition>
 
-    <!-- Screen Share Modal -->
+    <!-- Electron Screen Picker (replaces browser picker when in Electron) -->
+    <ElectronScreenPicker
+      v-if="showElectronPicker"
+      @start="handleStartElectronCapture"
+      @cancel="handleCancelScreenShare"
+    />
+
+    <!-- Screen Share Modal (web / browser only) -->
     <ScreenShareModal
       v-if="showScreenShareModal"
       :audio-devices="audioDevices"

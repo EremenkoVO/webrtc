@@ -15,6 +15,17 @@ type UserRepository interface {
 	UpdateAvatar(ctx context.Context, userID int, data []byte, contentType string) error
 	GetAvatarByUsername(ctx context.Context, username string) ([]byte, string, error)
 	UpdatePassword(ctx context.Context, userID int, hashedPassword string) error
+	UpdateLastSeen(ctx context.Context, userID int) error
+	ListUsers(ctx context.Context) ([]*domain.User, error)
+	DeleteUser(ctx context.Context, userID int) error
+	UpdateUserRole(ctx context.Context, userID int, role string) error
+	HasAdmin(ctx context.Context) (bool, error)
+	GetUserRole(ctx context.Context, userID int) (string, error)
+}
+
+type AuditRepository interface {
+	LogEvent(ctx context.Context, eventType, actor, target, details string) error
+	ListEvents(ctx context.Context, limit int) ([]*domain.AuditEvent, error)
 }
 
 type AccessTokenRepository interface {

@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 
 	"github.com/gorilla/websocket"
 	"github.com/moeryomenko/xiter"
@@ -59,6 +60,15 @@ func (s *ServerWrapper) CreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	room := s.roomService.CreateRoom(req.Name)
+
+	// Log audit event - get username from profile if available
+	if userID, ok := r.Context().Value(contextKeyUserID).(int); ok {
+		actor := strconv.Itoa(userID)
+		if profile, err := s.userService.GetProfile(r.Context(), userID); err == nil {
+			actor = profile.Username
+		}
+		_ = s.auditRepo.LogEvent(r.Context(), domain.AuditEventRoomCreate, actor, room.Name, room.ID)
+	}
 
 	apiRoom := api.Room{
 		Id:        &room.ID,

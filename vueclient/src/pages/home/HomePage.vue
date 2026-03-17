@@ -30,6 +30,9 @@ const getUser = async () => {
     const response = await UserService.getCurrentUser()
     if (typeof response === 'object' && response !== null && 'id' in response && 'username' in response) {
       user.value = response
+      if ('role' in response && typeof (response as any).role === 'string') {
+        authStore.setUserRole((response as any).role)
+      }
     } else {
       throw { message: 'Invalid user data' }
     }

@@ -7,6 +7,8 @@ type User struct {
 	Username          string
 	Password          string
 	CreatedAt         time.Time
+	LastSeenAt        *time.Time
 	AvatarData        []byte
 	AvatarContentType string
+	Role              string // "user" | "admin"
 }

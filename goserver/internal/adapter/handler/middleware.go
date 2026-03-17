@@ -152,3 +152,34 @@ func (a *Authenticator) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 func sendAuthError(w http.ResponseWriter, err error) {
 	WriteErrorResponse(w, http.StatusUnauthorized, domain.ToErrorResponse(err))
 }
+
+// RequireAdmin wraps a HandlerFunc requiring both authentication and admin role.
+func (s *ServerWrapper) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			sendAuthError(w, domain.ErrUnauthorized)
+			return
+		}
+
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+
+		// We need authService here — borrow it from the Authenticator via closure in app.go
+		// Instead, use the adminService.GetUserRole approach by storing authSvc on ServerWrapper
+		userID, err := s.authService.ValidateToken(r.Context(), token)
+		if err != nil {
+			sendAuthError(w, domain.ErrUnauthorized)
+			return
+		}
+
+		role, err := s.adminService.GetUserRole(r.Context(), userID)
+		if err != nil || role != "admin" {
+			WriteErrorResponse(w, http.StatusForbidden, domain.ToErrorResponse(domain.ErrForbidden))
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), contextKeyUserID, userID)
+		ctx = context.WithValue(ctx, contextKeyToken, token)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}

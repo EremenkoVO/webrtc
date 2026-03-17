@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -16,6 +17,7 @@ type authService struct {
 	tokenRepo  ports.TokenRepository
 	jwt        *jwt.JWTManager
 	tokenCache ports.AccessTokenRepository
+	auditRepo  ports.AuditRepository
 }
 
 func NewAuthService(
@@ -23,12 +25,14 @@ func NewAuthService(
 	tokenRepo ports.TokenRepository,
 	jwt *jwt.JWTManager,
 	tokenCache ports.AccessTokenRepository,
+	auditRepo ports.AuditRepository,
 ) ports.AuthService {
 	return &authService{
 		userRepo:   userRepo,
 		tokenRepo:  tokenRepo,
 		jwt:        jwt,
 		tokenCache: tokenCache,
+		auditRepo:  auditRepo,
 	}
 }
 
@@ -65,6 +69,8 @@ func (s *authService) Register(ctx context.Context, username, password string) (
 		return nil, domain.ErrServerError
 	}
 
+	_ = s.auditRepo.LogEvent(ctx, domain.AuditEventUserRegister, username, "", "")
+
 	// Generate tokens
 	return s.generateTokens(ctx, user.ID)
 }
@@ -86,6 +92,9 @@ func (s *authService) Login(ctx context.Context, username, password string) (*do
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 		return nil, domain.ErrInvalidCredentials
 	}
+
+	_ = s.userRepo.UpdateLastSeen(ctx, user.ID)
+	_ = s.auditRepo.LogEvent(ctx, domain.AuditEventUserLogin, username, "", "")
 
 	return s.generateTokens(ctx, user.ID)
 }
@@ -138,6 +147,9 @@ func (s *authService) Logout(ctx context.Context, accessToken string) error {
 	if err != nil {
 		return domain.ErrServerError
 	}
+
+	_ = s.userRepo.UpdateLastSeen(ctx, userID)
+	_ = s.auditRepo.LogEvent(ctx, domain.AuditEventUserLogout, strconv.Itoa(userID), "", "")
 
 	return nil
 }

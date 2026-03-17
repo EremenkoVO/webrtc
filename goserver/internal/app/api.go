@@ -17,6 +17,7 @@ import (
 	"github.com/EremenkoVO/webrtc/goserver/internal/db"
 	"github.com/EremenkoVO/webrtc/goserver/internal/gen/api"
 	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/jwt"
+	adminService "github.com/EremenkoVO/webrtc/goserver/internal/services/admin"
 	authService "github.com/EremenkoVO/webrtc/goserver/internal/services/auth"
 	roomService "github.com/EremenkoVO/webrtc/goserver/internal/services/room"
 	userService "github.com/EremenkoVO/webrtc/goserver/internal/services/user"
@@ -51,18 +52,20 @@ func (app *API) init(ctx context.Context) error {
 	userRepo := sqlite.NewUserRepository(app.db)
 	tokenRepo := sqlite.NewTokenRepository(app.db)
 	roomRepo := sqlite.NewRoomRepository(app.db)
+	auditRepo := sqlite.NewAuditRepository(app.db)
 
 	// Initialize JWT manager and token cache
 	jwtManager := jwt.NewJWTManager(app.config.Auth.TokenSecret)
 	accessTokenRepo := accesstoken.NewAccessTokenRepository(ctx)
 
 	// Initialize services
-	authSvc := authService.NewAuthService(userRepo, tokenRepo, jwtManager, accessTokenRepo)
+	authSvc := authService.NewAuthService(userRepo, tokenRepo, jwtManager, accessTokenRepo, auditRepo)
 	userSvc := userService.NewUserService(userRepo)
 	roomSvc := roomService.NewRoomService(roomRepo)
+	adminSvc := adminService.NewAdminService(userRepo, roomRepo, authSvc, roomSvc, auditRepo)
 
 	// Initialize handlers
-	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc)
+	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc, adminSvc, auditRepo)
 	authenticator := handler.NewAuthenticator(authSvc)
 
 	// Setup HTTP server with routes
@@ -70,11 +73,21 @@ func (app *API) init(ctx context.Context) error {
 		Middlewares: []api.MiddlewareFunc{authenticator.Middleware},
 	})
 
-	// Custom mux for endpoints not in the generated API (avatar upload/serve)
+	// Custom mux for endpoints not in the generated API
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/me/avatar", authenticator.RequireAuth(serverWrapper.UploadAvatar))
 	mux.HandleFunc("POST /api/v1/me/password", authenticator.RequireAuth(serverWrapper.ChangePassword))
 	mux.HandleFunc("GET /api/v1/avatars/{username}", serverWrapper.GetAvatar)
+	// Admin routes
+	mux.HandleFunc("GET /api/v1/admin/setup", serverWrapper.GetAdminSetupStatus)
+	mux.HandleFunc("POST /api/v1/admin/setup", serverWrapper.PostAdminSetup)
+	mux.HandleFunc("GET /api/v1/admin/stats", serverWrapper.RequireAdmin(serverWrapper.GetAdminStats))
+	mux.HandleFunc("GET /api/v1/admin/users", serverWrapper.RequireAdmin(serverWrapper.GetAdminUsers))
+	mux.HandleFunc("DELETE /api/v1/admin/users/{id}", serverWrapper.RequireAdmin(serverWrapper.DeleteAdminUser))
+	mux.HandleFunc("PATCH /api/v1/admin/users/{id}/role", serverWrapper.RequireAdmin(serverWrapper.PatchAdminUserRole))
+	mux.HandleFunc("GET /api/v1/admin/rooms", serverWrapper.RequireAdmin(serverWrapper.GetAdminRooms))
+	mux.HandleFunc("DELETE /api/v1/admin/rooms/{id}", serverWrapper.RequireAdmin(serverWrapper.DeleteAdminRoom))
+	mux.HandleFunc("GET /api/v1/admin/audit", serverWrapper.RequireAdmin(serverWrapper.GetAdminAudit))
 	mux.Handle("/", apiHandler)
 
 	finalHandler := handler.LoggingMiddleware(handler.CORS(mux))

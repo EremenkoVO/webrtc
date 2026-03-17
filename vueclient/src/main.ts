@@ -11,6 +11,9 @@ import {
   faPlay, faPause, faVolumeLow, faGear, faCircleStop,
   faPencil, faTrash, faFaceSmile, faEye, faEyeSlash,
   faHeadset, faBell, faLock, faCheck, faCamera,
+  faShieldHalved, faChartBar, faUsers, faDoorOpen,
+  faArrowLeft, faCrown, faCircleNotch, faCircleInfo, faCircle,
+  faVolumeXmark,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 
@@ -33,9 +36,31 @@ library.add(
   faPlay, faPause, faVolumeLow, faGear, faCircleStop,
   faPencil, faTrash, faFaceSmile, faEye, faEyeSlash,
   faHeadset, faBell, faLock, faCheck, faCamera,
+  faShieldHalved, faChartBar, faUsers, faDoorOpen,
+  faArrowLeft, faCrown, faCircleNotch, faCircleInfo, faCircle,
+  faVolumeXmark,
 )
 
-OpenAPI.TOKEN = localStorage.getItem('token') || ''
+// Use a resolver so the token is read from localStorage on every request,
+// avoiding stale-token issues after setTokens() or clearTokens()
+OpenAPI.TOKEN = async () => localStorage.getItem('token') ?? ''
+
+// Server URL: Electron runtime > localStorage > VITE_SERVER_URL env > '' (relative, uses proxy in dev)
+async function resolveServerUrl(): Promise<string> {
+  if (window.electronAPI) {
+    const ipcUrl = await window.electronAPI.getServerUrl()
+    if (ipcUrl) return ipcUrl
+  }
+  const stored = localStorage.getItem('serverUrl')
+  if (stored) return stored
+  return import.meta.env.VITE_SERVER_URL ?? ''
+}
+
+const serverUrl = await resolveServerUrl()
+if (serverUrl) {
+  OpenAPI.BASE = serverUrl
+  localStorage.setItem('serverUrl', serverUrl)
+}
 
 const app = createApp(App)
 
