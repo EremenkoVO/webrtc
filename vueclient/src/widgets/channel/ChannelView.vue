@@ -1042,7 +1042,7 @@ onBeforeUnmount(() => {
 
     <!-- Chat panel (desktop, voice channels only) -->
     <div
-      v-if="!isTextChannel && sidebarStore.chatOpen"
+      v-if="!isTextChannel && sidebarStore.chatOpen && !sidebarStore.isMobile"
       class="hidden lg:flex w-80 2xl:w-96 3xl:w-[420px] border-l border-dc-separator/40 flex-shrink-0"
     >
       <ChatPanel :room-id="roomStore.selectedChannelId" :user-name="props.userName" />

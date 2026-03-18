@@ -145,15 +145,6 @@ function formatTime(timestamp: string): string {
 }
 
 watch(
-  () => props.roomId,
-  (newId, oldId) => {
-    if (newId && newId !== oldId && props.userName) chatStore.connect(newId, props.userName)
-    else if (!newId) chatStore.disconnect()
-  },
-  { immediate: true },
-)
-
-watch(
   () => chatStore.messages.length,
   () => {
     if (shouldAutoScroll.value) scrollToBottom(true)

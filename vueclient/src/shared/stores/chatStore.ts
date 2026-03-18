@@ -121,7 +121,7 @@ export const useChatStore = defineStore('chat', () => {
   const notificationPermission = computed(() => getNotificationPermission())
 
   function connect(roomId: string, userName: string) {
-    if (ws.value && ws.value.readyState === WebSocket.OPEN && currentRoomId.value === roomId) return
+    if (ws.value && (ws.value.readyState === WebSocket.OPEN || ws.value.readyState === WebSocket.CONNECTING) && currentRoomId.value === roomId) return
     if (ws.value && currentRoomId.value !== roomId) {
       typingUsers.value.clear()
       disconnect()
@@ -151,14 +151,17 @@ export const useChatStore = defineStore('chat', () => {
       const url = `${wsUrl}?token=${encodeURIComponent(token)}&room=${encodeURIComponent(roomId)}&username=${encodeURIComponent(userName)}`
 
       console.log('Connecting to chat WebSocket:', url)
-      ws.value = new WebSocket(url)
+      const newWs = new WebSocket(url)
+      ws.value = newWs
 
-      ws.value.onopen = () => {
+      newWs.onopen = () => {
+        if (ws.value !== newWs) return
         connectionState.value = 'connected'
         reconnectAttempts.value = 0
       }
 
-      ws.value.onmessage = (event) => {
+      newWs.onmessage = (event) => {
+        if (ws.value !== newWs) return
         try {
           const message: ChatWebSocketMessage = JSON.parse(event.data)
           handleMessage(message)
@@ -167,14 +170,16 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
 
-      ws.value.onerror = (error) => {
+      newWs.onerror = (error) => {
+        if (ws.value !== newWs) return
         console.error('Chat WebSocket error:', error)
-        console.error('WebSocket URL was:', url)
         connectionState.value = 'disconnected'
       }
 
-      ws.value.onclose = (event) => {
+      newWs.onclose = (event) => {
         console.log('Chat WebSocket closed:', event.code, event.reason)
+        // Only handle if this is still the active socket (not replaced by a new connect())
+        if (ws.value !== newWs) return
         connectionState.value = 'disconnected'
         ws.value = null
         if (currentRoomId.value && reconnectAttempts.value < maxReconnectAttempts) {
@@ -205,8 +210,13 @@ export const useChatStore = defineStore('chat', () => {
       reconnectTimeout.value = null
     }
     if (ws.value) {
-      ws.value.close()
+      const old = ws.value
       ws.value = null
+      old.onopen = null
+      old.onmessage = null
+      old.onerror = null
+      old.onclose = null
+      old.close()
     }
     connectionState.value = 'disconnected'
     typingUsers.value.clear()
@@ -324,7 +334,7 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       case 'typing':
-        if (message.room === currentRoomId.value) {
+        if (message.room === currentRoomId.value && message.username !== username.value) {
           if (message.isTyping) {
             typingUsers.value.add(message.username)
           } else {
