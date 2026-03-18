@@ -51,6 +51,10 @@ type ChatMessage struct {
 	ReplyToText     string              `json:"replyToText,omitempty"`
 	VoiceURL        string              `json:"voiceUrl,omitempty"`
 	VoiceDuration   float64             `json:"voiceDuration,omitempty"`
+	FileURL         string              `json:"fileUrl,omitempty"`
+	FileName        string              `json:"fileName,omitempty"`
+	FileSize        int64               `json:"fileSize,omitempty"`
+	FileContentType string              `json:"fileContentType,omitempty"`
 }
 
 // ChatClient represents an active chat WebSocket connection.

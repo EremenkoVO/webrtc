@@ -6,6 +6,7 @@ networks:
 
 volumes:
   backend_data:
+  uploads_data:
   ssl_certs:
 
 services:
@@ -35,11 +36,13 @@ services:
       - '8081:8081'  # Health check
     volumes:
       - backend_data:/app/data
+      - uploads_data:/app/uploads
     environment:
       - MYDISCORD_PORT=8080
       - MYDISCORD_DATABASE_DSN=/app/data/database.db
       - MYDISCORD_DATABASE_SALT=${MYDISCORD_DATABASE_SALT:-change-this-salt}
       - MYDISCORD_AUTH_TOKEN_SECRET=${MYDISCORD_AUTH_TOKEN_SECRET:-change-this-secret}
+      - MYDISCORD_UPLOAD_DIR=/app/uploads
     networks:
       - localhost
     restart: unless-stopped

@@ -16,7 +16,7 @@ RUN apk --no-cache add ca-certificates
 
 RUN adduser -D -u 1000 appuser
 
-RUN mkdir -p /app/data && chown -R 1000:1000 /app/data
+RUN mkdir -p /app/data /app/uploads && chown -R 1000:1000 /app/data /app/uploads
 
 # Import binaries to final stage.
 COPY --from=build /src/bin/api /bin/api

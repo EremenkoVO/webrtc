@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { OpenAPI } from '@/api/core/OpenAPI'
 import { useChatStore } from '@/shared/stores/chatStore'
+import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import UserAvatar from '@/shared/ui/UserAvatar.vue'
-import MessageContent from './MessageContent.vue'
 import EmojiPicker from './EmojiPicker.vue'
+import MediaPreview from './MediaPreview.vue'
+import MessageContent from './MessageContent.vue'
 import VoicePlayer from './VoicePlayer.vue'
 
 const { t } = useI18n()
@@ -41,7 +42,7 @@ const recordingCanvasRef = ref<HTMLCanvasElement | null>(null)
 // Web Audio API refs for recording visualization (non-reactive for perf)
 let recAudioCtx: AudioContext | null = null
 let recAnalyser: AnalyserNode | null = null
-let recFreqData: Uint8Array | null = null
+let recFreqData: Uint8Array<ArrayBuffer> | null = null
 let recAnimFrame: number | null = null
 // Smoothed bar heights for natural decay
 const smoothBars: number[] = Array(36).fill(3)
@@ -52,7 +53,7 @@ const formatRecDuration = computed(() => {
   return `${m}:${s.toString().padStart(2, '0')}`
 })
 
-function drawRecordingCanvas(freq?: Uint8Array<ArrayBufferLike>) {
+function drawRecordingCanvas(freq?: Uint8Array<ArrayBuffer>) {
   const canvas = recordingCanvasRef.value
   if (!canvas) return
   const ctx = canvas.getContext('2d')!
@@ -74,14 +75,12 @@ function drawRecordingCanvas(freq?: Uint8Array<ArrayBufferLike>) {
   for (let i = 0; i < NUM_BARS; i++) {
     let target = 3
     if (freq) {
-      const binIdx = Math.floor(i * Math.floor(freq.length * 0.65) / NUM_BARS)
+      const binIdx = Math.floor((i * Math.floor(freq.length * 0.65)) / NUM_BARS)
       const v = freq[binIdx] / 255
       target = 3 + v * (h - 6)
     }
     // Fast attack, slow release for natural VU-meter feel
-    smoothBars[i] = smoothBars[i] < target
-      ? target
-      : smoothBars[i] * 0.82 + target * 0.18
+    smoothBars[i] = smoothBars[i] < target ? target : smoothBars[i] * 0.82 + target * 0.18
     const barH = Math.max(3, smoothBars[i])
     const x = i * (BAR_W + BAR_GAP)
     const y = (h - barH) / 2
@@ -112,7 +111,7 @@ function startRecordingVisualization(stream: MediaStream) {
     recAnalyser.smoothingTimeConstant = 0.5
     source.connect(recAnalyser)
     // Do NOT connect to destination — we don't want mic feedback
-    recFreqData = new Uint8Array(recAnalyser.frequencyBinCount)
+    recFreqData = new Uint8Array(recAnalyser.frequencyBinCount) as Uint8Array<ArrayBuffer>
     const an = recAnalyser
     const fd = recFreqData
 
@@ -128,7 +127,10 @@ function startRecordingVisualization(stream: MediaStream) {
 }
 
 function stopRecordingVisualization() {
-  if (recAnimFrame !== null) { cancelAnimationFrame(recAnimFrame); recAnimFrame = null }
+  if (recAnimFrame !== null) {
+    cancelAnimationFrame(recAnimFrame)
+    recAnimFrame = null
+  }
   recAudioCtx?.close()
   recAudioCtx = null
   recAnalyser = null
@@ -145,7 +147,9 @@ async function startRecording() {
       : 'audio/webm'
     const mr = new MediaRecorder(stream, { mimeType })
     audioChunks.value = []
-    mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.value.push(e.data) }
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.value.push(e.data)
+    }
     mr.onstop = () => finishRecording()
     mr.start(100)
     mediaRecorder.value = mr
@@ -186,7 +190,10 @@ function cancelRecording() {
 }
 
 function clearRecordingState() {
-  if (recordingTimer.value) { clearInterval(recordingTimer.value); recordingTimer.value = null }
+  if (recordingTimer.value) {
+    clearInterval(recordingTimer.value)
+    recordingTimer.value = null
+  }
   isRecording.value = false
   recordingDuration.value = 0
   mediaRecorder.value = null
@@ -210,6 +217,92 @@ function resolveVoiceUrl(url: string): string {
   return (OpenAPI.BASE || '') + url
 }
 
+function resolveFileUrl(url: string): string {
+  if (!url) return ''
+  if (url.startsWith('http')) return url
+  return (OpenAPI.BASE || '') + url
+}
+
+function formatFileSize(bytes?: number): string {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// File attachment state
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const isUploading = ref(false)
+
+// File download
+const downloadingFiles = ref<Set<string>>(new Set())
+
+async function downloadFile(fileUrl: string | undefined, fileName: string | undefined) {
+  if (!fileUrl) return
+  const url = resolveFileUrl(fileUrl)
+  downloadingFiles.value.add(fileUrl)
+  try {
+    const token = localStorage.getItem('token') || ''
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = fileName || 'download'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
+  } catch (err) {
+    console.error('Download failed:', err)
+  } finally {
+    downloadingFiles.value.delete(fileUrl)
+  }
+}
+
+// Media preview
+const previewSrc = ref<string | null>(null)
+const previewType = ref<'image' | 'video'>('image')
+const previewFileName = ref<string | undefined>(undefined)
+
+function openPreview(src: string, type: 'image' | 'video', fileName?: string) {
+  previewSrc.value = src
+  previewType.value = type
+  previewFileName.value = fileName
+}
+
+function closePreview() {
+  previewSrc.value = null
+}
+
+function openFilePicker() {
+  fileInputRef.value?.click()
+}
+
+async function onFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !props.roomId) return
+  if (file.size > 25 * 1024 * 1024) {
+    alert(t('chat.fileTooLarge'))
+    input.value = ''
+    return
+  }
+  isUploading.value = true
+  try {
+    await chatStore.sendFileMessage(props.roomId, file)
+  } catch (err) {
+    console.error('File upload failed:', err)
+    alert(err instanceof Error ? err.message : 'File upload failed')
+  } finally {
+    isUploading.value = false
+    input.value = ''
+  }
+}
+
 const voiceRecordingText = computed(() => {
   const users = Array.from(chatStore.voiceRecordingUsers)
   if (users.length === 0) return ''
@@ -219,15 +312,30 @@ const voiceRecordingText = computed(() => {
 // Reply state
 const replyingTo = ref<{ id: string; username: string; text: string } | null>(null)
 
-function startReply(msg: { id?: string; timestamp: string; text: string }, from: string, username: string) {
+function startReply(
+  msg: { id?: string; timestamp: string; text: string },
+  from: string,
+  username: string,
+) {
   replyingTo.value = { id: getMessageId(msg, from), username, text: msg.text }
   nextTick(() => textareaRef.value?.focus())
 }
 
-function cancelReply() { replyingTo.value = null }
+function cancelReply() {
+  replyingTo.value = null
+}
 
 // Touch / long-press action sheet
-type TouchMsg = { id?: string; timestamp: string; text: string; username?: string; reactions?: Record<string, string[]>; replyToId?: string; replyToUsername?: string; replyToText?: string }
+type TouchMsg = {
+  id?: string
+  timestamp: string
+  text: string
+  username?: string
+  reactions?: Record<string, string[]>
+  replyToId?: string
+  replyToUsername?: string
+  replyToText?: string
+}
 const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const longPressTouchOrigin = ref<{ x: number; y: number } | null>(null)
 const showTouchActionsFor = ref<{ messageId: string; message: TouchMsg; from: string } | null>(null)
@@ -251,11 +359,16 @@ function handleTouchMove(event: TouchEvent) {
 }
 
 function cancelLongPress() {
-  if (longPressTimer.value) { clearTimeout(longPressTimer.value); longPressTimer.value = null }
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
   longPressTouchOrigin.value = null
 }
 
-function closeTouchActions() { showTouchActionsFor.value = null }
+function closeTouchActions() {
+  showTouchActionsFor.value = null
+}
 
 function touchReact(emoji: string) {
   if (!showTouchActionsFor.value) return
@@ -277,7 +390,11 @@ function touchDelete() {
 
 function touchReply() {
   if (!showTouchActionsFor.value) return
-  startReply(showTouchActionsFor.value.message, showTouchActionsFor.value.from, showTouchActionsFor.value.message.username ?? '')
+  startReply(
+    showTouchActionsFor.value.message,
+    showTouchActionsFor.value.from,
+    showTouchActionsFor.value.message.username ?? '',
+  )
   closeTouchActions()
 }
 const showEmojiPicker = ref(false)
@@ -350,8 +467,7 @@ function insertEmoji(emoji: string) {
   }
   const start = textarea.selectionStart
   const end = textarea.selectionEnd
-  messageInput.value =
-    messageInput.value.slice(0, start) + emoji + messageInput.value.slice(end)
+  messageInput.value = messageInput.value.slice(0, start) + emoji + messageInput.value.slice(end)
   showEmojiPicker.value = false
   nextTick(() => {
     textarea.focus()
@@ -470,8 +586,14 @@ const groupedMessages = computed(() => {
     replyToText?: string
     voiceUrl?: string
     voiceDuration?: number
+    type?: string
+    fileUrl?: string
+    fileName?: string
+    fileSize?: number
+    fileContentType?: string
   }
-  const groups: Array<{ from: string; username: string; messages: MsgEntry[]; timestamp: string }> = []
+  const groups: Array<{ from: string; username: string; messages: MsgEntry[]; timestamp: string }> =
+    []
   chatStore.messages.forEach((message) => {
     const lastGroup = groups[groups.length - 1]
     const timeDiff =
@@ -489,22 +611,37 @@ const groupedMessages = computed(() => {
       replyToText: message.replyToText,
       voiceUrl: message.voiceUrl,
       voiceDuration: message.voiceDuration,
+      type: message.type,
+      fileUrl: message.fileUrl,
+      fileName: message.fileName,
+      fileSize: message.fileSize,
+      fileContentType: message.fileContentType,
     }
     const isVoice = !!message.voiceUrl
-    if (lastGroup && lastGroup.from === message.from && timeDiff < 120000 && !message.replyToId && !isVoice) {
+    const isFile = message.type === 'file_message'
+    if (
+      lastGroup &&
+      lastGroup.from === message.from &&
+      timeDiff < 120000 &&
+      !message.replyToId &&
+      !isVoice &&
+      !isFile
+    ) {
       lastGroup.messages.push(entry)
     } else {
-      groups.push({ from: message.from, username: message.username, messages: [entry], timestamp: message.timestamp })
+      groups.push({
+        from: message.from,
+        username: message.username,
+        messages: [entry],
+        timestamp: message.timestamp,
+      })
     }
   })
   return groups
 })
 
 function isOwnMessage(messageFrom: string): boolean {
-  return (
-    messageFrom === chatStore.userId ||
-    messageFrom === chatStore.clientId
-  )
+  return messageFrom === chatStore.userId || messageFrom === chatStore.clientId
 }
 
 function getMessageId(message: { id?: string; timestamp: string }, from: string): string {
@@ -585,10 +722,12 @@ function openReactionPicker(
     let left = rect.left
     let top = rect.top - pickerHeight - spacing
 
-    if (left + pickerWidth > window.innerWidth - margin) left = window.innerWidth - pickerWidth - margin
+    if (left + pickerWidth > window.innerWidth - margin)
+      left = window.innerWidth - pickerWidth - margin
     if (left < margin) left = margin
     if (top < margin) top = rect.bottom + spacing
-    if (top + pickerHeight > window.innerHeight - margin) top = window.innerHeight - pickerHeight - margin
+    if (top + pickerHeight > window.innerHeight - margin)
+      top = window.innerHeight - pickerHeight - margin
 
     reactionPickerPosition.value = { top, left }
   })
@@ -611,7 +750,6 @@ function getReactionUsers(
   if (!reactions || !reactions[emoji]) return []
   return reactions[emoji]
 }
-
 
 function getAvatarColor(name: string): string {
   const colors = [
@@ -742,174 +880,276 @@ onBeforeUnmount(() => {
       <!-- Message list (Discord-style) -->
       <div v-else class="py-4">
         <TransitionGroup name="message" tag="div">
-        <div
-          v-for="(group, gi) in groupedMessages"
-          :key="`${group.from}-${group.timestamp}-${gi}`"
-          class="px-4 py-0.5 hover:bg-dc-bg-hover/30 group/msg"
-        >
-          <!-- First message in group - show avatar + name -->
-          <div class="flex gap-4">
-            <!-- Avatar (only for first message) -->
-            <div class="w-12 h-12 sm:w-10 sm:h-10 rounded-full overflow-hidden flex-shrink-0 mt-0.5">
-              <UserAvatar :username="group.username" />
-            </div>
-
-            <div class="flex-1 min-w-0">
-              <!-- Name + timestamp -->
-              <div class="flex items-baseline gap-2 mb-0.5">
-                <span
-                  class="font-medium text-base sm:text-sm hover:underline cursor-pointer"
-                  :style="{ color: getAvatarColor(group.username) }"
-                >
-                  {{ group.username }}
-                </span>
-                <span class="text-sm sm:text-[11px] text-dc-text-muted">{{
-                  formatTime(group.timestamp)
-                }}</span>
+          <div
+            v-for="(group, gi) in groupedMessages"
+            :key="`${group.from}-${group.timestamp}-${gi}`"
+            class="px-4 py-0.5 hover:bg-dc-bg-hover/30 group/msg"
+          >
+            <!-- First message in group - show avatar + name -->
+            <div class="flex gap-4">
+              <!-- Avatar (only for first message) -->
+              <div
+                class="w-12 h-12 sm:w-10 sm:h-10 rounded-full overflow-hidden flex-shrink-0 mt-0.5"
+              >
+                <UserAvatar :username="group.username" />
               </div>
 
-              <!-- Messages in group -->
-              <div
-                v-for="(msg, mi) in group.messages"
-                :key="`${group.from}-${msg.timestamp}-${mi}`"
-                class="group/message relative"
-                @touchstart.passive="handleTouchStart($event, msg, group.from)"
-                @touchmove.passive="handleTouchMove"
-                @touchend="cancelLongPress"
-                @touchcancel="cancelLongPress"
-              >
-                <!-- Edit mode -->
-                <div
-                  v-if="editingMessageId === getMessageId(msg, group.from)"
-                  class="flex flex-col gap-2"
-                >
-                  <textarea
-                    v-model="editingText"
-                    @keydown.enter.exact.prevent="saveEdit(msg, group.from)"
-                    @keydown.escape="cancelEdit"
-                    class="w-full px-4 sm:px-3 py-3 sm:py-2 bg-dc-textarea rounded text-dc-text text-base sm:text-[15px] outline-none resize-none"
-                    style="min-height: 64px"
-                    autofocus
-                  />
-                  <div class="flex items-center gap-2 text-sm sm:text-xs text-dc-text-muted">
-                    <span>{{ t('chat.pressEnterToSave') }}</span>
-                    <span>•</span>
-                    <span>{{ t('chat.pressEscapeToCancel') }}</span>
-                  </div>
+              <div class="flex-1 min-w-0">
+                <!-- Name + timestamp -->
+                <div class="flex items-baseline gap-2 mb-0.5">
+                  <span
+                    class="font-medium text-base sm:text-sm hover:underline cursor-pointer"
+                    :style="{ color: getAvatarColor(group.username) }"
+                  >
+                    {{ group.username }}
+                  </span>
+                  <span class="text-sm sm:text-[11px] text-dc-text-muted">{{
+                    formatTime(group.timestamp)
+                  }}</span>
                 </div>
 
-                <!-- Display mode -->
+                <!-- Messages in group -->
                 <div
-                  v-else
-                  class="group-hover/message:bg-dc-bg-hover/20 rounded px-1 -mx-1 transition-colors"
+                  v-for="(msg, mi) in group.messages"
+                  :key="`${group.from}-${msg.timestamp}-${mi}`"
+                  class="group/message relative"
+                  @touchstart.passive="handleTouchStart($event, msg, group.from)"
+                  @touchmove.passive="handleTouchMove"
+                  @touchend="cancelLongPress"
+                  @touchcancel="cancelLongPress"
                 >
-                  <!-- Floating action toolbar -->
+                  <!-- Edit mode -->
                   <div
-                    class="absolute -top-4 right-1 z-10 opacity-0 group-hover/message:opacity-100 transition-opacity pointer-events-none group-hover/message:pointer-events-auto"
+                    v-if="editingMessageId === getMessageId(msg, group.from)"
+                    class="flex flex-col gap-2"
                   >
-                    <div class="flex items-center gap-px bg-dc-bg-floating border border-dc-separator rounded-lg shadow-lg overflow-hidden">
-                      <!-- Reply -->
-                      <button
-                        @click="startReply(msg, group.from, group.username)"
-                        class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-blurple hover:bg-dc-bg-hover transition-colors"
-                        :title="t('chat.reply')"
-                      >
-                        <font-awesome-icon icon="reply" class="text-[12px]" />
-                      </button>
-                      <div class="w-px h-4 bg-dc-separator flex-shrink-0" />
-                      <!-- Add reaction -->
-                      <button
-                        :ref="(el) => { if (el) reactionButtonRefs.set(getMessageId(msg, group.from), el as HTMLElement) }"
-                        @click.stop="openReactionPicker(msg, group.from, reactionButtonRefs.get(getMessageId(msg, group.from))!)"
-                        class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-yellow hover:bg-dc-bg-hover transition-colors"
-                        :title="t('chat.addReaction')"
-                        data-reaction-button
-                      >
-                        <font-awesome-icon icon="face-smile" class="text-[13px]" />
-                      </button>
-
-                      <template v-if="isOwnMessage(group.from)">
-                        <div class="w-px h-4 bg-dc-separator flex-shrink-0" />
-                        <!-- Edit -->
-                        <button
-                          @click="startEdit(msg, group.from)"
-                          class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors"
-                          :title="t('chat.edit')"
-                        >
-                          <font-awesome-icon icon="pencil" class="text-[12px]" />
-                        </button>
-                        <!-- Delete -->
-                        <button
-                          @click="deleteMsg(msg, group.from)"
-                          class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-red hover:bg-dc-bg-hover transition-colors"
-                          :title="t('chat.delete')"
-                        >
-                          <font-awesome-icon icon="trash" class="text-[12px]" />
-                        </button>
-                      </template>
+                    <textarea
+                      v-model="editingText"
+                      @keydown.enter.exact.prevent="saveEdit(msg, group.from)"
+                      @keydown.escape="cancelEdit"
+                      class="w-full px-4 sm:px-3 py-3 sm:py-2 bg-dc-textarea rounded text-dc-text text-base sm:text-[15px] outline-none resize-none"
+                      style="min-height: 64px"
+                      autofocus
+                    />
+                    <div class="flex items-center gap-2 text-sm sm:text-xs text-dc-text-muted">
+                      <span>{{ t('chat.pressEnterToSave') }}</span>
+                      <span>•</span>
+                      <span>{{ t('chat.pressEscapeToCancel') }}</span>
                     </div>
                   </div>
 
-                  <!-- Reply quote block -->
-                  <div
-                    v-if="msg.replyToId"
-                    class="flex items-stretch gap-2 mb-1 mt-0.5 opacity-80 hover:opacity-100 transition-opacity cursor-default"
-                  >
-                    <div class="w-0.5 bg-dc-blurple/60 rounded-full flex-shrink-0" />
-                    <div class="flex-1 min-w-0 py-0.5">
-                      <span class="text-[11px] font-semibold text-dc-blurple block leading-none mb-0.5">{{ msg.replyToUsername }}</span>
-                      <p class="text-[12px] text-dc-text-muted truncate leading-snug">{{ msg.replyToText }}</p>
-                    </div>
-                  </div>
-
-                  <!-- Voice message player -->
-                  <VoicePlayer
-                    v-if="msg.voiceUrl"
-                    :src="resolveVoiceUrl(msg.voiceUrl)"
-                    :duration="msg.voiceDuration ?? 0"
-                  />
-
-                  <!-- Text message -->
+                  <!-- Display mode -->
                   <div
                     v-else
-                    class="text-dc-text text-base sm:text-[15px] leading-[1.375rem] whitespace-pre-wrap break-words"
+                    class="group-hover/message:bg-dc-bg-hover/20 rounded px-1 -mx-1 transition-colors"
                   >
-                    <MessageContent :text="msg.text" />
-                    <span v-if="msg.edited" class="text-sm sm:text-[11px] text-dc-text-muted ml-1">
-                      {{ t('chat.edited') }}
-                    </span>
-                  </div>
-
-                  <!-- Reactions row -->
-                  <div
-                    v-if="msg.reactions && Object.keys(msg.reactions).length > 0"
-                    class="flex flex-wrap gap-1 mt-1"
-                  >
+                    <!-- Floating action toolbar -->
                     <div
-                      v-for="(_, emoji) in msg.reactions"
-                      :key="emoji"
-                      class="relative group/reaction"
+                      class="absolute -top-4 right-1 z-10 opacity-0 group-hover/message:opacity-100 transition-opacity pointer-events-none group-hover/message:pointer-events-auto"
                     >
-                      <button
-                        @click="toggleReaction(msg, group.from, emoji)"
-                        :class="[
-                          'flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors',
-                          hasUserReacted(msg.reactions, emoji)
-                            ? 'bg-dc-blurple/30 hover:bg-dc-blurple/40 text-dc-text'
-                            : 'bg-dc-bg-secondary-alt hover:bg-dc-bg-hover text-dc-text-muted hover:text-dc-text',
-                        ]"
+                      <div
+                        class="flex items-center gap-px bg-dc-bg-floating border border-dc-separator rounded-lg shadow-lg overflow-hidden"
                       >
-                        <span>{{ emoji }}</span>
-                        <span class="text-[10px] font-medium">{{ getReactionCount(msg.reactions, emoji) }}</span>
-                      </button>
-                      <!-- Tooltip -->
-                      <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1.5 bg-dc-bg-floating border border-dc-separator rounded-lg shadow-lg text-xs pointer-events-none opacity-0 group-hover/reaction:opacity-100 transition-opacity duration-150 z-30 w-max max-w-[180px] whitespace-normal">
-                        <div class="font-semibold text-dc-text-heading mb-1">{{ emoji }}</div>
+                        <!-- Reply -->
+                        <button
+                          @click="startReply(msg, group.from, group.username)"
+                          class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-blurple hover:bg-dc-bg-hover transition-colors"
+                          :title="t('chat.reply')"
+                        >
+                          <font-awesome-icon icon="reply" class="text-[12px]" />
+                        </button>
+                        <div class="w-px h-4 bg-dc-separator flex-shrink-0" />
+                        <!-- Add reaction -->
+                        <button
+                          :ref="
+                            (el) => {
+                              if (el)
+                                reactionButtonRefs.set(
+                                  getMessageId(msg, group.from),
+                                  el as HTMLElement,
+                                )
+                            }
+                          "
+                          @click.stop="
+                            openReactionPicker(
+                              msg,
+                              group.from,
+                              reactionButtonRefs.get(getMessageId(msg, group.from))!,
+                            )
+                          "
+                          class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-yellow hover:bg-dc-bg-hover transition-colors"
+                          :title="t('chat.addReaction')"
+                          data-reaction-button
+                        >
+                          <font-awesome-icon icon="face-smile" class="text-[13px]" />
+                        </button>
+
+                        <template v-if="isOwnMessage(group.from)">
+                          <div class="w-px h-4 bg-dc-separator flex-shrink-0" />
+                          <!-- Edit -->
+                          <button
+                            @click="startEdit(msg, group.from)"
+                            class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors"
+                            :title="t('chat.edit')"
+                          >
+                            <font-awesome-icon icon="pencil" class="text-[12px]" />
+                          </button>
+                          <!-- Delete -->
+                          <button
+                            @click="deleteMsg(msg, group.from)"
+                            class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-red hover:bg-dc-bg-hover transition-colors"
+                            :title="t('chat.delete')"
+                          >
+                            <font-awesome-icon icon="trash" class="text-[12px]" />
+                          </button>
+                        </template>
+                      </div>
+                    </div>
+
+                    <!-- Reply quote block -->
+                    <div
+                      v-if="msg.replyToId"
+                      class="flex items-stretch gap-2 mb-1 mt-0.5 opacity-80 hover:opacity-100 transition-opacity cursor-default"
+                    >
+                      <div class="w-0.5 bg-dc-blurple/60 rounded-full flex-shrink-0" />
+                      <div class="flex-1 min-w-0 py-0.5">
+                        <span
+                          class="text-[11px] font-semibold text-dc-blurple block leading-none mb-0.5"
+                          >{{ msg.replyToUsername }}</span
+                        >
+                        <p class="text-[12px] text-dc-text-muted truncate leading-snug">
+                          {{ msg.replyToText }}
+                        </p>
+                      </div>
+                    </div>
+
+                    <!-- Voice message player -->
+                    <VoicePlayer
+                      v-if="msg.voiceUrl"
+                      :src="resolveVoiceUrl(msg.voiceUrl)"
+                      :duration="msg.voiceDuration ?? 0"
+                    />
+
+                    <!-- File message -->
+                    <template v-else-if="msg.type === 'file_message'">
+                      <template v-if="msg.fileUrl">
+                        <!-- Image preview -->
+                        <img
+                          v-if="msg.fileContentType?.startsWith('image/')"
+                          :src="resolveFileUrl(msg.fileUrl)"
+                          class="max-w-[360px] max-h-[260px] rounded-md cursor-pointer object-cover mt-0.5 hover:brightness-90 transition-[filter]"
+                          @click="openPreview(resolveFileUrl(msg.fileUrl!), 'image', msg.fileName)"
+                        />
+                        <!-- Video thumbnail — click to open in preview -->
                         <div
-                          v-for="user in getReactionUsers(msg.reactions, emoji)"
-                          :key="user"
-                          :class="user === chatStore.username ? 'text-dc-blurple font-medium' : 'text-dc-text-secondary'"
-                        >{{ user === chatStore.username ? t('common.you') : user }}</div>
+                          v-else-if="msg.fileContentType?.startsWith('video/')"
+                          class="relative mt-0.5 cursor-pointer group w-fit"
+                          @click="openPreview(resolveFileUrl(msg.fileUrl!), 'video', msg.fileName)"
+                        >
+                          <video
+                            :src="resolveFileUrl(msg.fileUrl)"
+                            preload="metadata"
+                            class="max-w-[360px] max-h-[260px] rounded-md bg-black pointer-events-none"
+                          />
+                          <div
+                            class="absolute inset-0 flex items-center justify-center rounded-md bg-black/30 group-hover:bg-black/45 transition-colors"
+                          >
+                            <div
+                              class="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"
+                            >
+                              <font-awesome-icon icon="play" class="text-white text-lg ml-0.5" />
+                            </div>
+                          </div>
+                        </div>
+                        <!-- Other file types — download card -->
+                        <div
+                          v-else
+                          role="button"
+                          class="inline-flex items-center gap-2 px-3 py-2 mt-0.5 bg-dc-bg-secondary rounded-md hover:bg-dc-bg-tertiary transition-colors max-w-[280px] cursor-pointer select-none"
+                          @click="downloadFile(msg.fileUrl, msg.fileName)"
+                        >
+                          <font-awesome-icon
+                            :icon="
+                              msg.fileUrl && downloadingFiles.has(msg.fileUrl) ? 'spinner' : 'file'
+                            "
+                            :class="{
+                              'animate-spin': msg.fileUrl && downloadingFiles.has(msg.fileUrl),
+                            }"
+                            class="text-dc-blurple text-lg flex-shrink-0"
+                          />
+                          <div class="min-w-0">
+                            <div class="text-sm text-dc-text truncate">{{ msg.fileName }}</div>
+                            <div class="text-xs text-dc-text-muted">
+                              {{ formatFileSize(msg.fileSize) }}
+                            </div>
+                          </div>
+                          <font-awesome-icon
+                            icon="download"
+                            class="text-dc-text-muted text-sm ml-auto flex-shrink-0"
+                          />
+                        </div>
+                      </template>
+                      <!-- File deleted -->
+                      <span v-else class="text-dc-text-muted text-sm italic">{{
+                        t('chat.fileDeleted')
+                      }}</span>
+                    </template>
+
+                    <!-- Text message -->
+                    <div
+                      v-else
+                      class="text-dc-text text-base sm:text-[15px] leading-[1.375rem] whitespace-pre-wrap break-words"
+                    >
+                      <MessageContent :text="msg.text" />
+                      <span
+                        v-if="msg.edited"
+                        class="text-sm sm:text-[11px] text-dc-text-muted ml-1"
+                      >
+                        {{ t('chat.edited') }}
+                      </span>
+                    </div>
+
+                    <!-- Reactions row -->
+                    <div
+                      v-if="msg.reactions && Object.keys(msg.reactions).length > 0"
+                      class="flex flex-wrap gap-1 mt-1"
+                    >
+                      <div
+                        v-for="(_, emoji) in msg.reactions"
+                        :key="emoji"
+                        class="relative group/reaction"
+                      >
+                        <button
+                          @click="toggleReaction(msg, group.from, emoji)"
+                          :class="[
+                            'flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors',
+                            hasUserReacted(msg.reactions, emoji)
+                              ? 'bg-dc-blurple/30 hover:bg-dc-blurple/40 text-dc-text'
+                              : 'bg-dc-bg-secondary-alt hover:bg-dc-bg-hover text-dc-text-muted hover:text-dc-text',
+                          ]"
+                        >
+                          <span>{{ emoji }}</span>
+                          <span class="text-[10px] font-medium">{{
+                            getReactionCount(msg.reactions, emoji)
+                          }}</span>
+                        </button>
+                        <!-- Tooltip -->
+                        <div
+                          class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1.5 bg-dc-bg-floating border border-dc-separator rounded-lg shadow-lg text-xs pointer-events-none opacity-0 group-hover/reaction:opacity-100 transition-opacity duration-150 z-30 w-max max-w-[180px] whitespace-normal"
+                        >
+                          <div class="font-semibold text-dc-text-heading mb-1">{{ emoji }}</div>
+                          <div
+                            v-for="user in getReactionUsers(msg.reactions, emoji)"
+                            :key="user"
+                            :class="
+                              user === chatStore.username
+                                ? 'text-dc-blurple font-medium'
+                                : 'text-dc-text-secondary'
+                            "
+                          >
+                            {{ user === chatStore.username ? t('common.you') : user }}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -917,7 +1157,6 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-        </div>
         </TransitionGroup>
       </div>
     </div>
@@ -959,13 +1198,24 @@ onBeforeUnmount(() => {
         class="border border-dc-separator rounded-xl bg-dc-textarea overflow-hidden transition-colors duration-150 focus-within:border-dc-text-muted/60"
       >
         <!-- Reply bar -->
-        <div v-if="replyingTo" class="flex items-center gap-2 px-4 py-2 border-b border-dc-separator bg-dc-bg-hover/30">
+        <div
+          v-if="replyingTo"
+          class="flex items-center gap-2 px-4 py-2 border-b border-dc-separator bg-dc-bg-hover/30"
+        >
           <div class="w-0.5 h-8 bg-dc-blurple rounded-full flex-shrink-0" />
           <div class="flex-1 min-w-0">
-            <p class="text-[11px] font-semibold text-dc-blurple leading-none mb-0.5">{{ t('chat.replyingTo') }} {{ replyingTo.username }}</p>
-            <p class="text-[12px] text-dc-text-muted truncate leading-snug">{{ replyingTo.text }}</p>
+            <p class="text-[11px] font-semibold text-dc-blurple leading-none mb-0.5">
+              {{ t('chat.replyingTo') }} {{ replyingTo.username }}
+            </p>
+            <p class="text-[12px] text-dc-text-muted truncate leading-snug">
+              {{ replyingTo.text }}
+            </p>
           </div>
-          <button @click="cancelReply" class="text-dc-text-muted hover:text-dc-text p-1 transition-colors" :title="t('chat.cancelReply')">
+          <button
+            @click="cancelReply"
+            class="text-dc-text-muted hover:text-dc-text p-1 transition-colors"
+            :title="t('chat.cancelReply')"
+          >
             <font-awesome-icon icon="xmark" class="text-[14px]" />
           </button>
         </div>
@@ -973,7 +1223,9 @@ onBeforeUnmount(() => {
         <!-- Recording UI (replaces textarea + toolbar while recording) -->
         <div v-if="isRecording" class="flex items-center gap-3 px-4 py-3 min-h-[60px]">
           <span class="w-3 h-3 rounded-full bg-red-500 flex-shrink-0 animate-pulse" />
-          <span class="text-dc-red font-mono text-sm tabular-nums w-10 flex-shrink-0">{{ formatRecDuration }}</span>
+          <span class="text-dc-red font-mono text-sm tabular-nums w-10 flex-shrink-0">{{
+            formatRecDuration
+          }}</span>
           <div class="flex-1 flex items-center gap-[3px] h-8 overflow-hidden">
             <span
               v-for="i in 24"
@@ -1010,7 +1262,7 @@ onBeforeUnmount(() => {
             chatStore.isConnected ? t('chat.messagePlaceholder') : t('chat.connectingPlaceholder')
           "
           class="w-full px-4 pt-3 pb-2 bg-transparent text-dc-text placeholder-dc-text-muted text-[15px] outline-none focus:outline-none focus:ring-0 resize-none disabled:opacity-40 leading-[1.375rem] block"
-          style="min-height: 44px; max-height: 180px; box-shadow: none;"
+          style="min-height: 44px; max-height: 180px; box-shadow: none; outline: none"
         />
 
         <!-- Toolbar (hidden while recording) -->
@@ -1020,27 +1272,37 @@ onBeforeUnmount(() => {
             @click="applyFormat('bold')"
             title="Bold"
             class="w-7 h-7 flex items-center justify-center rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors text-[13px] font-bold"
-          >B</button>
+          >
+            B
+          </button>
           <button
             @click="applyFormat('italic')"
             title="Italic"
             class="w-7 h-7 flex items-center justify-center rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors text-[13px] italic font-medium"
-          >I</button>
+          >
+            I
+          </button>
           <button
             @click="applyFormat('strike')"
             title="Strikethrough"
             class="w-7 h-7 flex items-center justify-center rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors text-[13px] font-medium line-through"
-          >S</button>
+          >
+            S
+          </button>
           <button
             @click="applyFormat('code')"
             title="Inline code"
             class="w-7 h-7 flex items-center justify-center rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors font-mono text-[12px]"
-          >`·`</button>
+          >
+            `·`
+          </button>
           <button
             @click="applyFormat('codeblock')"
             title="Code block"
             class="w-7 h-7 flex items-center justify-center rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors font-mono text-[10px] leading-none"
-          >&lt;/&gt;</button>
+          >
+            &lt;/&gt;
+          </button>
 
           <div class="w-px h-4 bg-dc-separator mx-1 flex-shrink-0" />
 
@@ -1080,6 +1342,22 @@ onBeforeUnmount(() => {
             Shift+Enter для переноса
           </span>
 
+          <!-- File attachment button -->
+          <input ref="fileInputRef" type="file" class="hidden" @change="onFileSelected" />
+          <button
+            v-if="chatStore.isConnected"
+            @click="openFilePicker"
+            :disabled="isUploading"
+            class="w-8 h-8 flex items-center justify-center rounded-lg text-dc-text-muted hover:text-dc-blurple hover:bg-dc-bg-hover transition-colors disabled:opacity-50"
+            :title="t('chat.attachFile')"
+          >
+            <font-awesome-icon
+              :icon="isUploading ? 'spinner' : 'paperclip'"
+              :class="{ 'animate-spin': isUploading }"
+              class="text-[14px]"
+            />
+          </button>
+
           <!-- Mic button (shown when input is empty) -->
           <button
             v-if="!messageInput.trim() && chatStore.isConnected"
@@ -1118,14 +1396,20 @@ onBeforeUnmount(() => {
           @click="closeTouchActions"
         >
           <div class="absolute inset-0 bg-black/50" />
-          <div class="touch-sheet-panel relative bg-dc-bg-floating rounded-t-2xl overflow-hidden shadow-2xl" @click.stop @touchstart.stop>
+          <div
+            class="touch-sheet-panel relative bg-dc-bg-floating rounded-t-2xl overflow-hidden shadow-2xl"
+            @click.stop
+            @touchstart.stop
+          >
             <!-- Drag handle -->
             <div class="flex justify-center pt-3 pb-1">
               <div class="w-10 h-1 bg-dc-separator rounded-full" />
             </div>
             <!-- Message preview -->
             <div class="px-4 pb-3 border-b border-dc-separator">
-              <p class="text-sm text-dc-text-muted line-clamp-2 leading-snug">{{ showTouchActionsFor.message.text }}</p>
+              <p class="text-sm text-dc-text-muted line-clamp-2 leading-snug">
+                {{ showTouchActionsFor.message.text }}
+              </p>
             </div>
             <!-- Quick reactions -->
             <div class="flex justify-around px-4 py-3 border-b border-dc-separator">
@@ -1139,7 +1423,9 @@ onBeforeUnmount(() => {
                     ? 'bg-dc-blurple/30'
                     : 'active:bg-dc-bg-hover',
                 ]"
-              >{{ emoji }}</button>
+              >
+                {{ emoji }}
+              </button>
             </div>
             <!-- Actions -->
             <div class="py-1">
@@ -1170,7 +1456,9 @@ onBeforeUnmount(() => {
               <button
                 @click="closeTouchActions"
                 class="w-full px-5 py-4 text-dc-text-muted active:bg-dc-bg-hover text-[15px] font-medium text-center"
-              >{{ t('common.cancel') }}</button>
+              >
+                {{ t('common.cancel') }}
+              </button>
             </div>
             <div style="height: env(safe-area-inset-bottom, 0px)" />
           </div>
@@ -1209,6 +1497,15 @@ onBeforeUnmount(() => {
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Media preview lightbox -->
+    <MediaPreview
+      v-if="previewSrc"
+      :src="previewSrc"
+      :type="previewType"
+      :file-name="previewFileName"
+      @close="closePreview"
+    />
   </div>
 </template>
 
@@ -1246,8 +1543,13 @@ onBeforeUnmount(() => {
 }
 
 @keyframes recording-wave {
-  0%, 100% { height: 4px; }
-  50% { height: 22px; }
+  0%,
+  100% {
+    height: 4px;
+  }
+  50% {
+    height: 22px;
+  }
 }
 .recording-wave-bar {
   height: 4px;

@@ -18,6 +18,7 @@ type ServerWrapper struct {
 	adminService ports.AdminService
 	auditRepo    ports.AuditRepository
 	msgRepo      ports.ChatMessageRepository
+	uploadDir    string
 }
 
 func NewServerWrapper(
@@ -28,6 +29,7 @@ func NewServerWrapper(
 	adminService ports.AdminService,
 	auditRepo ports.AuditRepository,
 	msgRepo ports.ChatMessageRepository,
+	uploadDir string,
 ) *ServerWrapper {
 	return &ServerWrapper{
 		authService:  authService,
@@ -37,6 +39,7 @@ func NewServerWrapper(
 		adminService: adminService,
 		auditRepo:    auditRepo,
 		msgRepo:      msgRepo,
+		uploadDir:    uploadDir,
 	}
 }
 

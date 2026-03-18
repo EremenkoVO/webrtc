@@ -13,7 +13,7 @@ const adminStore = useAdminStore()
 // ─── State machine ───────────────────────────────────────────────
 type Screen = 'loading' | 'setup' | 'forbidden' | 'panel'
 const screen = ref<Screen>('loading')
-const activeTab = ref<'dashboard' | 'users' | 'rooms' | 'audit'>('dashboard')
+const activeTab = ref<'dashboard' | 'users' | 'rooms' | 'audit' | 'storage'>('dashboard')
 const sidebarOpen = ref(false)
 
 // ─── Setup form ──────────────────────────────────────────────────
@@ -29,6 +29,10 @@ const currentUserId = ref<string | null>(null)
 // ─── Delete confirm ──────────────────────────────────────────────
 const confirmDeleteUser = ref<AdminUser | null>(null)
 const confirmDeleteRoom = ref<AdminRoom | null>(null)
+
+// ─── Purge storage ───────────────────────────────────────────────
+const confirmPurge = ref(false)
+const isPurging = ref(false)
 
 // ─── User search ─────────────────────────────────────────────────
 const userSearch = ref('')
@@ -81,6 +85,7 @@ async function loadTab(tab: typeof activeTab.value) {
   if (tab === 'users') await adminStore.fetchUsers()
   if (tab === 'rooms') await adminStore.fetchRooms()
   if (tab === 'audit') await adminStore.fetchAudit()
+  if (tab === 'storage') await adminStore.fetchStorage()
 }
 
 // ─── Setup ───────────────────────────────────────────────────────
@@ -149,12 +154,32 @@ async function doDeleteRoom(room: AdminRoom) {
   }
 }
 
+async function doPurge() {
+  isPurging.value = true
+  try {
+    await adminStore.purgeStorage()
+    confirmPurge.value = false
+  } catch (e: any) {
+    alert(e.message)
+  } finally {
+    isPurging.value = false
+  }
+}
+
 function goBack() {
   window.location.href = '/'
 }
 
 function formatDate(s: string) {
   return s.replace('T', ' ').slice(0, 16)
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
 const auditEventMeta: Record<string, { color: string; icon: string }> = {
@@ -177,6 +202,7 @@ const tabs = [
   { id: 'users',     icon: 'users'        },
   { id: 'rooms',     icon: 'door-open'    },
   { id: 'audit',     icon: 'shield-halved'},
+  { id: 'storage',   icon: 'hard-drive'   },
 ] as const
 
 const tabBadge = computed(() => ({
@@ -657,6 +683,81 @@ const tabBadge = computed(() => ({
           </div>
         </div>
 
+        <!-- ── STORAGE ─────────────────────────────────── -->
+        <div v-else-if="activeTab === 'storage'">
+          <div v-if="adminStore.loading" class="text-dc-text-muted text-sm py-8 text-center">
+            <font-awesome-icon icon="circle-notch" class="animate-spin mr-2" />
+            {{ t('common.loading') }}
+          </div>
+          <div v-else-if="adminStore.storage" class="flex flex-col gap-4">
+            <!-- Disk usage card -->
+            <div class="bg-dc-bg-secondary rounded-xl border border-white/[0.06] p-5">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold text-dc-text-heading">{{ t('admin.storage.diskUsage') }}</h3>
+                <button
+                  @click="adminStore.fetchStorage()"
+                  class="text-xs text-dc-text-muted hover:text-dc-text transition-colors flex items-center gap-1"
+                >
+                  <font-awesome-icon icon="rotate" class="text-[10px]" />
+                  {{ t('admin.storage.refresh') }}
+                </button>
+              </div>
+              <div class="w-full bg-dc-bg-tertiary rounded-full h-3 overflow-hidden mb-3">
+                <div
+                  class="h-full rounded-full transition-all duration-500"
+                  :class="[
+                    adminStore.storage.disk_total > 0
+                      ? (1 - adminStore.storage.disk_free / adminStore.storage.disk_total) >= 0.9
+                        ? 'bg-red-500'
+                        : (1 - adminStore.storage.disk_free / adminStore.storage.disk_total) >= 0.7
+                          ? 'bg-yellow-500'
+                          : 'bg-dc-blurple'
+                      : 'bg-dc-blurple'
+                  ]"
+                  :style="{ width: adminStore.storage.disk_total > 0 ? ((1 - adminStore.storage.disk_free / adminStore.storage.disk_total) * 100).toFixed(1) + '%' : '0%' }"
+                />
+              </div>
+              <div class="grid grid-cols-3 gap-3 text-sm">
+                <div>
+                  <div class="text-dc-text-muted text-xs mb-0.5">{{ t('admin.storage.diskUsed') }}</div>
+                  <div class="font-semibold text-dc-text-heading">{{ formatBytes(adminStore.storage.disk_total - adminStore.storage.disk_free) }}</div>
+                </div>
+                <div>
+                  <div class="text-dc-text-muted text-xs mb-0.5">{{ t('admin.storage.diskFree') }}</div>
+                  <div class="font-semibold text-dc-text-heading">{{ formatBytes(adminStore.storage.disk_free) }}</div>
+                </div>
+                <div>
+                  <div class="text-dc-text-muted text-xs mb-0.5">{{ t('admin.storage.diskTotal') }}</div>
+                  <div class="font-semibold text-dc-text-heading">{{ formatBytes(adminStore.storage.disk_total) }}</div>
+                </div>
+              </div>
+            </div>
+            <!-- Upload dir card -->
+            <div class="bg-dc-bg-secondary rounded-xl border border-white/[0.06] p-5">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold text-dc-text-heading">{{ t('admin.storage.uploadedFiles') }}</h3>
+                <button
+                  class="text-xs text-dc-red hover:text-dc-red/80 transition-colors flex items-center gap-1.5 px-2.5 py-1 rounded bg-dc-red/10 hover:bg-dc-red/20"
+                  @click="confirmPurge = true"
+                >
+                  <font-awesome-icon icon="trash" class="text-[10px]" />
+                  {{ t('admin.storage.purge') }}
+                </button>
+              </div>
+              <div class="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div class="text-dc-text-muted text-xs mb-0.5">{{ t('admin.storage.fileCount') }}</div>
+                  <div class="font-semibold text-dc-text-heading">{{ adminStore.storage.file_count }}</div>
+                </div>
+                <div>
+                  <div class="text-dc-text-muted text-xs mb-0.5">{{ t('admin.storage.uploadDirSize') }}</div>
+                  <div class="font-semibold text-dc-text-heading">{{ formatBytes(adminStore.storage.upload_dir_size) }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- ── ROOMS ───────────────────────────────────── -->
         <div v-else-if="activeTab === 'rooms'">
           <div v-if="adminStore.loading" class="text-dc-text-muted text-sm py-8 text-center">
@@ -804,6 +905,45 @@ const tabBadge = computed(() => ({
               @click="doDeleteUser(confirmDeleteUser!)"
             >
               {{ t('admin.users.delete') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <!-- ═══════════════════════════════════════════════════════
+       CONFIRM PURGE STORAGE
+  ═══════════════════════════════════════════════════════ -->
+  <Teleport to="body">
+    <Transition name="fade">
+      <div
+        v-if="confirmPurge"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+        @click.self="confirmPurge = false"
+      >
+        <div class="bg-dc-bg-secondary rounded-2xl border border-white/[0.06] shadow-2xl p-6 w-full max-w-sm flex flex-col gap-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-dc-red/20 flex items-center justify-center flex-shrink-0">
+              <font-awesome-icon icon="trash" class="text-dc-red" />
+            </div>
+            <h2 class="text-base font-bold text-dc-text-heading">{{ t('admin.storage.purgeConfirmTitle') }}</h2>
+          </div>
+          <p class="text-sm text-dc-text-muted">{{ t('admin.storage.purgeConfirmText') }}</p>
+          <div class="flex justify-end gap-2">
+            <button
+              class="px-4 py-2 rounded-lg text-sm text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors"
+              @click="confirmPurge = false"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              :disabled="isPurging"
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-dc-red hover:bg-dc-red/80 disabled:opacity-50 text-white transition-colors flex items-center gap-2"
+              @click="doPurge"
+            >
+              <font-awesome-icon v-if="isPurging" icon="circle-notch" class="animate-spin" />
+              {{ t('admin.storage.purgeButton') }}
             </button>
           </div>
         </div>

@@ -14,6 +14,7 @@ import {
   faShieldHalved, faChartBar, faUsers, faDoorOpen,
   faArrowLeft, faCrown, faCircleNotch, faCircleInfo, faCircle,
   faVolumeXmark, faReply,
+  faPaperclip, faFile, faDownload, faSpinner, faHardDrive, faRotate,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 
@@ -39,6 +40,7 @@ library.add(
   faShieldHalved, faChartBar, faUsers, faDoorOpen,
   faArrowLeft, faCrown, faCircleNotch, faCircleInfo, faCircle,
   faVolumeXmark, faReply,
+  faPaperclip, faFile, faDownload, faSpinner, faHardDrive, faRotate,
 )
 
 // Use a resolver so the token is read from localStorage on every request,
@@ -72,10 +74,3 @@ app.use(router)
 
 app.mount('#app')
 
-// Reload the page when a new Service Worker takes control,
-// so users always get the latest version of the app.
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    window.location.reload()
-  })
-}

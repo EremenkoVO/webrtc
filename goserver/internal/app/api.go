@@ -68,7 +68,7 @@ func (app *API) init(ctx context.Context) error {
 	adminSvc := adminService.NewAdminService(userRepo, roomRepo, authSvc, roomSvc, auditRepo)
 
 	// Initialize handlers
-	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc, chatSvc, adminSvc, auditRepo, msgRepo)
+	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc, chatSvc, adminSvc, auditRepo, msgRepo, app.config.UploadDir)
 	authenticator := handler.NewAuthenticator(authSvc)
 
 	// Setup HTTP server with routes
@@ -83,6 +83,8 @@ func (app *API) init(ctx context.Context) error {
 	mux.HandleFunc("GET /api/v1/avatars/{username}", serverWrapper.GetAvatar)
 	mux.HandleFunc("POST /api/v1/chat/{roomId}/voice", authenticator.RequireAuth(serverWrapper.UploadVoiceMessage))
 	mux.HandleFunc("GET /api/v1/chat/messages/{id}/voice", serverWrapper.GetVoiceMessage)
+	mux.HandleFunc("POST /api/v1/chat/{roomId}/file", authenticator.RequireAuth(serverWrapper.UploadFileMessage))
+	mux.HandleFunc("GET /api/v1/chat/files/{id}", serverWrapper.GetFileAttachment)
 	// Admin routes
 	mux.HandleFunc("GET /api/v1/admin/setup", serverWrapper.GetAdminSetupStatus)
 	mux.HandleFunc("POST /api/v1/admin/setup", serverWrapper.PostAdminSetup)
@@ -93,6 +95,8 @@ func (app *API) init(ctx context.Context) error {
 	mux.HandleFunc("GET /api/v1/admin/rooms", serverWrapper.RequireAdmin(serverWrapper.GetAdminRooms))
 	mux.HandleFunc("DELETE /api/v1/admin/rooms/{id}", serverWrapper.RequireAdmin(serverWrapper.DeleteAdminRoom))
 	mux.HandleFunc("GET /api/v1/admin/audit", serverWrapper.RequireAdmin(serverWrapper.GetAdminAudit))
+	mux.HandleFunc("GET /api/v1/admin/storage", serverWrapper.RequireAdmin(serverWrapper.GetAdminStorage))
+	mux.HandleFunc("POST /api/v1/admin/storage/purge", serverWrapper.RequireAdmin(serverWrapper.PurgeStorage))
 	mux.Handle("/", apiHandler)
 
 	finalHandler := handler.LoggingMiddleware(handler.CORS(mux))

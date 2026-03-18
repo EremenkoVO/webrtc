@@ -11,7 +11,7 @@ import { computed, ref } from 'vue'
 export type ChatConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 
 export interface ChatMessage {
-  type: 'chat_message' | 'voice_message'
+  type: 'chat_message' | 'voice_message' | 'file_message'
   room: string
   from: string
   username: string
@@ -25,6 +25,10 @@ export interface ChatMessage {
   replyToText?: string
   voiceUrl?: string
   voiceDuration?: number
+  fileUrl?: string
+  fileName?: string
+  fileSize?: number
+  fileContentType?: string
 }
 
 export interface ChatHistoryMessage {
@@ -282,6 +286,22 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
+  async function sendFileMessage(roomId: string, file: File): Promise<void> {
+    const token = localStorage.getItem('token') || ''
+    const base = OpenAPI.BASE || ''
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch(`${base}/api/v1/chat/${encodeURIComponent(roomId)}/file`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.message ?? `Upload failed: HTTP ${res.status}`)
+    }
+  }
+
   function editMessage(messageId: string, newText: string) {
     if (!ws.value || ws.value.readyState !== WebSocket.OPEN) return false
     if (!newText.trim()) return false
@@ -346,7 +366,8 @@ export const useChatStore = defineStore('chat', () => {
         break
 
       case 'chat_message':
-      case 'voice_message': {
+      case 'voice_message':
+      case 'file_message': {
         const roomId = message.room || currentRoomId.value
         if (roomId) {
           const roomMessages = messagesByRoom.value.get(roomId) || []
@@ -484,6 +505,7 @@ export const useChatStore = defineStore('chat', () => {
     sendTyping,
     sendVoiceRecording,
     sendVoiceMessage,
+    sendFileMessage,
     editMessage,
     deleteMessage,
     addReaction,

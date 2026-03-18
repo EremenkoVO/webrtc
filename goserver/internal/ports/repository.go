@@ -59,4 +59,7 @@ type ChatMessageRepository interface {
 	GetOwner(ctx context.Context, id string) (string, error) // returns from_user
 	StoreVoice(ctx context.Context, msg *domain.ChatMessage, data []byte, contentType string) error
 	GetVoiceData(ctx context.Context, id string) (data []byte, contentType string, err error)
+	StoreFile(ctx context.Context, msg *domain.ChatMessage) error
+	GetFileMeta(ctx context.Context, id string) (filePath, fileName, contentType string, err error)
+	ClearAllFiles(ctx context.Context) error
 }

@@ -31,6 +31,13 @@ export interface AdminStats {
   online_users: number
 }
 
+export interface StorageInfo {
+  upload_dir_size: number
+  file_count: number
+  disk_total: number
+  disk_free: number
+}
+
 function apiHeaders() {
   const token = localStorage.getItem('token')
   return {
@@ -53,6 +60,7 @@ export const useAdminStore = defineStore('adminStore', () => {
   const rooms = ref<AdminRoom[]>([])
   const stats = ref<AdminStats | null>(null)
   const audit = ref<AuditEvent[]>([])
+  const storage = ref<StorageInfo | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -133,11 +141,30 @@ export const useAdminStore = defineStore('adminStore', () => {
     }
   }
 
+  async function purgeStorage() {
+    await apiFetch('/api/v1/admin/storage/purge', { method: 'POST' })
+    await fetchStorage()
+  }
+
+  async function fetchStorage() {
+    loading.value = true
+    error.value = null
+    try {
+      const res = await apiFetch('/api/v1/admin/storage')
+      storage.value = await res.json()
+    } catch (e: any) {
+      error.value = e.message
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     users,
     rooms,
     stats,
     audit,
+    storage,
     loading,
     error,
     checkSetupStatus,
@@ -149,5 +176,7 @@ export const useAdminStore = defineStore('adminStore', () => {
     fetchRooms,
     deleteRoom,
     fetchAudit,
+    fetchStorage,
+    purgeStorage,
   }
 })

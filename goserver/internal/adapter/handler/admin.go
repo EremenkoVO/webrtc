@@ -2,8 +2,12 @@ package handler
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"syscall"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
 )
@@ -200,4 +204,59 @@ func (s *ServerWrapper) GetAdminAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSONResponse(w, http.StatusOK, events)
+}
+
+type storageResponse struct {
+	UploadDirSize int64  `json:"upload_dir_size"`
+	FileCount     int    `json:"file_count"`
+	DiskTotal     uint64 `json:"disk_total"`
+	DiskFree      uint64 `json:"disk_free"`
+}
+
+// PurgeStorage handles POST /api/v1/admin/storage/purge
+func (s *ServerWrapper) PurgeStorage(w http.ResponseWriter, r *http.Request) {
+	entries, _ := os.ReadDir(s.uploadDir)
+	for _, e := range entries {
+		if !e.IsDir() {
+			_ = os.Remove(filepath.Join(s.uploadDir, e.Name()))
+		}
+	}
+	if err := s.msgRepo.ClearAllFiles(r.Context()); err != nil {
+		WriteErrorResponse(w, http.StatusInternalServerError, domain.ToErrorResponse(domain.ErrServerError))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetAdminStorage handles GET /api/v1/admin/storage
+func (s *ServerWrapper) GetAdminStorage(w http.ResponseWriter, r *http.Request) {
+	var totalSize int64
+	var fileCount int
+
+	_ = filepath.WalkDir(s.uploadDir, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		totalSize += info.Size()
+		fileCount++
+		return nil
+	})
+
+	var diskTotal, diskFree uint64
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(s.uploadDir, &stat); err == nil {
+		diskTotal = stat.Blocks * uint64(stat.Bsize)
+		diskFree = stat.Bavail * uint64(stat.Bsize)
+	}
+
+	WriteJSONResponse(w, http.StatusOK, storageResponse{
+		UploadDirSize: totalSize,
+		FileCount:     fileCount,
+		DiskTotal:     diskTotal,
+		DiskFree:      diskFree,
+	})
 }
