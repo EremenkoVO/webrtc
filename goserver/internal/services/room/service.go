@@ -27,10 +27,14 @@ func NewRoomService(repo ports.RoomRepository) *Service {
 	}
 }
 
-func (s *Service) CreateRoom(name string) *domain.Room {
+func (s *Service) CreateRoom(name, roomType string) *domain.Room {
+	if roomType == "" {
+		roomType = "voice"
+	}
 	room := &domain.Room{
 		ID:        uuid.NewString(),
 		Name:      name,
+		Type:      roomType,
 		CreatedAt: time.Now(),
 		Clients:   make(map[string]*domain.Client),
 	}

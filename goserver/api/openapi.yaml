@@ -294,6 +294,33 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         default:
           $ref: '#/components/responses/ServerError'
+  /api/v1/chat/ws:
+    get:
+      tags: [Chat]
+      summary: WebSocket connection for text chat
+      description: |
+        Upgrade to a WebSocket connection for real-time text chat in a room.
+        Authenticate via `token` query param (JWT). Room is specified via `room` query param.
+      operationId: chatWebSocket
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: room
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: username
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching Protocols (WebSocket upgrade)
   /api/v1/ws:
     get:
       tags: [Signaling]
@@ -394,6 +421,11 @@ components:
         name:
           type: string
           description: Human-readable room name
+        type:
+          type: string
+          enum: [voice, text]
+          default: voice
+          description: Channel type
     Room:
       type: object
       properties:
@@ -401,6 +433,10 @@ components:
           type: string
         name:
           type: string
+        type:
+          type: string
+          enum: [voice, text]
+          description: Channel type
         created_at:
           type: string
           format: date-time

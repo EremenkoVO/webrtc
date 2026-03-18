@@ -24,7 +24,6 @@ services:
     depends_on:
       - backend
       - frontend
-      - chatserver
     networks:
       - prod
     restart: unless-stopped
@@ -52,26 +51,6 @@ services:
     restart: unless-stopped
     networks:
       - prod
-    logging:
-      driver: 'json-file'
-      options:
-        max-size: '10m'
-        max-file: '3'
-
-  chatserver:
-    build:
-      context: ./chatserver
-      dockerfile: Dockerfile
-    container_name: webrtc_chatserver
-    expose:
-      - '3001'
-    environment:
-      - PORT=3001
-      - MYDISCORD_AUTH_TOKEN_SECRET=${MYDISCORD_AUTH_TOKEN_SECRET:-change-this-secret}
-      - BACKEND_API_URL=http://backend:8080
-    networks:
-      - prod
-    restart: unless-stopped
     logging:
       driver: 'json-file'
       options:

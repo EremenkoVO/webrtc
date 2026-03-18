@@ -14,6 +14,7 @@ type ServerWrapper struct {
 	authService  ports.AuthService
 	userService  ports.UserService
 	roomService  ports.RoomService
+	chatService  ports.ChatService
 	adminService ports.AdminService
 	auditRepo    ports.AuditRepository
 }
@@ -22,6 +23,7 @@ func NewServerWrapper(
 	authService ports.AuthService,
 	userService ports.UserService,
 	roomService ports.RoomService,
+	chatService ports.ChatService,
 	adminService ports.AdminService,
 	auditRepo ports.AuditRepository,
 ) *ServerWrapper {
@@ -29,6 +31,7 @@ func NewServerWrapper(
 		authService:  authService,
 		userService:  userService,
 		roomService:  roomService,
+		chatService:  chatService,
 		adminService: adminService,
 		auditRepo:    auditRepo,
 	}

@@ -7,5 +7,10 @@ export type CreateRoomRequest = {
      * Human-readable room name
      */
     name: string;
+    /**
+     * Channel type
+     */
+    type?: 'voice' | 'text';
 };
+
 

@@ -16,17 +16,17 @@ func NewRoomRepository(db *sql.DB) *roomRepository {
 }
 
 func (r *roomRepository) CreateRoom(ctx context.Context, room *domain.Room) error {
-	query := `INSERT INTO rooms (id, name, created_at) VALUES (?, ?, ?)`
-	_, err := r.db.ExecContext(ctx, query, room.ID, room.Name, room.CreatedAt)
+	query := `INSERT INTO rooms (id, name, type, created_at) VALUES (?, ?, ?, ?)`
+	_, err := r.db.ExecContext(ctx, query, room.ID, room.Name, room.Type, room.CreatedAt)
 	return err
 }
 
 func (r *roomRepository) GetRoom(ctx context.Context, roomID string) (*domain.Room, error) {
-	query := `SELECT id, name, created_at FROM rooms WHERE id = ?`
+	query := `SELECT id, name, type, created_at FROM rooms WHERE id = ?`
 	row := r.db.QueryRowContext(ctx, query, roomID)
 
 	var room domain.Room
-	err := row.Scan(&room.ID, &room.Name, &room.CreatedAt)
+	err := row.Scan(&room.ID, &room.Name, &room.Type, &room.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -42,7 +42,7 @@ func (r *roomRepository) GetRoom(ctx context.Context, roomID string) (*domain.Ro
 }
 
 func (r *roomRepository) ListRooms(ctx context.Context) ([]*domain.Room, error) {
-	query := `SELECT id, name, created_at FROM rooms ORDER BY created_at DESC`
+	query := `SELECT id, name, type, created_at FROM rooms ORDER BY created_at DESC`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -52,7 +52,7 @@ func (r *roomRepository) ListRooms(ctx context.Context) ([]*domain.Room, error) 
 	rooms := make([]*domain.Room, 0)
 	for rows.Next() {
 		var room domain.Room
-		err := rows.Scan(&room.ID, &room.Name, &room.CreatedAt)
+		err := rows.Scan(&room.ID, &room.Name, &room.Type, &room.CreatedAt)
 		if err != nil {
 			return nil, err
 		}

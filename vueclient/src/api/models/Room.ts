@@ -5,7 +5,12 @@
 export type Room = {
     id?: string;
     name?: string;
+    /**
+     * Channel type
+     */
+    type?: 'voice' | 'text';
     created_at?: string;
     roommates?: Array<string>;
 };
+
 

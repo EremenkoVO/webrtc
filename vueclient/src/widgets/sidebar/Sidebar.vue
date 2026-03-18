@@ -21,8 +21,9 @@ const signalingStore = useSignalingStore()
 
 const props = defineProps<{ user: UserProfile }>()
 
-const showCreateInput = ref(false)
+const showCreateModal = ref(false)
 const newChannelName = ref('')
+const newChannelType = ref<'voice' | 'text'>('voice')
 const searchQuery = ref('')
 const isLoading = ref(false)
 
@@ -45,15 +46,37 @@ const filteredChannels = computed(() => {
   return roomStore.channels.filter((ch) => ch.name?.toLowerCase().includes(q))
 })
 
+const filteredVoiceChannels = computed(() =>
+  filteredChannels.value.filter((ch) => (ch.type ?? 'voice') !== 'text'),
+)
+
+const filteredTextChannels = computed(() =>
+  filteredChannels.value.filter((ch) => ch.type === 'text'),
+)
+
+function openCreateModal() {
+  newChannelName.value = ''
+  newChannelType.value = 'voice'
+  showCreateModal.value = true
+}
+
+function closeCreateModal() {
+  showCreateModal.value = false
+  newChannelName.value = ''
+  newChannelType.value = 'voice'
+}
+
 async function addChannel() {
   if (!newChannelName.value.trim()) return
   clearErrors()
   isLoading.value = true
   try {
-    await SignalingService.createRoom({ name: newChannelName.value.trim() })
+    await SignalingService.createRoom({
+      name: newChannelName.value.trim(),
+      type: newChannelType.value,
+    })
     await roomStore.getListChannels()
-    newChannelName.value = ''
-    showCreateInput.value = false
+    closeCreateModal()
     searchQuery.value = ''
   } catch (e) {
     parseApiError(e)
@@ -216,15 +239,22 @@ watch(
   >
     <!-- Server header -->
     <div
-      class="h-12 2xl:h-14 px-4 flex items-center shadow-[0_1px_0_rgba(4,4,5,0.2),0_1.5px_0_rgba(6,6,7,0.05),0_2px_0_rgba(4,4,5,0.05)] flex-shrink-0 hover:bg-dc-bg-hover transition-colors cursor-pointer"
+      class="h-12 2xl:h-14 px-4 flex items-center shadow-[0_1px_0_rgba(4,4,5,0.2),0_1.5px_0_rgba(6,6,7,0.05),0_2px_0_rgba(4,4,5,0.05)] flex-shrink-0"
     >
       <h1 class="text-[15px] font-semibold text-dc-text-heading truncate flex-1">
         {{ t('sidebar.appTitle') }}
       </h1>
       <button
+        @click="openCreateModal()"
+        class="w-7 h-7 flex items-center justify-center rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors"
+        :title="t('common.createChannel')"
+      >
+        <font-awesome-icon icon="plus" class="text-base" />
+      </button>
+      <button
         v-if="sidebarStore.isMobile"
         @click="sidebarStore.close"
-        class="w-7 h-7 flex items-center justify-center text-dc-text-muted hover:text-dc-text transition-colors lg:hidden"
+        class="ml-1 w-7 h-7 flex items-center justify-center text-dc-text-muted hover:text-dc-text transition-colors lg:hidden"
       >
         <font-awesome-icon icon="xmark" class="text-lg" />
       </button>
@@ -242,53 +272,6 @@ watch(
         />
       </div>
 
-      <!-- Category header -->
-      <div
-        class="flex items-center px-2 mb-1 group cursor-pointer"
-        @click="showCreateInput = !showCreateInput"
-      >
-        <font-awesome-icon
-          icon="chevron-down"
-          class="w-3 h-3 text-dc-text-muted mr-0.5 text-[10px]"
-        />
-        <span
-          class="text-sm sm:text-[11px] font-bold uppercase tracking-wider text-dc-text-muted group-hover:text-dc-text-secondary flex-1"
-        >
-          {{ t('common.voiceChannels') }}
-        </span>
-        <button
-          class="w-5 h-5 sm:w-4 sm:h-4 flex items-center justify-center text-dc-text-muted hover:text-dc-text-secondary opacity-0 group-hover:opacity-100 transition-opacity"
-          :title="t('common.createChannel')"
-          @click.stop="showCreateInput = !showCreateInput"
-        >
-          <font-awesome-icon icon="plus" class="text-sm sm:text-xs" />
-        </button>
-      </div>
-
-      <!-- Create channel input -->
-      <Transition name="slide-down">
-        <div v-if="showCreateInput" class="px-2 mb-2">
-          <div class="flex gap-1">
-            <input
-              v-model="newChannelName"
-              @keyup.enter="addChannel"
-              @keyup.escape="((showCreateInput = false), (newChannelName = ''))"
-              type="text"
-              :placeholder="t('common.channelNamePlaceholder')"
-              autofocus
-              class="flex-1 px-3 sm:px-2 py-2.5 sm:py-1.5 rounded bg-dc-bg-tertiary text-dc-text text-base sm:text-sm placeholder-dc-text-muted border-none outline-none focus:ring-1 focus:ring-dc-blurple/40"
-            />
-            <button
-              @click="addChannel"
-              :disabled="!newChannelName.trim() || isLoading"
-              class="px-3 sm:px-2 py-2.5 sm:py-1.5 rounded bg-dc-green hover:bg-dc-green/80 disabled:opacity-40 text-white text-sm sm:text-xs font-medium transition-colors"
-            >
-              {{ t('common.ok') }}
-            </button>
-          </div>
-        </div>
-      </Transition>
-
       <!-- Loading -->
       <div v-if="isLoading && roomStore.channels.length === 0" class="px-2 py-8 text-center">
         <div class="text-dc-text-muted text-base sm:text-sm">
@@ -297,109 +280,96 @@ watch(
       </div>
 
       <!-- Empty -->
-      <div v-else-if="filteredChannels.length === 0" class="px-2 py-8 text-center">
-        <div class="text-dc-text-muted text-base sm:text-sm">
+      <div v-else-if="filteredChannels.length === 0" class="px-2 py-4 text-center">
+        <div class="text-dc-text-muted text-base sm:text-sm mb-3">
           {{ searchQuery ? t('common.noChannelsFound') : t('common.noChannelsYet') }}
         </div>
       </div>
 
-      <!-- Channel items -->
-      <div v-else class="px-2 space-y-px">
-        <div v-for="ch in filteredChannels" :key="ch.id || ''">
-          <!-- Channel button -->
-          <button
-            @click="selectChannel(ch.id, ch.roommates)"
-            :class="[
-              'w-full flex items-center gap-2 sm:gap-1.5 px-3 sm:px-2 py-2.5 sm:py-[6px] rounded group transition-colors text-left',
-              ch.id === roomStore.selectedChannelId
-                ? 'bg-dc-bg-active text-dc-text-heading'
-                : 'text-dc-text-muted hover:text-dc-text-secondary hover:bg-dc-bg-hover',
-            ]"
-          >
-            <font-awesome-icon
-              icon="volume-high"
-              class="w-6 h-6 sm:w-5 sm:h-5 flex-shrink-0 opacity-70 text-lg sm:text-[16px]"
-            />
-            <span class="flex-1 text-base sm:text-[15px] truncate font-medium leading-5">{{
-              ch.name || t('common.unnamed')
-            }}</span>
-          </button>
-
-          <!-- Participants list under channel -->
-          <div
-            v-if="ch.roommates && ch.roommates.length > 0"
-            class="ml-[22px] pl-2 border-l border-dc-bg-active/30"
-          >
-            <div
-              v-for="mate in ch.roommates"
-              :key="mate"
-              class="flex items-center gap-2 py-[3px] px-1.5 rounded group/user hover:bg-dc-bg-hover/50 transition-colors"
-              @contextmenu.prevent="openContextMenu($event, mate)"
-              @mouseenter="onParticipantRowEnter($event, mate)"
-              @mouseleave="onParticipantRowLeave()"
-            >
-              <!-- Avatar with speaking indicator -->
-              <div class="relative flex-shrink-0">
-                <div
-                  :class="[
-                    'w-7 h-7 sm:w-6 sm:h-6 rounded-full overflow-hidden transition-all duration-200',
-                    voiceStateStore.isSpeaking(mate) ? 'ring-[2.5px] ring-dc-green' : '',
-                  ]"
-                >
-                  <UserAvatar :username="mate" />
-                </div>
-                <!-- Connecting indicator -->
-                <div
-                  v-if="voiceStateStore.isConnecting(mate)"
-                  class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-dc-blurple border-2 border-dc-bg-secondary-alt flex items-center justify-center"
-                >
-                  <div class="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                </div>
-              </div>
-
-              <!-- Username -->
-              <span
+      <template v-else>
+        <!-- VOICE CHANNELS section -->
+        <div v-if="filteredVoiceChannels.length > 0" class="mb-1">
+          <div class="flex items-center px-2 mb-1">
+            <font-awesome-icon icon="chevron-down" class="w-3 h-3 text-dc-text-muted mr-0.5 text-[10px]" />
+            <span class="text-sm sm:text-[11px] font-bold uppercase tracking-wider text-dc-text-muted flex-1">
+              {{ t('common.voiceChannels') }}
+            </span>
+          </div>
+          <div class="px-2 space-y-px">
+            <div v-for="ch in filteredVoiceChannels" :key="ch.id || ''">
+              <button
+                @click="selectChannel(ch.id, ch.roommates)"
                 :class="[
-                  'flex-1 text-base sm:text-[13px] leading-4 truncate transition-colors',
-                  voiceStateStore.isSpeaking(mate)
-                    ? 'text-dc-text-heading'
-                    : 'text-dc-text-secondary',
+                  'w-full flex items-center gap-2 sm:gap-1.5 px-3 sm:px-2 py-2.5 sm:py-[6px] rounded group transition-colors text-left',
+                  ch.id === roomStore.selectedChannelId
+                    ? 'bg-dc-bg-active text-dc-text-heading'
+                    : 'text-dc-text-muted hover:text-dc-text-secondary hover:bg-dc-bg-hover',
                 ]"
               >
-                {{ mate }}
-                <span
-                  v-if="voiceStateStore.isConnecting(mate)"
-                  class="ml-1.5 text-xs sm:text-[10px] text-dc-text-muted"
+                <font-awesome-icon icon="volume-high" class="w-6 h-6 sm:w-5 sm:h-5 flex-shrink-0 opacity-70 text-lg sm:text-[16px]" />
+                <span class="flex-1 text-base sm:text-[15px] truncate font-medium leading-5">{{ ch.name || t('common.unnamed') }}</span>
+              </button>
+              <!-- Participants list -->
+              <div v-if="ch.roommates && ch.roommates.length > 0" class="ml-[22px] pl-2 border-l border-dc-bg-active/30">
+                <div
+                  v-for="mate in ch.roommates"
+                  :key="mate"
+                  class="flex items-center gap-2 py-[3px] px-1.5 rounded group/user hover:bg-dc-bg-hover/50 transition-colors"
+                  @contextmenu.prevent="openContextMenu($event, mate)"
+                  @mouseenter="onParticipantRowEnter($event, mate)"
+                  @mouseleave="onParticipantRowLeave()"
                 >
-                  {{ t('common.connecting') }}
-                </span>
-              </span>
-
-              <!-- Screen sharing badge -->
-              <span
-                v-if="voiceStateStore.isScreenSharing(mate)"
-                class="flex items-center gap-0.5 px-1 py-px rounded bg-dc-red/20 text-dc-red text-[9px] font-bold uppercase leading-none flex-shrink-0"
-              >
-                <font-awesome-icon icon="desktop" class="text-[8px]" />
-                {{ t('common.live') }}
-              </span>
-
-              <!-- Deafened icon -->
-              <font-awesome-icon
-                v-if="voiceStateStore.isDeafened(mate)"
-                icon="headset"
-                class="text-sm sm:text-[11px] flex-shrink-0 text-dc-red/80"
-              />
-              <!-- Muted mic icon -->
-              <font-awesome-icon
-                v-if="voiceStateStore.isMuted(mate)"
-                icon="microphone-slash"
-                class="text-sm sm:text-[11px] flex-shrink-0 text-dc-red/80"
-              />
+                  <div class="relative flex-shrink-0">
+                    <div :class="['w-7 h-7 sm:w-6 sm:h-6 rounded-full overflow-hidden transition-all duration-200', voiceStateStore.isSpeaking(mate) ? 'ring-[2.5px] ring-dc-green' : '']">
+                      <UserAvatar :username="mate" />
+                    </div>
+                    <div v-if="voiceStateStore.isConnecting(mate)" class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-dc-blurple border-2 border-dc-bg-secondary-alt flex items-center justify-center">
+                      <div class="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                    </div>
+                  </div>
+                  <span :class="['flex-1 text-base sm:text-[13px] leading-4 truncate transition-colors', voiceStateStore.isSpeaking(mate) ? 'text-dc-text-heading' : 'text-dc-text-secondary']">
+                    {{ mate }}
+                    <span v-if="voiceStateStore.isConnecting(mate)" class="ml-1.5 text-xs sm:text-[10px] text-dc-text-muted">{{ t('common.connecting') }}</span>
+                  </span>
+                  <span v-if="voiceStateStore.isScreenSharing(mate)" class="flex items-center gap-0.5 px-1 py-px rounded bg-dc-red/20 text-dc-red text-[9px] font-bold uppercase leading-none flex-shrink-0">
+                    <font-awesome-icon icon="desktop" class="text-[8px]" />
+                    {{ t('common.live') }}
+                  </span>
+                  <font-awesome-icon v-if="voiceStateStore.isDeafened(mate)" icon="headset" class="text-sm sm:text-[11px] flex-shrink-0 text-dc-red/80" />
+                  <font-awesome-icon v-if="voiceStateStore.isMuted(mate)" icon="microphone-slash" class="text-sm sm:text-[11px] flex-shrink-0 text-dc-red/80" />
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+
+        <!-- TEXT CHANNELS section -->
+        <div v-if="filteredTextChannels.length > 0" class="mb-1">
+          <div class="flex items-center px-2 mb-1 mt-2">
+            <font-awesome-icon icon="chevron-down" class="w-3 h-3 text-dc-text-muted mr-0.5 text-[10px]" />
+            <span class="text-sm sm:text-[11px] font-bold uppercase tracking-wider text-dc-text-muted flex-1">
+              {{ t('common.textChannels') }}
+            </span>
+          </div>
+          <div class="px-2 space-y-px">
+            <button
+              v-for="ch in filteredTextChannels"
+              :key="ch.id || ''"
+              @click="selectChannel(ch.id)"
+              :class="[
+                'w-full flex items-center gap-2 sm:gap-1.5 px-3 sm:px-2 py-2.5 sm:py-[6px] rounded group transition-colors text-left',
+                ch.id === roomStore.selectedChannelId
+                  ? 'bg-dc-bg-active text-dc-text-heading'
+                  : 'text-dc-text-muted hover:text-dc-text-secondary hover:bg-dc-bg-hover',
+              ]"
+            >
+              <font-awesome-icon icon="hashtag" class="w-6 h-6 sm:w-5 sm:h-5 flex-shrink-0 opacity-70 text-lg sm:text-[16px]" />
+              <span class="flex-1 text-base sm:text-[15px] truncate font-medium leading-5">{{ ch.name || t('common.unnamed') }}</span>
+            </button>
+          </div>
+        </div>
+
+      </template>
 
       <!-- Refresh -->
       <div class="px-2 mt-4">
@@ -514,6 +484,119 @@ watch(
     </Transition>
   </Teleport>
 
+  <!-- Create Channel Modal -->
+  <Teleport to="body">
+    <Transition name="modal-fade">
+      <div
+        v-if="showCreateModal"
+        class="fixed inset-0 z-[300] flex items-center justify-center p-4"
+        @click.self="closeCreateModal()"
+      >
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/70" />
+
+        <!-- Modal card -->
+        <div class="relative z-10 w-full max-w-md bg-dc-bg-secondary rounded-xl shadow-2xl overflow-hidden">
+          <!-- Header -->
+          <div class="px-6 pt-6 pb-4">
+            <h2 class="text-xl font-bold text-dc-text-heading">{{ t('sidebar.createChannelTitle') }}</h2>
+          </div>
+
+          <!-- Channel type cards -->
+          <div class="px-6 flex flex-col gap-3 pb-5">
+            <!-- Voice Channel -->
+            <button
+              @click="newChannelType = 'voice'"
+              :class="[
+                'w-full flex items-center gap-4 px-4 py-4 rounded-lg border-2 text-left transition-all',
+                newChannelType === 'voice'
+                  ? 'border-dc-blurple bg-dc-blurple/10'
+                  : 'border-dc-separator bg-dc-bg-tertiary hover:border-dc-text-muted/40 hover:bg-dc-bg-hover',
+              ]"
+            >
+              <div :class="['w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0', newChannelType === 'voice' ? 'bg-dc-blurple/20 text-dc-blurple' : 'bg-dc-bg-active text-dc-text-muted']">
+                <font-awesome-icon icon="volume-high" class="text-lg" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <div :class="['font-semibold text-sm', newChannelType === 'voice' ? 'text-dc-text-heading' : 'text-dc-text-secondary']">
+                  {{ t('sidebar.createVoiceChannel') }}
+                </div>
+                <div class="text-xs text-dc-text-muted mt-0.5 leading-snug">
+                  {{ t('sidebar.voiceChannelDesc') }}
+                </div>
+              </div>
+              <div :class="['w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors', newChannelType === 'voice' ? 'border-dc-blurple bg-dc-blurple' : 'border-dc-text-muted/40']">
+                <div v-if="newChannelType === 'voice'" class="w-2 h-2 rounded-full bg-white" />
+              </div>
+            </button>
+
+            <!-- Text Channel -->
+            <button
+              @click="newChannelType = 'text'"
+              :class="[
+                'w-full flex items-center gap-4 px-4 py-4 rounded-lg border-2 text-left transition-all',
+                newChannelType === 'text'
+                  ? 'border-dc-blurple bg-dc-blurple/10'
+                  : 'border-dc-separator bg-dc-bg-tertiary hover:border-dc-text-muted/40 hover:bg-dc-bg-hover',
+              ]"
+            >
+              <div :class="['w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0', newChannelType === 'text' ? 'bg-dc-blurple/20 text-dc-blurple' : 'bg-dc-bg-active text-dc-text-muted']">
+                <font-awesome-icon icon="hashtag" class="text-lg" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <div :class="['font-semibold text-sm', newChannelType === 'text' ? 'text-dc-text-heading' : 'text-dc-text-secondary']">
+                  {{ t('sidebar.createTextChannel') }}
+                </div>
+                <div class="text-xs text-dc-text-muted mt-0.5 leading-snug">
+                  {{ t('sidebar.textChannelDesc') }}
+                </div>
+              </div>
+              <div :class="['w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors', newChannelType === 'text' ? 'border-dc-blurple bg-dc-blurple' : 'border-dc-text-muted/40']">
+                <div v-if="newChannelType === 'text'" class="w-2 h-2 rounded-full bg-white" />
+              </div>
+            </button>
+          </div>
+
+          <!-- Divider -->
+          <div class="h-px bg-dc-separator mx-6" />
+
+          <!-- Name input -->
+          <div class="px-6 pt-4 pb-2">
+            <label class="block text-xs font-bold uppercase tracking-wider text-dc-text-muted mb-2">
+              {{ t('sidebar.channelNameLabel') }}
+            </label>
+            <input
+              v-model="newChannelName"
+              @keyup.enter="addChannel"
+              @keyup.escape="closeCreateModal()"
+              type="text"
+              :placeholder="t('common.channelNamePlaceholder')"
+              autofocus
+              class="w-full px-3 py-2.5 rounded-md bg-dc-bg-tertiary text-dc-text text-sm placeholder-dc-text-muted border border-dc-separator outline-none focus:border-dc-blurple/60 focus:ring-1 focus:ring-dc-blurple/30 transition-colors"
+            />
+          </div>
+
+          <!-- Actions -->
+          <div class="px-6 py-4 flex justify-end gap-3">
+            <button
+              @click="closeCreateModal()"
+              class="px-4 py-2 rounded-md text-sm font-medium text-dc-text-secondary hover:text-dc-text hover:bg-dc-bg-hover transition-colors"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              @click="addChannel"
+              :disabled="!newChannelName.trim() || isLoading"
+              class="px-5 py-2 rounded-md bg-dc-blurple hover:bg-dc-blurple/80 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+            >
+              {{ t('sidebar.create') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
   <!-- Context menu portal -->
   <Teleport to="body">
     <Transition name="popup">
@@ -563,19 +646,21 @@ watch(
 .fade-leave-to {
   opacity: 0;
 }
-.slide-down-enter-active,
-.slide-down-leave-active {
-  transition: all 0.2s ease;
-  overflow: hidden;
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.2s ease;
 }
-.slide-down-enter-from,
-.slide-down-leave-to {
-  max-height: 0;
+.modal-fade-enter-active .relative.z-10,
+.modal-fade-leave-active .relative.z-10 {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
   opacity: 0;
 }
-.slide-down-enter-to,
-.slide-down-leave-from {
-  max-height: 100px;
-  opacity: 1;
+.modal-fade-enter-from .relative.z-10,
+.modal-fade-leave-to .relative.z-10 {
+  opacity: 0;
+  transform: scale(0.95) translateY(-8px);
 }
 </style>

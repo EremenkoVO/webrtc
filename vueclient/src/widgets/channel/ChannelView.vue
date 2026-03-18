@@ -90,6 +90,8 @@ type PeerWithVideo = {
 const showParticipantsPanel = ref(true)
 const showLocalPreview = ref(false)
 
+const isTextChannel = computed(() => roomStore.selectedChannelType === 'text')
+
 const peersWithVideo = computed<PeerWithVideo[]>(() => {
   const result: PeerWithVideo[] = []
   const localClientId = signalingStore.clientId
@@ -723,9 +725,9 @@ onBeforeUnmount(() => {
           <font-awesome-icon icon="bars" class="text-lg" />
         </button>
 
-        <!-- Voice icon -->
+        <!-- Channel type icon -->
         <font-awesome-icon
-          icon="volume-high"
+          :icon="isTextChannel ? 'hashtag' : 'volume-high'"
           class="text-dc-text-muted flex-shrink-0 text-[16px]"
         />
 
@@ -779,7 +781,14 @@ onBeforeUnmount(() => {
         <audio ref="disconnectAudioElement" :src="disconnectSound" />
         <audio ref="screencastAudioElement" :src="screencastStartSound" />
 
-        <div class="flex-1 min-h-0 flex flex-col bg-dc-bg-primary">
+        <!-- Text channel: full-height chat, no voice UI -->
+        <template v-if="isTextChannel">
+          <div class="flex-1 min-h-0 flex">
+            <ChatPanel :room-id="roomStore.selectedChannelId" :user-name="props.userName" class="flex-1" />
+          </div>
+        </template>
+
+        <div v-else class="flex-1 min-h-0 flex flex-col bg-dc-bg-primary">
           <!-- Not in call -->
           <div
             v-if="!callStore.isInCall"
@@ -1004,9 +1013,9 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- Call controls -->
+        <!-- Call controls (voice only) -->
         <CallControls
-          v-if="callStore.isInCall"
+          v-if="!isTextChannel && callStore.isInCall"
           :local-stream="localStream"
           :remote-peers="remotePeers"
           :videoEnabled="videoEnabled"
@@ -1031,18 +1040,18 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
-    <!-- Chat panel (desktop) -->
+    <!-- Chat panel (desktop, voice channels only) -->
     <div
-      v-if="sidebarStore.chatOpen"
+      v-if="!isTextChannel && sidebarStore.chatOpen"
       class="hidden lg:flex w-80 2xl:w-96 3xl:w-[420px] border-l border-dc-separator/40 flex-shrink-0"
     >
       <ChatPanel :room-id="roomStore.selectedChannelId" :user-name="props.userName" />
     </div>
 
-    <!-- Chat panel (mobile overlay) -->
+    <!-- Chat panel (mobile overlay, voice channels only) -->
     <Transition name="slide-left">
       <div
-        v-if="sidebarStore.chatOpen && sidebarStore.isMobile"
+        v-if="!isTextChannel && sidebarStore.chatOpen && sidebarStore.isMobile"
         class="lg:hidden fixed inset-0 z-50 flex flex-col bg-dc-bg-primary"
       >
         <div class="h-12 px-4 flex items-center justify-between border-b border-dc-separator/40">

@@ -35,9 +35,11 @@ func (s *ServerWrapper) ListRooms(w http.ResponseWriter, r *http.Request) {
 
 	apiRooms := make([]api.Room, len(rooms))
 	for i, room := range rooms {
+		roomType := api.RoomType(room.Type)
 		apiRooms[i] = api.Room{
 			Id:        &room.ID,
 			Name:      &room.Name,
+			Type:      &roomType,
 			CreatedAt: &room.CreatedAt,
 			Roommates: ToPtr(slices.Collect(xiter.IterFunc(maps.Values(room.Clients), func(client *domain.Client) string {
 				return client.Username
@@ -59,7 +61,12 @@ func (s *ServerWrapper) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	room := s.roomService.CreateRoom(req.Name)
+	roomType := "voice"
+	if req.Type != nil {
+		roomType = string(*req.Type)
+	}
+
+	room := s.roomService.CreateRoom(req.Name, roomType)
 
 	// Log audit event - get username from profile if available
 	if userID, ok := r.Context().Value(contextKeyUserID).(int); ok {
@@ -70,9 +77,11 @@ func (s *ServerWrapper) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		_ = s.auditRepo.LogEvent(r.Context(), domain.AuditEventRoomCreate, actor, room.Name, room.ID)
 	}
 
+	rt := api.RoomType(room.Type)
 	apiRoom := api.Room{
 		Id:        &room.ID,
 		Name:      &room.Name,
+		Type:      &rt,
 		CreatedAt: &room.CreatedAt,
 	}
 
@@ -145,4 +154,43 @@ func (s *ServerWrapper) SignalingWebSocket(w http.ResponseWriter, r *http.Reques
 	}
 
 	s.roomService.HandleWebSocketConnection(conn)
+}
+
+// WebSocket connection for text chat
+// (GET /api/v1/chat/ws)
+func (s *ServerWrapper) ChatWebSocket(w http.ResponseWriter, r *http.Request, params api.ChatWebSocketParams) {
+	// Validate token from query param
+	userID, err := s.authService.ValidateToken(r.Context(), params.Token)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Verify room exists
+	room := s.roomService.GetRoom(params.Room)
+	if room == nil {
+		http.Error(w, "room not found", http.StatusNotFound)
+		return
+	}
+
+	// Get username: prefer query param, then fetch from profile
+	username := ""
+	if params.Username != nil {
+		username = *params.Username
+	}
+	if username == "" {
+		if profile, err := s.userService.GetProfile(r.Context(), userID); err == nil {
+			username = profile.Username
+		}
+	}
+	if username == "" {
+		username = "Anonymous"
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+
+	s.chatService.HandleWebSocketConnection(conn, userID, username, params.Room)
 }

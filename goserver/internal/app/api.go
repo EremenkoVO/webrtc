@@ -19,6 +19,7 @@ import (
 	"github.com/EremenkoVO/webrtc/goserver/internal/pkg/jwt"
 	adminService "github.com/EremenkoVO/webrtc/goserver/internal/services/admin"
 	authService "github.com/EremenkoVO/webrtc/goserver/internal/services/auth"
+	chatService "github.com/EremenkoVO/webrtc/goserver/internal/services/chat"
 	roomService "github.com/EremenkoVO/webrtc/goserver/internal/services/room"
 	userService "github.com/EremenkoVO/webrtc/goserver/internal/services/user"
 )
@@ -62,10 +63,11 @@ func (app *API) init(ctx context.Context) error {
 	authSvc := authService.NewAuthService(userRepo, tokenRepo, jwtManager, accessTokenRepo, auditRepo)
 	userSvc := userService.NewUserService(userRepo)
 	roomSvc := roomService.NewRoomService(roomRepo)
+	chatSvc := chatService.NewChatService()
 	adminSvc := adminService.NewAdminService(userRepo, roomRepo, authSvc, roomSvc, auditRepo)
 
 	// Initialize handlers
-	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc, adminSvc, auditRepo)
+	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc, chatSvc, adminSvc, auditRepo)
 	authenticator := handler.NewAuthenticator(authSvc)
 
 	// Setup HTTP server with routes

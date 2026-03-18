@@ -12,6 +12,12 @@ export const useRoomStore = defineStore('room', {
     selectedChannelId: '' as string,
     selectedChannelName: '' as string,
   }),
+  getters: {
+    selectedChannelType: (state): 'voice' | 'text' => {
+      const ch = state.channels.find((c) => c.id === state.selectedChannelId)
+      return (ch?.type as 'voice' | 'text') ?? 'voice'
+    },
+  },
   actions: {
     setClientAndRoomId(clientId: string, roomId: string) {
       this.roomId = roomId
@@ -51,12 +57,14 @@ export const useRoomStore = defineStore('room', {
       if (typeof id === 'undefined') return
       if (id === this.selectedChannelId) return
 
-      if (useCallStore().isInCall) {
+      const channel = this.channels.find((ch) => ch.id == id)
+      const isVoice = (channel?.type ?? 'voice') !== 'text'
+
+      if (isVoice && useCallStore().isInCall) {
         const result = confirm('Switch to another channel? Your current call will end.')
         if (!result) return
       }
 
-      const channel = this.channels.find((ch) => ch.id == id)
       this.selectedChannelId = id
       this.selectedChannelName = channel?.name || ''
       this.setRoommates(roommates)

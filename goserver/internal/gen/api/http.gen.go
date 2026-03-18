@@ -18,6 +18,12 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
+// Defines values for CreateRoomRequestType.
+const (
+	CreateRoomRequestTypeText  CreateRoomRequestType = "text"
+	CreateRoomRequestTypeVoice CreateRoomRequestType = "voice"
+)
+
 // Defines values for ErrorResponseCode.
 const (
 	INVALIDCREDENTIALS  ErrorResponseCode = "INVALID_CREDENTIALS"
@@ -28,6 +34,12 @@ const (
 	TOOMANYREQUESTS     ErrorResponseCode = "TOO_MANY_REQUESTS"
 	UNAUTHORIZED        ErrorResponseCode = "UNAUTHORIZED"
 	VALIDATIONERROR     ErrorResponseCode = "VALIDATION_ERROR"
+)
+
+// Defines values for RoomType.
+const (
+	RoomTypeText  RoomType = "text"
+	RoomTypeVoice RoomType = "voice"
 )
 
 // AuthTokens defines model for AuthTokens.
@@ -46,7 +58,13 @@ type AuthTokens struct {
 type CreateRoomRequest struct {
 	// Name Human-readable room name
 	Name string `json:"name"`
+
+	// Type Channel type
+	Type *CreateRoomRequestType `json:"type,omitempty"`
 }
+
+// CreateRoomRequestType Channel type
+type CreateRoomRequestType string
 
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
@@ -80,7 +98,13 @@ type Room struct {
 	Id        *string    `json:"id,omitempty"`
 	Name      *string    `json:"name,omitempty"`
 	Roommates *[]string  `json:"roommates,omitempty"`
+
+	// Type Channel type
+	Type *RoomType `json:"type,omitempty"`
 }
+
+// RoomType Channel type
+type RoomType string
 
 // RoomJoinResponse defines model for RoomJoinResponse.
 type RoomJoinResponse struct {
@@ -128,6 +152,13 @@ type UnauthorizedError = ErrorResponse
 // UnprocessableEntityError defines model for UnprocessableEntityError.
 type UnprocessableEntityError = ErrorResponse
 
+// ChatWebSocketParams defines parameters for ChatWebSocket.
+type ChatWebSocketParams struct {
+	Token    string  `form:"token" json:"token"`
+	Room     string  `form:"room" json:"room"`
+	Username *string `form:"username,omitempty" json:"username,omitempty"`
+}
+
 // LoginUserJSONRequestBody defines body for LoginUser for application/json ContentType.
 type LoginUserJSONRequestBody = LoginRequest
 
@@ -154,6 +185,9 @@ type ServerInterface interface {
 	// Register new user
 	// (POST /api/v1/auth/register)
 	RegisterUser(w http.ResponseWriter, r *http.Request)
+	// WebSocket connection for text chat
+	// (GET /api/v1/chat/ws)
+	ChatWebSocket(w http.ResponseWriter, r *http.Request, params ChatWebSocketParams)
 	// Get current user profile
 	// (GET /api/v1/me)
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
@@ -236,6 +270,63 @@ func (siw *ServerInterfaceWrapper) RegisterUser(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RegisterUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChatWebSocket operation middleware
+func (siw *ServerInterfaceWrapper) ChatWebSocket(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ChatWebSocketParams
+
+	// ------------- Required query parameter "token" -------------
+
+	if paramValue := r.URL.Query().Get("token"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "token"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "token", r.URL.Query(), &params.Token)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token", Err: err})
+		return
+	}
+
+	// ------------- Required query parameter "room" -------------
+
+	if paramValue := r.URL.Query().Get("room"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "room"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "room", r.URL.Query(), &params.Room)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "room", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "username" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "username", r.URL.Query(), &params.Username)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChatWebSocket(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -505,6 +596,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/logout", wrapper.LogoutUser)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/refresh", wrapper.RefreshToken)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/register", wrapper.RegisterUser)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/chat/ws", wrapper.ChatWebSocket)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/me", wrapper.GetCurrentUser)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/rooms", wrapper.ListRooms)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/rooms", wrapper.CreateRoom)

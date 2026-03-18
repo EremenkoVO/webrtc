@@ -10,6 +10,7 @@ import (
 type Room struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
+	Type      string    `json:"type"` // "voice" | "text"
 	CreatedAt time.Time `json:"created_at"`
 
 	// TODO: вынести в отдельную сущность/компонент.
@@ -32,6 +33,28 @@ type SignalingMessage struct {
 	From     string `json:"from,omitempty"`
 	To       string `json:"to,omitempty"`
 	Payload  any    `json:"payload,omitempty"`
+}
+
+// ChatMessage represents a text chat message in a room.
+type ChatMessage struct {
+	ID        string              `json:"id"`
+	Type      string              `json:"type"`
+	Room      string              `json:"room"`
+	From      string              `json:"from"`      // string(userID)
+	Username  string              `json:"username"`
+	Text      string              `json:"text"`
+	Timestamp time.Time           `json:"timestamp"`
+	Edited    bool                `json:"edited"`
+	Reactions map[string][]string `json:"reactions"` // emoji -> []userID
+}
+
+// ChatClient represents an active chat WebSocket connection.
+type ChatClient struct {
+	ConnID   string // UUID (connection-specific)
+	UserID   int
+	Username string
+	RoomID   string
+	Conn     *websocket.Conn
 }
 
 func (r *Room) BroadcastExcept(msg SignalingMessage, except string) {

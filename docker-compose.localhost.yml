@@ -21,7 +21,6 @@ services:
     depends_on:
       - backend
       - frontend
-      - chatserver
     networks:
       - localhost
     restart: unless-stopped
@@ -45,21 +44,6 @@ services:
       - localhost
     restart: unless-stopped
 
-  chatserver:
-    build:
-      context: ./chatserver
-      dockerfile: Dockerfile
-    container_name: webrtc_chatserver_localhost
-    ports:
-      - '3001:3001'  # Direct access for debugging
-    environment:
-      - PORT=3001
-      - MYDISCORD_AUTH_TOKEN_SECRET=${MYDISCORD_AUTH_TOKEN_SECRET:-change-this-secret}
-      - BACKEND_API_URL=http://backend:8080
-    networks:
-      - localhost
-    restart: unless-stopped
-
   frontend:
     build:
       context: ./vueclient
@@ -69,7 +53,6 @@ services:
       - '5173:80'  # Direct access (mapped to common dev port)
     depends_on:
       - backend
-      - chatserver
     networks:
       - localhost
     restart: unless-stopped

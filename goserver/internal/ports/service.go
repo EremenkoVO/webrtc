@@ -25,10 +25,14 @@ type UserService interface {
 
 type RoomService interface {
 	ListRooms() []*domain.Room
-	CreateRoom(roomName string) *domain.Room
+	CreateRoom(roomName, roomType string) *domain.Room
 	GetRoom(roomID string) *domain.Room
 	GetRoomParticipants(roomID string) []*domain.Client
 	HandleWebSocketConnection(conn *websocket.Conn)
+}
+
+type ChatService interface {
+	HandleWebSocketConnection(conn *websocket.Conn, userID int, username, roomID string)
 }
 
 type AdminService interface {
