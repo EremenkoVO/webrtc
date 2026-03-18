@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"log"
 	"strconv"
 	"sync"
@@ -10,24 +11,24 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
+	"github.com/EremenkoVO/webrtc/goserver/internal/ports"
 )
 
-const maxMessages = 1000
-
 type chatRoom struct {
-	clients  map[string]*domain.ChatClient // keyed by ConnID
-	messages []*domain.ChatMessage
-	mu       sync.RWMutex
+	clients map[string]*domain.ChatClient // keyed by ConnID
+	mu      sync.RWMutex
 }
 
 type Service struct {
 	rooms   map[string]*chatRoom
 	roomsMu sync.RWMutex
+	msgRepo ports.ChatMessageRepository
 }
 
-func NewChatService() *Service {
+func NewChatService(msgRepo ports.ChatMessageRepository) *Service {
 	return &Service{
-		rooms: make(map[string]*chatRoom),
+		rooms:   make(map[string]*chatRoom),
+		msgRepo: msgRepo,
 	}
 }
 
@@ -37,15 +38,14 @@ func (s *Service) getOrCreateRoom(roomID string) *chatRoom {
 	if r, ok := s.rooms[roomID]; ok {
 		return r
 	}
-	r := &chatRoom{
-		clients:  make(map[string]*domain.ChatClient),
-		messages: make([]*domain.ChatMessage, 0),
-	}
+	r := &chatRoom{clients: make(map[string]*domain.ChatClient)}
 	s.rooms[roomID] = r
 	return r
 }
 
 func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, username, roomID string) {
+	ctx := context.Background()
+
 	client := &domain.ChatClient{
 		ConnID:   uuid.NewString(),
 		UserID:   userID,
@@ -72,17 +72,11 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 		"timestamp": time.Now().UTC(),
 	})
 
-	// Send chat history (last 100)
-	room.mu.RLock()
-	msgs := room.messages
-	start := 0
-	if len(msgs) > 100 {
-		start = len(msgs) - 100
+	// Send chat history from DB
+	history, err := s.msgRepo.ListByRoom(ctx, roomID, 100)
+	if err != nil {
+		log.Printf("chat history load: %v", err)
 	}
-	history := make([]*domain.ChatMessage, len(msgs[start:]))
-	copy(history, msgs[start:])
-	room.mu.RUnlock()
-
 	if len(history) > 0 {
 		_ = conn.WriteJSON(map[string]any{
 			"type":     "chat_history",
@@ -142,12 +136,27 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 				Edited:    false,
 				Reactions: map[string][]string{},
 			}
-			room.mu.Lock()
-			room.messages = append(room.messages, chatMsg)
-			if len(room.messages) > maxMessages {
-				room.messages = room.messages[1:]
+			if replyToID, _ := msg["replyToId"].(string); replyToID != "" {
+				ref, err := s.msgRepo.GetByID(ctx, replyToID)
+				if err != nil {
+					log.Printf("chat reply lookup: %v", err)
+				}
+				if ref != nil {
+					chatMsg.ReplyToID = ref.ID
+					chatMsg.ReplyToUsername = ref.Username
+					preview := []rune(ref.Text)
+					if len(preview) > 80 {
+						chatMsg.ReplyToText = string(preview[:80]) + "…"
+					} else {
+						chatMsg.ReplyToText = ref.Text
+					}
+				}
 			}
-			room.mu.Unlock()
+			if err := s.msgRepo.Store(ctx, chatMsg); err != nil {
+				log.Printf("chat store: %v", err)
+				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Failed to save message"})
+				continue
+			}
 			s.broadcastAll(room, chatMsg)
 
 		case "typing":
@@ -156,11 +165,11 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 				isTyping = v
 			}
 			s.broadcastExcept(room, map[string]any{
-				"type":      "typing",
-				"room":      roomID,
-				"from":      client.ConnID,
-				"username":  username,
-				"isTyping":  isTyping,
+				"type":     "typing",
+				"room":     roomID,
+				"from":     client.ConnID,
+				"username": username,
+				"isTyping": isTyping,
 			}, client.ConnID)
 
 		case "edit_message":
@@ -174,25 +183,29 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Message text is required"})
 				continue
 			}
-			room.mu.Lock()
-			target := findMessage(room.messages, messageID)
-			if target == nil {
-				room.mu.Unlock()
+			owner, err := s.msgRepo.GetOwner(ctx, messageID)
+			if err != nil {
+				log.Printf("chat edit owner: %v", err)
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Message not found"})
 				continue
 			}
-			if target.From != userIDStr {
-				room.mu.Unlock()
+			if owner == "" {
+				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Message not found"})
+				continue
+			}
+			if owner != userIDStr {
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "You can only edit your own messages"})
 				continue
 			}
-			target.Text = newText
-			target.Edited = true
-			room.mu.Unlock()
+			if err := s.msgRepo.UpdateText(ctx, messageID, newText); err != nil {
+				log.Printf("chat edit update: %v", err)
+				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Failed to edit message"})
+				continue
+			}
 			s.broadcastAll(room, map[string]any{
 				"type":      "message_edited",
 				"room":      roomID,
-				"messageId": target.ID,
+				"messageId": messageID,
 				"text":      newText,
 				"timestamp": time.Now().UTC(),
 			})
@@ -203,25 +216,29 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Message ID is required"})
 				continue
 			}
-			room.mu.Lock()
-			idx := findMessageIndex(room.messages, messageID)
-			if idx == -1 {
-				room.mu.Unlock()
+			owner, err := s.msgRepo.GetOwner(ctx, messageID)
+			if err != nil {
+				log.Printf("chat delete owner: %v", err)
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Message not found"})
 				continue
 			}
-			if room.messages[idx].From != userIDStr {
-				room.mu.Unlock()
+			if owner == "" {
+				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Message not found"})
+				continue
+			}
+			if owner != userIDStr {
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "You can only delete your own messages"})
 				continue
 			}
-			deletedID := room.messages[idx].ID
-			room.messages = append(room.messages[:idx], room.messages[idx+1:]...)
-			room.mu.Unlock()
+			if err := s.msgRepo.Delete(ctx, messageID); err != nil {
+				log.Printf("chat delete: %v", err)
+				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Failed to delete message"})
+				continue
+			}
 			s.broadcastAll(room, map[string]any{
 				"type":      "message_deleted",
 				"room":      roomID,
-				"messageId": deletedID,
+				"messageId": messageID,
 			})
 
 		case "add_reaction":
@@ -231,28 +248,28 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Message ID and emoji are required"})
 				continue
 			}
-			room.mu.Lock()
-			target := findMessage(room.messages, messageID)
-			if target == nil {
-				room.mu.Unlock()
+			target, err := s.msgRepo.GetByID(ctx, messageID)
+			if err != nil || target == nil {
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Message not found"})
 				continue
 			}
 			if target.Reactions == nil {
 				target.Reactions = map[string][]string{}
 			}
-			if !containsStr(target.Reactions[emoji], userIDStr) {
-				target.Reactions[emoji] = append(target.Reactions[emoji], userIDStr)
+			if !containsStr(target.Reactions[emoji], username) {
+				target.Reactions[emoji] = append(target.Reactions[emoji], username)
 			}
-			reactions := copyReactions(target.Reactions)
-			msgID := target.ID
-			room.mu.Unlock()
+			if err := s.msgRepo.UpdateReactions(ctx, messageID, target.Reactions); err != nil {
+				log.Printf("chat add_reaction: %v", err)
+				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Failed to save reaction"})
+				continue
+			}
 			s.broadcastAll(room, map[string]any{
 				"type":      "reaction_updated",
 				"room":      roomID,
-				"messageId": msgID,
+				"messageId": messageID,
 				"emoji":     emoji,
-				"reactions": reactions,
+				"reactions": target.Reactions,
 			})
 
 		case "remove_reaction":
@@ -262,33 +279,51 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Message ID and emoji are required"})
 				continue
 			}
-			room.mu.Lock()
-			target := findMessage(room.messages, messageID)
-			if target == nil {
-				room.mu.Unlock()
+			target, err := s.msgRepo.GetByID(ctx, messageID)
+			if err != nil || target == nil {
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Message not found"})
 				continue
 			}
 			if target.Reactions != nil {
-				target.Reactions[emoji] = filterStr(target.Reactions[emoji], userIDStr)
+				target.Reactions[emoji] = filterStr(target.Reactions[emoji], username)
 				if len(target.Reactions[emoji]) == 0 {
 					delete(target.Reactions, emoji)
 				}
 			}
-			reactions := copyReactions(target.Reactions)
-			msgID := target.ID
-			room.mu.Unlock()
+			if err := s.msgRepo.UpdateReactions(ctx, messageID, target.Reactions); err != nil {
+				log.Printf("chat remove_reaction: %v", err)
+				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Failed to save reaction"})
+				continue
+			}
 			s.broadcastAll(room, map[string]any{
 				"type":      "reaction_updated",
 				"room":      roomID,
-				"messageId": msgID,
+				"messageId": messageID,
 				"emoji":     emoji,
-				"reactions": reactions,
+				"reactions": target.Reactions,
 			})
+
+		case "voice_recording":
+			isRec, _ := msg["isRecording"].(bool)
+			s.broadcastExcept(room, map[string]any{
+				"type":        "voice_recording",
+				"room":        roomID,
+				"username":    username,
+				"isRecording": isRec,
+			}, client.ConnID)
 
 		default:
 			_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Unknown message type: " + msgType})
 		}
+	}
+}
+
+func (s *Service) BroadcastToRoom(roomID string, msg any) {
+	s.roomsMu.RLock()
+	room, ok := s.rooms[roomID]
+	s.roomsMu.RUnlock()
+	if ok {
+		s.broadcastAll(room, msg)
 	}
 }
 
@@ -315,24 +350,6 @@ func (s *Service) broadcastExcept(room *chatRoom, msg any, exceptConnID string) 
 	}
 }
 
-func findMessage(msgs []*domain.ChatMessage, id string) *domain.ChatMessage {
-	for _, m := range msgs {
-		if m.ID == id {
-			return m
-		}
-	}
-	return nil
-}
-
-func findMessageIndex(msgs []*domain.ChatMessage, id string) int {
-	for i, m := range msgs {
-		if m.ID == id {
-			return i
-		}
-	}
-	return -1
-}
-
 func containsStr(slice []string, s string) bool {
 	for _, v := range slice {
 		if v == s {
@@ -350,14 +367,4 @@ func filterStr(slice []string, remove string) []string {
 		}
 	}
 	return result
-}
-
-func copyReactions(r map[string][]string) map[string][]string {
-	out := make(map[string][]string, len(r))
-	for k, v := range r {
-		cp := make([]string, len(v))
-		copy(cp, v)
-		out[k] = cp
-	}
-	return out
 }

@@ -11,7 +11,7 @@ import { computed, ref } from 'vue'
 export type ChatConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 
 export interface ChatMessage {
-  type: 'chat_message'
+  type: 'chat_message' | 'voice_message'
   room: string
   from: string
   username: string
@@ -20,6 +20,11 @@ export interface ChatMessage {
   id?: string // Optional message ID for editing/deleting
   edited?: boolean // Whether message was edited
   reactions?: Record<string, string[]> // emoji -> array of userIds who reacted
+  replyToId?: string
+  replyToUsername?: string
+  replyToText?: string
+  voiceUrl?: string
+  voiceDuration?: number
 }
 
 export interface ChatHistoryMessage {
@@ -83,6 +88,13 @@ export interface ReactionUpdatedMessage {
   reactions: Record<string, string[]> // emoji -> array of clientIds
 }
 
+export interface VoiceRecordingMessage {
+  type: 'voice_recording'
+  room: string
+  username: string
+  isRecording: boolean
+}
+
 export type ChatWebSocketMessage =
   | ChatMessage
   | ChatHistoryMessage
@@ -93,6 +105,7 @@ export type ChatWebSocketMessage =
   | MessageEditedMessage
   | MessageDeletedMessage
   | ReactionUpdatedMessage
+  | VoiceRecordingMessage
   | { type: 'error'; message: string }
 
 export const useChatStore = defineStore('chat', () => {
@@ -101,6 +114,7 @@ export const useChatStore = defineStore('chat', () => {
   const currentRoomId = ref<string | null>(null)
   const messagesByRoom = ref<Map<string, ChatMessage[]>>(new Map())
   const typingUsers = ref<Set<string>>(new Set())
+  const voiceRecordingUsers = ref<Set<string>>(new Set())
   const reconnectAttempts = ref(0)
   const maxReconnectAttempts = 5
   const reconnectTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
@@ -124,6 +138,7 @@ export const useChatStore = defineStore('chat', () => {
     if (ws.value && (ws.value.readyState === WebSocket.OPEN || ws.value.readyState === WebSocket.CONNECTING) && currentRoomId.value === roomId) return
     if (ws.value && currentRoomId.value !== roomId) {
       typingUsers.value.clear()
+      voiceRecordingUsers.value.clear()
       disconnect()
     }
 
@@ -135,6 +150,7 @@ export const useChatStore = defineStore('chat', () => {
       messagesByRoom.value.set(roomId, [])
     }
     typingUsers.value.clear()
+    voiceRecordingUsers.value.clear()
 
     try {
       let baseUrl = OpenAPI.BASE
@@ -220,14 +236,17 @@ export const useChatStore = defineStore('chat', () => {
     }
     connectionState.value = 'disconnected'
     typingUsers.value.clear()
+    voiceRecordingUsers.value.clear()
     reconnectAttempts.value = 0
   }
 
-  function sendMessage(text: string) {
+  function sendMessage(text: string, replyToId?: string) {
     if (!ws.value || ws.value.readyState !== WebSocket.OPEN) return false
     if (!text.trim()) return false
     try {
-      ws.value.send(JSON.stringify({ type: 'chat_message', text: text.trim() }))
+      const payload: Record<string, unknown> = { type: 'chat_message', text: text.trim() }
+      if (replyToId) payload.replyToId = replyToId
+      ws.value.send(JSON.stringify(payload))
       return true
     } catch (error) {
       console.error('Failed to send message:', error)
@@ -243,6 +262,24 @@ export const useChatStore = defineStore('chat', () => {
     } catch (error) {
       return false
     }
+  }
+
+  function sendVoiceRecording(isRecording: boolean) {
+    if (!ws.value || ws.value.readyState !== WebSocket.OPEN) return
+    ws.value.send(JSON.stringify({ type: 'voice_recording', isRecording }))
+  }
+
+  async function sendVoiceMessage(roomId: string, blob: Blob, duration: number): Promise<void> {
+    const token = localStorage.getItem('token') || ''
+    const base = OpenAPI.BASE || ''
+    const fd = new FormData()
+    fd.append('audio', blob, 'voice.webm')
+    fd.append('duration', String(Math.round(duration)))
+    await fetch(`${base}/api/v1/chat/${encodeURIComponent(roomId)}/voice`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    })
   }
 
   function editMessage(messageId: string, newText: string) {
@@ -299,6 +336,7 @@ export const useChatStore = defineStore('chat', () => {
         userId.value = message.userId || message.clientId
         username.value = message.username
         typingUsers.value.clear()
+        voiceRecordingUsers.value.clear()
         break
 
       case 'chat_history':
@@ -307,17 +345,18 @@ export const useChatStore = defineStore('chat', () => {
         }
         break
 
-      case 'chat_message': {
+      case 'chat_message':
+      case 'voice_message': {
         const roomId = message.room || currentRoomId.value
         if (roomId) {
           const roomMessages = messagesByRoom.value.get(roomId) || []
-          roomMessages.push(message)
-          if (roomMessages.length > 100) {
-            roomMessages.splice(0, roomMessages.length - 100)
-          }
-          messagesByRoom.value.set(roomId, roomMessages)
+          const updated = roomMessages.length >= 100
+            ? [...roomMessages.slice(-99), message]
+            : [...roomMessages, message]
+          messagesByRoom.value.set(roomId, updated)
         }
         if (
+          message.type === 'chat_message' &&
           notificationsEnabled.value &&
           message.from !== clientId.value &&
           message.room === currentRoomId.value
@@ -343,11 +382,21 @@ export const useChatStore = defineStore('chat', () => {
         }
         break
 
+      case 'voice_recording':
+        if (message.room === currentRoomId.value && message.username !== username.value) {
+          if (message.isRecording) {
+            voiceRecordingUsers.value.add(message.username)
+          } else {
+            voiceRecordingUsers.value.delete(message.username)
+          }
+        }
+        break
+
       case 'message_edited': {
         const roomId = message.room || currentRoomId.value
         if (roomId) {
           const roomMessages = messagesByRoom.value.get(roomId) || []
-          const messageIndex = roomMessages.findIndex((m) => m.id === message.messageId || (m.from === clientId.value && m.timestamp === message.timestamp))
+          const messageIndex = roomMessages.findIndex((m) => m.id === message.messageId)
           if (messageIndex !== -1) {
             roomMessages[messageIndex] = { ...roomMessages[messageIndex], text: message.text, edited: true }
             messagesByRoom.value.set(roomId, roomMessages)
@@ -361,11 +410,9 @@ export const useChatStore = defineStore('chat', () => {
         if (roomId) {
           const roomMessages = messagesByRoom.value.get(roomId) || []
           const filteredMessages = roomMessages.filter((m) => {
-            // If message has an ID, compare by ID
             if (m.id) {
               return m.id !== message.messageId
             }
-            // Otherwise, compare by from + timestamp (fallback for messages without ID)
             const messageKey = `${m.from}-${m.timestamp}`
             const deletedKey = message.messageId
             return messageKey !== deletedKey
@@ -379,14 +426,14 @@ export const useChatStore = defineStore('chat', () => {
         const roomId = message.room || currentRoomId.value
         if (roomId) {
           const roomMessages = messagesByRoom.value.get(roomId) || []
-          const messageIndex = roomMessages.findIndex((m) => 
-            m.id === message.messageId || 
+          const messageIndex = roomMessages.findIndex((m) =>
+            m.id === message.messageId ||
             (!m.id && `${m.from}-${m.timestamp}` === message.messageId)
           )
           if (messageIndex !== -1) {
-            roomMessages[messageIndex] = { 
-              ...roomMessages[messageIndex], 
-              reactions: message.reactions 
+            roomMessages[messageIndex] = {
+              ...roomMessages[messageIndex],
+              reactions: message.reactions
             }
             messagesByRoom.value.set(roomId, roomMessages)
           }
@@ -423,6 +470,7 @@ export const useChatStore = defineStore('chat', () => {
     currentRoomId,
     messages,
     typingUsers,
+    voiceRecordingUsers,
     clientId,
     userId,
     username,
@@ -434,6 +482,8 @@ export const useChatStore = defineStore('chat', () => {
     disconnect,
     sendMessage,
     sendTyping,
+    sendVoiceRecording,
+    sendVoiceMessage,
     editMessage,
     deleteMessage,
     addReaction,

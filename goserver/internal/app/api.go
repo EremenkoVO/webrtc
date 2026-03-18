@@ -63,11 +63,12 @@ func (app *API) init(ctx context.Context) error {
 	authSvc := authService.NewAuthService(userRepo, tokenRepo, jwtManager, accessTokenRepo, auditRepo)
 	userSvc := userService.NewUserService(userRepo)
 	roomSvc := roomService.NewRoomService(roomRepo)
-	chatSvc := chatService.NewChatService()
+	msgRepo := sqlite.NewChatMessageRepository(app.db)
+	chatSvc := chatService.NewChatService(msgRepo)
 	adminSvc := adminService.NewAdminService(userRepo, roomRepo, authSvc, roomSvc, auditRepo)
 
 	// Initialize handlers
-	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc, chatSvc, adminSvc, auditRepo)
+	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc, chatSvc, adminSvc, auditRepo, msgRepo)
 	authenticator := handler.NewAuthenticator(authSvc)
 
 	// Setup HTTP server with routes
@@ -80,6 +81,8 @@ func (app *API) init(ctx context.Context) error {
 	mux.HandleFunc("POST /api/v1/me/avatar", authenticator.RequireAuth(serverWrapper.UploadAvatar))
 	mux.HandleFunc("POST /api/v1/me/password", authenticator.RequireAuth(serverWrapper.ChangePassword))
 	mux.HandleFunc("GET /api/v1/avatars/{username}", serverWrapper.GetAvatar)
+	mux.HandleFunc("POST /api/v1/chat/{roomId}/voice", authenticator.RequireAuth(serverWrapper.UploadVoiceMessage))
+	mux.HandleFunc("GET /api/v1/chat/messages/{id}/voice", serverWrapper.GetVoiceMessage)
 	// Admin routes
 	mux.HandleFunc("GET /api/v1/admin/setup", serverWrapper.GetAdminSetupStatus)
 	mux.HandleFunc("POST /api/v1/admin/setup", serverWrapper.PostAdminSetup)

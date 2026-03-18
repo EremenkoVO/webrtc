@@ -101,6 +101,13 @@ export default {
     pressEscapeToCancel: 'Нажмите Escape для отмены',
     addReaction: 'Добавить реакцию',
     clickToRemove: 'Нажмите, чтобы убрать свою реакцию',
+    send: 'Отправить',
+    reply: 'Ответить',
+    replyingTo: 'Ответ для',
+    cancelReply: 'Отменить ответ',
+    voiceMessage: 'Голосовое сообщение',
+    voiceRecording: '{name} записывает голосовое сообщение...',
+    cancelRecording: 'Отменить',
   },
   call: {
     turnOffCamera: 'Выключить камеру',

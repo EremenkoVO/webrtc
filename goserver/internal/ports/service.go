@@ -33,6 +33,7 @@ type RoomService interface {
 
 type ChatService interface {
 	HandleWebSocketConnection(conn *websocket.Conn, userID int, username, roomID string)
+	BroadcastToRoom(roomID string, msg any)
 }
 
 type AdminService interface {

@@ -13,7 +13,7 @@ import {
   faHeadset, faBell, faLock, faCheck, faCamera,
   faShieldHalved, faChartBar, faUsers, faDoorOpen,
   faArrowLeft, faCrown, faCircleNotch, faCircleInfo, faCircle,
-  faVolumeXmark,
+  faVolumeXmark, faReply,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 
@@ -38,7 +38,7 @@ library.add(
   faHeadset, faBell, faLock, faCheck, faCamera,
   faShieldHalved, faChartBar, faUsers, faDoorOpen,
   faArrowLeft, faCrown, faCircleNotch, faCircleInfo, faCircle,
-  faVolumeXmark,
+  faVolumeXmark, faReply,
 )
 
 // Use a resolver so the token is read from localStorage on every request,

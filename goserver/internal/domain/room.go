@@ -44,8 +44,13 @@ type ChatMessage struct {
 	Username  string              `json:"username"`
 	Text      string              `json:"text"`
 	Timestamp time.Time           `json:"timestamp"`
-	Edited    bool                `json:"edited"`
-	Reactions map[string][]string `json:"reactions"` // emoji -> []userID
+	Edited          bool                `json:"edited"`
+	Reactions       map[string][]string `json:"reactions"`        // emoji -> []username
+	ReplyToID       string              `json:"replyToId,omitempty"`
+	ReplyToUsername string              `json:"replyToUsername,omitempty"`
+	ReplyToText     string              `json:"replyToText,omitempty"`
+	VoiceURL        string              `json:"voiceUrl,omitempty"`
+	VoiceDuration   float64             `json:"voiceDuration,omitempty"`
 }
 
 // ChatClient represents an active chat WebSocket connection.

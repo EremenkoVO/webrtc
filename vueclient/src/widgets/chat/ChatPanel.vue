@@ -1,17 +1,16 @@
 <script setup lang="ts">
+import { OpenAPI } from '@/api/core/OpenAPI'
 import { useChatStore } from '@/shared/stores/chatStore'
-import { useRoomStore } from '@/shared/stores/roomStore'
-import { useSignalingStore } from '@/shared/stores/signalingStore'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import MessageContent from './MessageContent.vue'
+import EmojiPicker from './EmojiPicker.vue'
+import VoicePlayer from './VoicePlayer.vue'
 
 const { t } = useI18n()
 const props = defineProps<{ roomId: string | null; userName: string | undefined }>()
 const chatStore = useChatStore()
-const signalingStore = useSignalingStore()
-const roomStore = useRoomStore()
 const messageInput = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -28,8 +27,273 @@ const showReactionPickerFor = ref<{
 } | null>(null)
 const reactionPickerPosition = ref<{ top: number; left: number } | null>(null)
 const reactionButtonRefs = ref<Map<string, HTMLElement>>(new Map())
-const reactionPickerRef = ref<HTMLElement | null>(null)
 const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏']
+
+// Voice recording state
+const isRecording = ref(false)
+const recordingDuration = ref(0)
+const recordingTimer = ref<ReturnType<typeof setInterval> | null>(null)
+const mediaRecorder = ref<MediaRecorder | null>(null)
+const audioChunks = ref<Blob[]>([])
+const recordingStream = ref<MediaStream | null>(null)
+const recordingCanvasRef = ref<HTMLCanvasElement | null>(null)
+
+// Web Audio API refs for recording visualization (non-reactive for perf)
+let recAudioCtx: AudioContext | null = null
+let recAnalyser: AnalyserNode | null = null
+let recFreqData: Uint8Array | null = null
+let recAnimFrame: number | null = null
+// Smoothed bar heights for natural decay
+const smoothBars: number[] = Array(36).fill(3)
+
+const formatRecDuration = computed(() => {
+  const m = Math.floor(recordingDuration.value / 60)
+  const s = recordingDuration.value % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+})
+
+function drawRecordingCanvas(freq?: Uint8Array<ArrayBufferLike>) {
+  const canvas = recordingCanvasRef.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')!
+  const dpr = window.devicePixelRatio || 1
+  const w = canvas.clientWidth
+  const h = canvas.clientHeight
+
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width = Math.round(w * dpr)
+    canvas.height = Math.round(h * dpr)
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.clearRect(0, 0, w, h)
+
+  const BAR_W = 3
+  const BAR_GAP = 2
+  const NUM_BARS = 36
+
+  for (let i = 0; i < NUM_BARS; i++) {
+    let target = 3
+    if (freq) {
+      const binIdx = Math.floor(i * Math.floor(freq.length * 0.65) / NUM_BARS)
+      const v = freq[binIdx] / 255
+      target = 3 + v * (h - 6)
+    }
+    // Fast attack, slow release for natural VU-meter feel
+    smoothBars[i] = smoothBars[i] < target
+      ? target
+      : smoothBars[i] * 0.82 + target * 0.18
+    const barH = Math.max(3, smoothBars[i])
+    const x = i * (BAR_W + BAR_GAP)
+    const y = (h - barH) / 2
+
+    ctx.fillStyle = 'rgba(237,66,69,0.85)' // dc-red tint
+    const r = Math.min(BAR_W / 2, barH / 2, 1.5)
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.lineTo(x + BAR_W - r, y)
+    ctx.arcTo(x + BAR_W, y, x + BAR_W, y + r, r)
+    ctx.lineTo(x + BAR_W, y + barH - r)
+    ctx.arcTo(x + BAR_W, y + barH, x + BAR_W - r, y + barH, r)
+    ctx.lineTo(x + r, y + barH)
+    ctx.arcTo(x, y + barH, x, y + barH - r, r)
+    ctx.lineTo(x, y + r)
+    ctx.arcTo(x, y, x + r, y, r)
+    ctx.closePath()
+    ctx.fill()
+  }
+}
+
+function startRecordingVisualization(stream: MediaStream) {
+  try {
+    recAudioCtx = new AudioContext()
+    const source = recAudioCtx.createMediaStreamSource(stream)
+    recAnalyser = recAudioCtx.createAnalyser()
+    recAnalyser.fftSize = 128
+    recAnalyser.smoothingTimeConstant = 0.5
+    source.connect(recAnalyser)
+    // Do NOT connect to destination — we don't want mic feedback
+    recFreqData = new Uint8Array(recAnalyser.frequencyBinCount)
+    const an = recAnalyser
+    const fd = recFreqData
+
+    function loop() {
+      recAnimFrame = requestAnimationFrame(loop)
+      an.getByteFrequencyData(fd)
+      drawRecordingCanvas(fd)
+    }
+    loop()
+  } catch (e) {
+    console.warn('Recording AudioContext failed:', e)
+  }
+}
+
+function stopRecordingVisualization() {
+  if (recAnimFrame !== null) { cancelAnimationFrame(recAnimFrame); recAnimFrame = null }
+  recAudioCtx?.close()
+  recAudioCtx = null
+  recAnalyser = null
+  recFreqData = null
+  smoothBars.fill(3)
+}
+
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    recordingStream.value = stream
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : 'audio/webm'
+    const mr = new MediaRecorder(stream, { mimeType })
+    audioChunks.value = []
+    mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.value.push(e.data) }
+    mr.onstop = () => finishRecording()
+    mr.start(100)
+    mediaRecorder.value = mr
+    isRecording.value = true
+    recordingDuration.value = 0
+    recordingTimer.value = setInterval(() => {
+      recordingDuration.value++
+      if (recordingDuration.value >= 120) stopRecording()
+    }, 1000)
+    chatStore.sendVoiceRecording(true)
+    // Start after next tick so canvas is mounted
+    nextTick(() => startRecordingVisualization(stream))
+  } catch (err) {
+    console.error('Microphone access denied:', err)
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+    mediaRecorder.value.stop()
+  }
+  stopRecordingVisualization()
+  clearRecordingState()
+  chatStore.sendVoiceRecording(false)
+}
+
+function cancelRecording() {
+  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+    mediaRecorder.value.ondataavailable = null
+    mediaRecorder.value.onstop = null
+    mediaRecorder.value.stop()
+  }
+  recordingStream.value?.getTracks().forEach((t) => t.stop())
+  audioChunks.value = []
+  stopRecordingVisualization()
+  clearRecordingState()
+  chatStore.sendVoiceRecording(false)
+}
+
+function clearRecordingState() {
+  if (recordingTimer.value) { clearInterval(recordingTimer.value); recordingTimer.value = null }
+  isRecording.value = false
+  recordingDuration.value = 0
+  mediaRecorder.value = null
+  recordingStream.value = null
+}
+
+async function finishRecording() {
+  recordingStream.value?.getTracks().forEach((t) => t.stop())
+  const blob = new Blob(audioChunks.value, { type: 'audio/webm' })
+  const dur = recordingDuration.value
+  audioChunks.value = []
+  recordingStream.value = null
+  if (blob.size > 0 && props.roomId) {
+    await chatStore.sendVoiceMessage(props.roomId, blob, dur)
+  }
+}
+
+function resolveVoiceUrl(url: string): string {
+  if (!url) return ''
+  if (url.startsWith('http')) return url
+  return (OpenAPI.BASE || '') + url
+}
+
+const voiceRecordingText = computed(() => {
+  const users = Array.from(chatStore.voiceRecordingUsers)
+  if (users.length === 0) return ''
+  return t('chat.voiceRecording', { name: users[0] })
+})
+
+// Reply state
+const replyingTo = ref<{ id: string; username: string; text: string } | null>(null)
+
+function startReply(msg: { id?: string; timestamp: string; text: string }, from: string, username: string) {
+  replyingTo.value = { id: getMessageId(msg, from), username, text: msg.text }
+  nextTick(() => textareaRef.value?.focus())
+}
+
+function cancelReply() { replyingTo.value = null }
+
+// Touch / long-press action sheet
+type TouchMsg = { id?: string; timestamp: string; text: string; username?: string; reactions?: Record<string, string[]>; replyToId?: string; replyToUsername?: string; replyToText?: string }
+const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const longPressTouchOrigin = ref<{ x: number; y: number } | null>(null)
+const showTouchActionsFor = ref<{ messageId: string; message: TouchMsg; from: string } | null>(null)
+
+function handleTouchStart(event: TouchEvent, msg: TouchMsg, from: string) {
+  const touch = event.touches[0]
+  longPressTouchOrigin.value = { x: touch.clientX, y: touch.clientY }
+  longPressTimer.value = setTimeout(() => {
+    navigator.vibrate?.(50)
+    showTouchActionsFor.value = { messageId: getMessageId(msg, from), message: msg, from }
+    longPressTouchOrigin.value = null
+  }, 500)
+}
+
+function handleTouchMove(event: TouchEvent) {
+  if (!longPressTouchOrigin.value) return
+  const touch = event.touches[0]
+  const dx = Math.abs(touch.clientX - longPressTouchOrigin.value.x)
+  const dy = Math.abs(touch.clientY - longPressTouchOrigin.value.y)
+  if (dx > 8 || dy > 8) cancelLongPress()
+}
+
+function cancelLongPress() {
+  if (longPressTimer.value) { clearTimeout(longPressTimer.value); longPressTimer.value = null }
+  longPressTouchOrigin.value = null
+}
+
+function closeTouchActions() { showTouchActionsFor.value = null }
+
+function touchReact(emoji: string) {
+  if (!showTouchActionsFor.value) return
+  toggleReaction(showTouchActionsFor.value.message, showTouchActionsFor.value.from, emoji)
+  closeTouchActions()
+}
+
+function touchEdit() {
+  if (!showTouchActionsFor.value) return
+  startEdit(showTouchActionsFor.value.message, showTouchActionsFor.value.from)
+  closeTouchActions()
+}
+
+function touchDelete() {
+  if (!showTouchActionsFor.value) return
+  deleteMsg(showTouchActionsFor.value.message, showTouchActionsFor.value.from)
+  closeTouchActions()
+}
+
+function touchReply() {
+  if (!showTouchActionsFor.value) return
+  startReply(showTouchActionsFor.value.message, showTouchActionsFor.value.from, showTouchActionsFor.value.message.username ?? '')
+  closeTouchActions()
+}
+const showEmojiPicker = ref(false)
+const emojiButtonRef = ref<HTMLElement | null>(null)
+const emojiPickerStyle = computed(() => {
+  if (!emojiButtonRef.value) return {}
+  const rect = emojiButtonRef.value.getBoundingClientRect()
+  const pickerWidth = 288
+  const pickerHeight = 320
+  let left = rect.left
+  let top = rect.top - pickerHeight - 8
+  if (left + pickerWidth > window.innerWidth - 8) left = window.innerWidth - pickerWidth - 8
+  if (left < 8) left = 8
+  if (top < 8) top = rect.bottom + 8
+  return { top: `${top}px`, left: `${left}px` }
+})
 
 const typingText = computed(() => {
   const users = Array.from(chatStore.typingUsers)
@@ -64,13 +328,64 @@ function handleScroll() {
 
 function sendMessage() {
   if (!messageInput.value.trim() || !chatStore.isConnected) return
-  chatStore.sendMessage(messageInput.value)
+  chatStore.sendMessage(messageInput.value, replyingTo.value?.id)
+  replyingTo.value = null
   messageInput.value = ''
   nextTick(() => {
-    if (textareaRef.value) textareaRef.value.style.height = '44px'
+    if (textareaRef.value) {
+      textareaRef.value.style.height = 'auto'
+      textareaRef.value.style.height = '44px'
+    }
   })
   stopTyping()
   scrollToBottom()
+}
+
+function insertEmoji(emoji: string) {
+  const textarea = textareaRef.value
+  if (!textarea) {
+    messageInput.value += emoji
+    showEmojiPicker.value = false
+    return
+  }
+  const start = textarea.selectionStart
+  const end = textarea.selectionEnd
+  messageInput.value =
+    messageInput.value.slice(0, start) + emoji + messageInput.value.slice(end)
+  showEmojiPicker.value = false
+  nextTick(() => {
+    textarea.focus()
+    textarea.selectionStart = start + emoji.length
+    textarea.selectionEnd = start + emoji.length
+  })
+}
+
+function applyFormat(type: 'bold' | 'italic' | 'strike' | 'code' | 'codeblock') {
+  const textarea = textareaRef.value
+  if (!textarea) return
+  const start = textarea.selectionStart
+  const end = textarea.selectionEnd
+  const selected = messageInput.value.slice(start, end)
+  const markers: Record<string, [string, string]> = {
+    bold: ['**', '**'],
+    italic: ['*', '*'],
+    strike: ['~~', '~~'],
+    code: ['`', '`'],
+    codeblock: ['```\n', '\n```'],
+  }
+  const [open, close] = markers[type]
+  messageInput.value =
+    messageInput.value.slice(0, start) + open + selected + close + messageInput.value.slice(end)
+  nextTick(() => {
+    textarea.focus()
+    if (selected) {
+      textarea.selectionStart = start + open.length
+      textarea.selectionEnd = end + open.length
+    } else {
+      textarea.selectionStart = start + open.length
+      textarea.selectionEnd = start + open.length
+    }
+  })
 }
 
 function handleKeyDown(event: KeyboardEvent) {
@@ -105,14 +420,6 @@ watch(
     if (n !== o && props.roomId) connectToChat()
   },
 )
-watch(
-  () => chatStore.messages,
-  () => {
-    if (shouldAutoScroll.value) scrollToBottom()
-  },
-  { deep: true },
-)
-
 onBeforeUnmount(() => stopTyping())
 
 function handleInput(event?: Event) {
@@ -152,54 +459,52 @@ watch(
 )
 
 const groupedMessages = computed(() => {
-  const groups: Array<{
-    from: string
-    username: string
-    messages: Array<{
-      text: string
-      timestamp: string
-      id?: string
-      edited?: boolean
-      reactions?: Record<string, string[]>
-    }>
+  type MsgEntry = {
+    text: string
     timestamp: string
-  }> = []
+    id?: string
+    edited?: boolean
+    reactions?: Record<string, string[]>
+    replyToId?: string
+    replyToUsername?: string
+    replyToText?: string
+    voiceUrl?: string
+    voiceDuration?: number
+  }
+  const groups: Array<{ from: string; username: string; messages: MsgEntry[]; timestamp: string }> = []
   chatStore.messages.forEach((message) => {
     const lastGroup = groups[groups.length - 1]
     const timeDiff =
       lastGroup && lastGroup.from === message.from
         ? new Date(message.timestamp).getTime() - new Date(lastGroup.timestamp).getTime()
         : Infinity
-    if (lastGroup && lastGroup.from === message.from && timeDiff < 120000) {
-      lastGroup.messages.push({
-        text: message.text,
-        timestamp: message.timestamp,
-        id: message.id,
-        edited: message.edited,
-        reactions: message.reactions,
-      })
+    const entry: MsgEntry = {
+      text: message.text,
+      timestamp: message.timestamp,
+      id: message.id,
+      edited: message.edited,
+      reactions: message.reactions,
+      replyToId: message.replyToId,
+      replyToUsername: message.replyToUsername,
+      replyToText: message.replyToText,
+      voiceUrl: message.voiceUrl,
+      voiceDuration: message.voiceDuration,
+    }
+    const isVoice = !!message.voiceUrl
+    if (lastGroup && lastGroup.from === message.from && timeDiff < 120000 && !message.replyToId && !isVoice) {
+      lastGroup.messages.push(entry)
     } else {
-      groups.push({
-        from: message.from,
-        username: message.username,
-        messages: [
-          {
-            text: message.text,
-            timestamp: message.timestamp,
-            id: message.id,
-            edited: message.edited,
-            reactions: message.reactions,
-          },
-        ],
-        timestamp: message.timestamp,
-      })
+      groups.push({ from: message.from, username: message.username, messages: [entry], timestamp: message.timestamp })
     }
   })
   return groups
 })
 
 function isOwnMessage(messageFrom: string): boolean {
-  return messageFrom === chatStore.clientId
+  return (
+    messageFrom === chatStore.userId ||
+    messageFrom === chatStore.clientId
+  )
 }
 
 function getMessageId(message: { id?: string; timestamp: string }, from: string): string {
@@ -237,9 +542,9 @@ function toggleReaction(
   emoji: string,
 ) {
   const messageId = getMessageId(message, from)
-  const hasReaction = message.reactions?.[emoji]?.includes(
-    chatStore.userId || chatStore.clientId || '',
-  )
+  const hasReaction = chatStore.username
+    ? message.reactions?.[emoji]?.includes(chatStore.username)
+    : false
 
   if (hasReaction) {
     chatStore.removeReaction(messageId, emoji)
@@ -250,54 +555,9 @@ function toggleReaction(
   reactionPickerPosition.value = null
 }
 
-function updateReactionPickerPosition() {
-  if (!showReactionPickerFor.value || !reactionPickerPosition.value) return
-
-  const messageId = showReactionPickerFor.value.messageId
-  const buttonElement = reactionButtonRefs.value.get(messageId)
-  if (!buttonElement) return
-  const rect = buttonElement.getBoundingClientRect()
-  const pickerElement = reactionPickerRef.value
-  if (!pickerElement) return
-
-  const pickerRect = pickerElement.getBoundingClientRect()
-  const pickerWidth = pickerRect.width
-  const pickerHeight = pickerRect.height
-  const spacing = 8
-  const padding = 16
-
-  let left = rect.left
-  let top = rect.top - pickerHeight - spacing
-
-  // Check if picker would go off the right edge
-  if (left + pickerWidth > window.innerWidth - padding) {
-    left = window.innerWidth - pickerWidth - padding
-  }
-
-  // Check if picker would go off the left edge
-  if (left < padding) {
-    left = padding
-  }
-
-  // Check if picker would go off the top edge, if so show below
-  if (top < padding) {
-    top = rect.bottom + spacing
-    // Re-check if it goes off bottom edge
-    if (top + pickerHeight > window.innerHeight - padding) {
-      top = window.innerHeight - pickerHeight - padding
-    }
-  }
-
-  // Check if picker would go off the bottom edge
-  if (top + pickerHeight > window.innerHeight - padding) {
-    top = rect.top - pickerHeight - spacing
-    // If still off top, center vertically
-    if (top < padding) {
-      top = Math.max(padding, (window.innerHeight - pickerHeight) / 2)
-    }
-  }
-
-  reactionPickerPosition.value = { top, left }
+function closeReactionPicker() {
+  showReactionPickerFor.value = null
+  reactionPickerPosition.value = null
 }
 
 function openReactionPicker(
@@ -308,8 +568,7 @@ function openReactionPicker(
   const messageId = getMessageId(message, from)
 
   if (showReactionPickerFor.value?.messageId === messageId) {
-    showReactionPickerFor.value = null
-    reactionPickerPosition.value = null
+    closeReactionPicker()
     return
   }
 
@@ -317,25 +576,27 @@ function openReactionPicker(
 
   nextTick(() => {
     const rect = buttonElement.getBoundingClientRect()
-    const spacing = 8
-    const padding = 16
+    // Fixed dimensions: 6 × 32px buttons + 5 × 4px gaps + 2 × 8px padding
+    const pickerWidth = 232
+    const pickerHeight = 48
+    const spacing = 6
+    const margin = 8
 
-    // Initial position (will be adjusted after measuring)
-    const left = rect.left
-    const top = rect.top - 50 - spacing // Approximate height
+    let left = rect.left
+    let top = rect.top - pickerHeight - spacing
+
+    if (left + pickerWidth > window.innerWidth - margin) left = window.innerWidth - pickerWidth - margin
+    if (left < margin) left = margin
+    if (top < margin) top = rect.bottom + spacing
+    if (top + pickerHeight > window.innerHeight - margin) top = window.innerHeight - pickerHeight - margin
 
     reactionPickerPosition.value = { top, left }
-
-    // Update position after measuring actual picker size
-    nextTick(() => {
-      updateReactionPickerPosition()
-    })
   })
 }
 
 function hasUserReacted(reactions: Record<string, string[]> | undefined, emoji: string): boolean {
-  if (!reactions || !reactions[emoji]) return false
-  return reactions[emoji].includes(chatStore.userId || chatStore.clientId || '')
+  if (!reactions || !reactions[emoji] || !chatStore.username) return false
+  return reactions[emoji].includes(chatStore.username)
 }
 
 function getReactionCount(reactions: Record<string, string[]> | undefined, emoji: string): number {
@@ -348,29 +609,9 @@ function getReactionUsers(
   emoji: string,
 ): string[] {
   if (!reactions || !reactions[emoji]) return []
-  return reactions[emoji].map((userId) => {
-    // Try to get username from various sources (userId can be used to find participant)
-    // Try to find by client_id
-    const participant = roomStore.participants.find((p) => p.client_id && p.client_id === userId)
-    const username =
-      participant?.username ||
-      signalingStore.room_mates[userId] ||
-      (userId === chatStore.userId || userId === chatStore.clientId ? chatStore.username : null) ||
-      userId
-    return username || userId
-  })
+  return reactions[emoji]
 }
 
-function getReactionTooltip(
-  reactions: Record<string, string[]> | undefined,
-  emoji: string,
-): string {
-  const users = getReactionUsers(reactions, emoji)
-  if (users.length === 0) return ''
-  if (users.length === 1) return users[0]
-  if (users.length <= 3) return users.join(', ')
-  return `${users.slice(0, 2).join(', ')} and ${users.length - 2} more`
-}
 
 function getAvatarColor(name: string): string {
   const colors = [
@@ -415,6 +656,11 @@ function handleClickOutside(event: MouseEvent) {
     }
   }
 
+  // Close emoji picker
+  if (showEmojiPicker.value && !target.closest('.emoji-picker-portal')) {
+    showEmojiPicker.value = false
+  }
+
   // Close reaction picker
   if (showReactionPickerFor.value) {
     // Don't close if clicking on reaction picker or reaction button
@@ -427,8 +673,8 @@ function handleClickOutside(event: MouseEvent) {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
-  window.addEventListener('scroll', updateReactionPickerPosition, true)
-  window.addEventListener('resize', updateReactionPickerPosition)
+  window.addEventListener('scroll', closeReactionPicker, true)
+  window.addEventListener('resize', closeReactionPicker)
   connectToChat()
   if (chatStore.isConnected && chatStore.notificationsEnabled)
     chatStore.requestNotificationPermission()
@@ -436,9 +682,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
-  window.removeEventListener('scroll', updateReactionPickerPosition, true)
-  window.removeEventListener('resize', updateReactionPickerPosition)
+  window.removeEventListener('scroll', closeReactionPicker, true)
+  window.removeEventListener('resize', closeReactionPicker)
   stopTyping()
+  if (isRecording.value) cancelRecording()
 })
 </script>
 
@@ -526,6 +773,10 @@ onBeforeUnmount(() => {
                 v-for="(msg, mi) in group.messages"
                 :key="`${group.from}-${msg.timestamp}-${mi}`"
                 class="group/message relative"
+                @touchstart.passive="handleTouchStart($event, msg, group.from)"
+                @touchmove.passive="handleTouchMove"
+                @touchend="cancelLongPress"
+                @touchcancel="cancelLongPress"
               >
                 <!-- Edit mode -->
                 <div
@@ -550,119 +801,117 @@ onBeforeUnmount(() => {
                 <!-- Display mode -->
                 <div
                   v-else
-                  class="flex items-start gap-2 group-hover/message:bg-dc-bg-hover/20 rounded px-1 -mx-1 transition-colors"
+                  class="group-hover/message:bg-dc-bg-hover/20 rounded px-1 -mx-1 transition-colors"
                 >
+                  <!-- Floating action toolbar -->
                   <div
-                    class="flex-1 text-dc-text text-base sm:text-[15px] leading-[1.375rem] whitespace-pre-wrap break-words"
+                    class="absolute -top-4 right-1 z-10 opacity-0 group-hover/message:opacity-100 transition-opacity pointer-events-none group-hover/message:pointer-events-auto"
+                  >
+                    <div class="flex items-center gap-px bg-dc-bg-floating border border-dc-separator rounded-lg shadow-lg overflow-hidden">
+                      <!-- Reply -->
+                      <button
+                        @click="startReply(msg, group.from, group.username)"
+                        class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-blurple hover:bg-dc-bg-hover transition-colors"
+                        :title="t('chat.reply')"
+                      >
+                        <font-awesome-icon icon="reply" class="text-[12px]" />
+                      </button>
+                      <div class="w-px h-4 bg-dc-separator flex-shrink-0" />
+                      <!-- Add reaction -->
+                      <button
+                        :ref="(el) => { if (el) reactionButtonRefs.set(getMessageId(msg, group.from), el as HTMLElement) }"
+                        @click.stop="openReactionPicker(msg, group.from, reactionButtonRefs.get(getMessageId(msg, group.from))!)"
+                        class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-yellow hover:bg-dc-bg-hover transition-colors"
+                        :title="t('chat.addReaction')"
+                        data-reaction-button
+                      >
+                        <font-awesome-icon icon="face-smile" class="text-[13px]" />
+                      </button>
+
+                      <template v-if="isOwnMessage(group.from)">
+                        <div class="w-px h-4 bg-dc-separator flex-shrink-0" />
+                        <!-- Edit -->
+                        <button
+                          @click="startEdit(msg, group.from)"
+                          class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors"
+                          :title="t('chat.edit')"
+                        >
+                          <font-awesome-icon icon="pencil" class="text-[12px]" />
+                        </button>
+                        <!-- Delete -->
+                        <button
+                          @click="deleteMsg(msg, group.from)"
+                          class="w-8 h-8 flex items-center justify-center text-dc-text-muted hover:text-dc-red hover:bg-dc-bg-hover transition-colors"
+                          :title="t('chat.delete')"
+                        >
+                          <font-awesome-icon icon="trash" class="text-[12px]" />
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+
+                  <!-- Reply quote block -->
+                  <div
+                    v-if="msg.replyToId"
+                    class="flex items-stretch gap-2 mb-1 mt-0.5 opacity-80 hover:opacity-100 transition-opacity cursor-default"
+                  >
+                    <div class="w-0.5 bg-dc-blurple/60 rounded-full flex-shrink-0" />
+                    <div class="flex-1 min-w-0 py-0.5">
+                      <span class="text-[11px] font-semibold text-dc-blurple block leading-none mb-0.5">{{ msg.replyToUsername }}</span>
+                      <p class="text-[12px] text-dc-text-muted truncate leading-snug">{{ msg.replyToText }}</p>
+                    </div>
+                  </div>
+
+                  <!-- Voice message player -->
+                  <VoicePlayer
+                    v-if="msg.voiceUrl"
+                    :src="resolveVoiceUrl(msg.voiceUrl)"
+                    :duration="msg.voiceDuration ?? 0"
+                  />
+
+                  <!-- Text message -->
+                  <div
+                    v-else
+                    class="text-dc-text text-base sm:text-[15px] leading-[1.375rem] whitespace-pre-wrap break-words"
                   >
                     <MessageContent :text="msg.text" />
-                    <span
-                      v-if="msg.edited"
-                      class="text-sm sm:text-[11px] text-dc-text-muted ml-1"
-                      >{{ t('chat.edited') }}</span
-                    >
+                    <span v-if="msg.edited" class="text-sm sm:text-[11px] text-dc-text-muted ml-1">
+                      {{ t('chat.edited') }}
+                    </span>
                   </div>
 
-                  <!-- Action buttons (only for own messages) -->
-                  <div
-                    v-if="isOwnMessage(group.from)"
-                    class="flex items-center gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity"
-                  >
-                    <button
-                      @click="startEdit(msg, group.from)"
-                      class="p-1.5 rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors"
-                      :title="t('chat.edit')"
-                    >
-                      <font-awesome-icon icon="pencil" class="text-sm sm:text-[12px]" />
-                    </button>
-                    <button
-                      @click="deleteMsg(msg, group.from)"
-                      class="p-1.5 rounded text-dc-text-muted hover:text-dc-red hover:bg-dc-bg-hover transition-colors"
-                      :title="t('chat.delete')"
-                    >
-                      <font-awesome-icon icon="trash" class="text-sm sm:text-[12px]" />
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Reactions and add reaction button -->
-                <div class="flex items-center justify-end gap-1 mt-1 ml-12">
-                  <!-- Existing reactions -->
+                  <!-- Reactions row -->
                   <div
                     v-if="msg.reactions && Object.keys(msg.reactions).length > 0"
-                    class="flex flex-wrap gap-1 justify-end"
+                    class="flex flex-wrap gap-1 mt-1"
                   >
                     <div
-                      v-for="(clientIds, emoji) in msg.reactions"
+                      v-for="(_, emoji) in msg.reactions"
                       :key="emoji"
                       class="relative group/reaction"
                     >
                       <button
                         @click="toggleReaction(msg, group.from, emoji)"
                         :class="[
-                          'flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors',
+                          'flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors',
                           hasUserReacted(msg.reactions, emoji)
                             ? 'bg-dc-blurple/30 hover:bg-dc-blurple/40 text-dc-text'
                             : 'bg-dc-bg-secondary-alt hover:bg-dc-bg-hover text-dc-text-muted hover:text-dc-text',
                         ]"
-                        :title="getReactionTooltip(msg.reactions, emoji)"
                       >
                         <span>{{ emoji }}</span>
-                        <span class="text-[10px] font-medium">{{
-                          getReactionCount(msg.reactions, emoji)
-                        }}</span>
+                        <span class="text-[10px] font-medium">{{ getReactionCount(msg.reactions, emoji) }}</span>
                       </button>
-
-                      <!-- Tooltip with user names -->
-                      <div
-                        class="absolute bottom-full right-0 mb-2 px-2 py-1.5 bg-dc-bg-floating border border-dc-separator rounded text-xs text-dc-text opacity-0 group-hover/reaction:opacity-100 group-hover/reaction:translate-y-0 translate-y-1 pointer-events-none transition-all duration-150 z-20 shadow-lg max-w-[200px] whitespace-normal"
-                      >
-                        <div class="flex flex-col gap-0.5">
-                          <div class="font-semibold mb-1 text-dc-text-heading">
-                            {{ emoji }} {{ getReactionCount(msg.reactions, emoji) }}
-                          </div>
-                          <div
-                            v-for="user in getReactionUsers(msg.reactions, emoji)"
-                            :key="user"
-                            class="text-dc-text-secondary"
-                          >
-                            {{ user === chatStore.username ? t('common.you') : user }}
-                          </div>
-                          <div
-                            v-if="hasUserReacted(msg.reactions, emoji)"
-                            class="mt-1 pt-1 border-t border-dc-separator text-[10px] text-dc-text-muted italic"
-                          >
-                            {{ t('chat.clickToRemove') }}
-                          </div>
-                        </div>
+                      <!-- Tooltip -->
+                      <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1.5 bg-dc-bg-floating border border-dc-separator rounded-lg shadow-lg text-xs pointer-events-none opacity-0 group-hover/reaction:opacity-100 transition-opacity duration-150 z-30 w-max max-w-[180px] whitespace-normal">
+                        <div class="font-semibold text-dc-text-heading mb-1">{{ emoji }}</div>
+                        <div
+                          v-for="user in getReactionUsers(msg.reactions, emoji)"
+                          :key="user"
+                          :class="user === chatStore.username ? 'text-dc-blurple font-medium' : 'text-dc-text-secondary'"
+                        >{{ user === chatStore.username ? t('common.you') : user }}</div>
                       </div>
                     </div>
-                  </div>
-
-                  <!-- Add reaction button -->
-                  <div
-                    class="relative opacity-0 group-hover/message:opacity-100 transition-opacity"
-                  >
-                    <button
-                      :ref="
-                        (el) => {
-                          if (el)
-                            reactionButtonRefs.set(getMessageId(msg, group.from), el as HTMLElement)
-                        }
-                      "
-                      @click.stop="
-                        openReactionPicker(
-                          msg,
-                          group.from,
-                          reactionButtonRefs.get(getMessageId(msg, group.from))!,
-                        )
-                      "
-                      class="p-1 rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors text-xs"
-                      :title="t('chat.addReaction')"
-                      data-reaction-button
-                    >
-                      <font-awesome-icon icon="face-smile" class="text-[12px]" />
-                    </button>
                   </div>
                 </div>
               </div>
@@ -671,6 +920,15 @@ onBeforeUnmount(() => {
         </div>
         </TransitionGroup>
       </div>
+    </div>
+
+    <!-- Voice recording indicator -->
+    <div
+      v-if="chatStore.voiceRecordingUsers.size > 0"
+      class="px-4 py-1 text-sm sm:text-xs text-dc-text-muted flex items-center gap-1.5"
+    >
+      <font-awesome-icon icon="microphone" class="text-dc-red text-[11px] animate-pulse" />
+      <span>{{ voiceRecordingText }}</span>
     </div>
 
     <!-- Typing indicator -->
@@ -696,38 +954,235 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Input -->
-    <div v-if="props.roomId" class="px-4 2xl:px-5 pb-4 2xl:pb-5 pt-0 flex-shrink-0">
-      <div class="relative bg-dc-textarea rounded-lg">
-        <div class="flex items-end">
-          <textarea
-            ref="textareaRef"
-            v-model="messageInput"
-            @keydown="handleKeyDown"
-            @input="handleInput"
-            :disabled="!chatStore.isConnected"
-            :placeholder="
-              chatStore.isConnected ? t('chat.messagePlaceholder') : t('chat.connectingPlaceholder')
-            "
-            class="flex-1 px-4 sm:px-4 py-3 sm:py-2.5 bg-transparent text-dc-text placeholder-dc-text-muted text-base sm:text-[15px] outline-none resize-none disabled:opacity-40 leading-[1.375rem]"
-            style="min-height: 48px; max-height: 120px"
-          />
+    <div v-if="props.roomId" class="px-3 pb-3 pt-1 flex-shrink-0">
+      <div
+        class="border border-dc-separator rounded-xl bg-dc-textarea overflow-hidden transition-colors duration-150 focus-within:border-dc-text-muted/60"
+      >
+        <!-- Reply bar -->
+        <div v-if="replyingTo" class="flex items-center gap-2 px-4 py-2 border-b border-dc-separator bg-dc-bg-hover/30">
+          <div class="w-0.5 h-8 bg-dc-blurple rounded-full flex-shrink-0" />
+          <div class="flex-1 min-w-0">
+            <p class="text-[11px] font-semibold text-dc-blurple leading-none mb-0.5">{{ t('chat.replyingTo') }} {{ replyingTo.username }}</p>
+            <p class="text-[12px] text-dc-text-muted truncate leading-snug">{{ replyingTo.text }}</p>
+          </div>
+          <button @click="cancelReply" class="text-dc-text-muted hover:text-dc-text p-1 transition-colors" :title="t('chat.cancelReply')">
+            <font-awesome-icon icon="xmark" class="text-[14px]" />
+          </button>
+        </div>
+
+        <!-- Recording UI (replaces textarea + toolbar while recording) -->
+        <div v-if="isRecording" class="flex items-center gap-3 px-4 py-3 min-h-[60px]">
+          <span class="w-3 h-3 rounded-full bg-red-500 flex-shrink-0 animate-pulse" />
+          <span class="text-dc-red font-mono text-sm tabular-nums w-10 flex-shrink-0">{{ formatRecDuration }}</span>
+          <div class="flex-1 flex items-center gap-[3px] h-8 overflow-hidden">
+            <span
+              v-for="i in 24"
+              :key="i"
+              class="w-[3px] rounded-full bg-dc-red/60 recording-wave-bar"
+              :style="{ animationDelay: `${i * 45}ms` }"
+            />
+          </div>
           <button
+            @click="cancelRecording"
+            class="w-8 h-8 flex items-center justify-center rounded-full text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors flex-shrink-0"
+            :title="t('chat.cancelRecording')"
+          >
+            <font-awesome-icon icon="xmark" class="text-[14px]" />
+          </button>
+          <button
+            @click="stopRecording"
+            class="w-8 h-8 flex items-center justify-center rounded-full bg-dc-blurple hover:bg-dc-blurple-hover text-white transition-colors flex-shrink-0"
+            title="Send"
+          >
+            <font-awesome-icon icon="check" class="text-[13px]" />
+          </button>
+        </div>
+
+        <!-- Textarea (hidden while recording) -->
+        <textarea
+          v-show="!isRecording"
+          ref="textareaRef"
+          v-model="messageInput"
+          @keydown="handleKeyDown"
+          @input="handleInput"
+          :disabled="!chatStore.isConnected"
+          :placeholder="
+            chatStore.isConnected ? t('chat.messagePlaceholder') : t('chat.connectingPlaceholder')
+          "
+          class="w-full px-4 pt-3 pb-2 bg-transparent text-dc-text placeholder-dc-text-muted text-[15px] outline-none focus:outline-none focus:ring-0 resize-none disabled:opacity-40 leading-[1.375rem] block"
+          style="min-height: 44px; max-height: 180px; box-shadow: none;"
+        />
+
+        <!-- Toolbar (hidden while recording) -->
+        <div v-show="!isRecording" class="flex items-center px-2 pb-2 pt-0.5 gap-0.5">
+          <!-- Formatting buttons -->
+          <button
+            @click="applyFormat('bold')"
+            title="Bold"
+            class="w-7 h-7 flex items-center justify-center rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors text-[13px] font-bold"
+          >B</button>
+          <button
+            @click="applyFormat('italic')"
+            title="Italic"
+            class="w-7 h-7 flex items-center justify-center rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors text-[13px] italic font-medium"
+          >I</button>
+          <button
+            @click="applyFormat('strike')"
+            title="Strikethrough"
+            class="w-7 h-7 flex items-center justify-center rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors text-[13px] font-medium line-through"
+          >S</button>
+          <button
+            @click="applyFormat('code')"
+            title="Inline code"
+            class="w-7 h-7 flex items-center justify-center rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors font-mono text-[12px]"
+          >`·`</button>
+          <button
+            @click="applyFormat('codeblock')"
+            title="Code block"
+            class="w-7 h-7 flex items-center justify-center rounded text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover transition-colors font-mono text-[10px] leading-none"
+          >&lt;/&gt;</button>
+
+          <div class="w-px h-4 bg-dc-separator mx-1 flex-shrink-0" />
+
+          <!-- Emoji -->
+          <div class="relative">
+            <button
+              ref="emojiButtonRef"
+              @click.stop="showEmojiPicker = !showEmojiPicker"
+              title="Emoji"
+              :class="[
+                'w-7 h-7 flex items-center justify-center rounded transition-colors',
+                showEmojiPicker
+                  ? 'text-dc-yellow bg-dc-bg-hover'
+                  : 'text-dc-text-muted hover:text-dc-yellow hover:bg-dc-bg-hover',
+              ]"
+            >
+              <font-awesome-icon icon="face-smile" class="text-[14px]" />
+            </button>
+            <Teleport to="body">
+              <div
+                v-if="showEmojiPicker"
+                class="emoji-picker-portal fixed z-[500]"
+                :style="emojiPickerStyle"
+              >
+                <EmojiPicker @pick="insertEmoji" />
+              </div>
+            </Teleport>
+          </div>
+
+          <div class="flex-1" />
+
+          <!-- Character hint -->
+          <span
+            v-if="messageInput.length > 0"
+            class="text-[11px] text-dc-text-muted mr-2 select-none"
+          >
+            Shift+Enter для переноса
+          </span>
+
+          <!-- Mic button (shown when input is empty) -->
+          <button
+            v-if="!messageInput.trim() && chatStore.isConnected"
+            @click="startRecording"
+            class="w-8 h-8 flex items-center justify-center rounded-lg text-dc-text-muted hover:text-dc-red hover:bg-dc-bg-hover transition-colors"
+            title="Voice message"
+          >
+            <font-awesome-icon icon="microphone" class="text-[14px]" />
+          </button>
+
+          <!-- Send button (shown when there's text) -->
+          <button
+            v-else
             @click="sendMessage"
             :disabled="!chatStore.isConnected || !messageInput.trim()"
-            class="p-3 sm:p-2.5 text-dc-text-muted hover:text-dc-text disabled:opacity-30 transition-colors flex-shrink-0"
+            :class="[
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all',
+              messageInput.trim() && chatStore.isConnected
+                ? 'bg-dc-blurple hover:bg-dc-blurple-hover text-white shadow-sm'
+                : 'bg-dc-bg-active text-dc-text-muted cursor-not-allowed opacity-50',
+            ]"
           >
-            <font-awesome-icon icon="paper-plane" class="text-lg sm:text-[16px]" />
+            <font-awesome-icon icon="paper-plane" class="text-[12px]" />
+            {{ t('chat.send') }}
           </button>
         </div>
       </div>
     </div>
+
+    <!-- Touch action sheet (long-press) -->
+    <Teleport to="body">
+      <Transition name="touch-sheet">
+        <div
+          v-if="showTouchActionsFor"
+          class="fixed inset-0 z-[9999] flex flex-col justify-end"
+          @click="closeTouchActions"
+        >
+          <div class="absolute inset-0 bg-black/50" />
+          <div class="touch-sheet-panel relative bg-dc-bg-floating rounded-t-2xl overflow-hidden shadow-2xl" @click.stop @touchstart.stop>
+            <!-- Drag handle -->
+            <div class="flex justify-center pt-3 pb-1">
+              <div class="w-10 h-1 bg-dc-separator rounded-full" />
+            </div>
+            <!-- Message preview -->
+            <div class="px-4 pb-3 border-b border-dc-separator">
+              <p class="text-sm text-dc-text-muted line-clamp-2 leading-snug">{{ showTouchActionsFor.message.text }}</p>
+            </div>
+            <!-- Quick reactions -->
+            <div class="flex justify-around px-4 py-3 border-b border-dc-separator">
+              <button
+                v-for="emoji in quickReactions"
+                :key="emoji"
+                @click="touchReact(emoji)"
+                :class="[
+                  'w-12 h-12 flex items-center justify-center rounded-2xl text-2xl transition-colors',
+                  hasUserReacted(showTouchActionsFor.message.reactions, emoji)
+                    ? 'bg-dc-blurple/30'
+                    : 'active:bg-dc-bg-hover',
+                ]"
+              >{{ emoji }}</button>
+            </div>
+            <!-- Actions -->
+            <div class="py-1">
+              <button
+                @click="touchReply"
+                class="w-full flex items-center gap-4 px-5 py-4 text-dc-text active:bg-dc-bg-hover text-[15px]"
+              >
+                <font-awesome-icon icon="reply" class="text-dc-text-muted w-5" />
+                {{ t('chat.reply') }}
+              </button>
+              <button
+                v-if="isOwnMessage(showTouchActionsFor.from)"
+                @click="touchEdit"
+                class="w-full flex items-center gap-4 px-5 py-4 text-dc-text active:bg-dc-bg-hover text-[15px]"
+              >
+                <font-awesome-icon icon="pencil" class="text-dc-text-muted w-5" />
+                {{ t('chat.edit') }}
+              </button>
+              <button
+                v-if="isOwnMessage(showTouchActionsFor.from)"
+                @click="touchDelete"
+                class="w-full flex items-center gap-4 px-5 py-4 text-dc-red active:bg-dc-bg-hover text-[15px]"
+              >
+                <font-awesome-icon icon="trash" class="w-5" />
+                {{ t('chat.delete') }}
+              </button>
+              <div class="h-px bg-dc-separator mx-4 mt-1" />
+              <button
+                @click="closeTouchActions"
+                class="w-full px-5 py-4 text-dc-text-muted active:bg-dc-bg-hover text-[15px] font-medium text-center"
+              >{{ t('common.cancel') }}</button>
+            </div>
+            <div style="height: env(safe-area-inset-bottom, 0px)" />
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Reaction picker (teleported to body) -->
     <Teleport to="body">
       <Transition name="popup">
         <div
           v-if="showReactionPickerFor && reactionPickerPosition"
-          ref="reactionPickerRef"
           class="reaction-picker fixed bg-dc-bg-floating border border-dc-separator rounded-lg shadow-xl p-2 flex gap-1 z-[9999]"
           :style="{
             top: `${reactionPickerPosition.top}px`,
@@ -757,6 +1212,25 @@ onBeforeUnmount(() => {
   </div>
 </template>
 
+<style>
+.touch-sheet-enter-active,
+.touch-sheet-leave-active {
+  transition: opacity 0.25s ease;
+}
+.touch-sheet-enter-active .touch-sheet-panel,
+.touch-sheet-leave-active .touch-sheet-panel {
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.touch-sheet-enter-from,
+.touch-sheet-leave-to {
+  opacity: 0;
+}
+.touch-sheet-enter-from .touch-sheet-panel,
+.touch-sheet-leave-to .touch-sheet-panel {
+  transform: translateY(100%);
+}
+</style>
+
 <style scoped>
 @keyframes bounce {
   0%,
@@ -769,5 +1243,14 @@ onBeforeUnmount(() => {
 }
 .animate-bounce {
   animation: bounce 1.2s infinite;
+}
+
+@keyframes recording-wave {
+  0%, 100% { height: 4px; }
+  50% { height: 22px; }
+}
+.recording-wave-bar {
+  height: 4px;
+  animation: recording-wave 0.8s ease-in-out infinite;
 }
 </style>

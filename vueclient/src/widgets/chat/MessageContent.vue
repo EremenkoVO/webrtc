@@ -1,14 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { parseLinks, type ParsedLink } from '@/shared/utils/linkParser'
+import { parseMessage } from '@/shared/utils/messageParser'
 
-const props = defineProps<{
-  text: string
-}>()
+const props = defineProps<{ text: string }>()
 
-const parsedContent = computed(() => {
-  return parseLinks(props.text)
-})
+const segments = computed(() => parseMessage(props.text))
 
 const failedGifs = ref<Set<string>>(new Set())
 
@@ -24,45 +20,69 @@ function handleGifError(url: string) {
 
 <template>
   <span class="inline">
-    <template v-for="(segment, index) in parsedContent" :key="index">
+    <template v-for="(seg, i) in segments" :key="i">
       <!-- Plain text -->
-      <span v-if="segment.type === 'text'">{{ segment.content }}</span>
-      
+      <span v-if="seg.type === 'text'">{{ seg.content }}</span>
+
+      <!-- Bold -->
+      <strong v-else-if="seg.type === 'bold'" class="font-semibold text-dc-text-heading">{{
+        seg.content
+      }}</strong>
+
+      <!-- Italic -->
+      <em v-else-if="seg.type === 'italic'" class="italic">{{ seg.content }}</em>
+
+      <!-- Strikethrough -->
+      <s v-else-if="seg.type === 'strike'" class="opacity-70">{{ seg.content }}</s>
+
+      <!-- Inline code -->
+      <code
+        v-else-if="seg.type === 'code'"
+        class="px-1 py-px rounded text-[0.875em] font-mono bg-dc-bg-tertiary text-dc-text border border-dc-separator/50"
+        >{{ seg.content }}</code
+      >
+
+      <!-- Code block -->
+      <span v-else-if="seg.type === 'codeblock'" class="block my-1">
+        <code
+          class="block w-full px-3 py-2.5 rounded-lg font-mono text-[0.85em] leading-relaxed bg-dc-bg-tertiary text-dc-text border border-dc-separator/40 whitespace-pre overflow-x-auto"
+          >{{ seg.content }}</code
+        >
+      </span>
+
       <!-- Regular link -->
       <a
-        v-else-if="segment.type === 'link'"
-        :href="segment.url"
+        v-else-if="seg.type === 'link'"
+        :href="seg.url"
         target="_blank"
         rel="noopener noreferrer"
-        @click="openLink(segment.url!, $event)"
+        @click="openLink(seg.url, $event)"
         class="underline break-all hover:underline"
-        style="color: var(--color-dc-text-link);"
+        style="color: var(--color-dc-text-link)"
+        >{{ seg.content }}</a
       >
-        {{ segment.content }}
-      </a>
-      
-      <!-- GIF image or fallback link -->
-      <span v-else-if="segment.type === 'gif'" class="inline-block my-1 max-w-full">
+
+      <!-- GIF / fallback link -->
+      <span v-else-if="seg.type === 'gif'" class="inline-block my-1 max-w-full">
         <img
-          v-if="!failedGifs.has(segment.url!)"
-          :src="segment.url"
-          :alt="segment.content"
+          v-if="!failedGifs.has(seg.url)"
+          :src="seg.url"
+          :alt="seg.content"
           class="max-w-full max-h-96 rounded-lg cursor-pointer hover:opacity-90 transition-opacity block"
           loading="lazy"
-          @click="openLink(segment.url!, $event)"
-          @error="handleGifError(segment.url!)"
+          @click="openLink(seg.url, $event)"
+          @error="handleGifError(seg.url)"
         />
         <a
           v-else
-          :href="segment.url"
+          :href="seg.url"
           target="_blank"
           rel="noopener noreferrer"
-          @click="openLink(segment.url!, $event)"
+          @click="openLink(seg.url, $event)"
           class="underline break-all hover:underline inline-block"
-          style="color: var(--color-dc-text-link);"
+          style="color: var(--color-dc-text-link)"
+          >{{ seg.content }}</a
         >
-          {{ segment.content }}
-        </a>
       </span>
     </template>
   </span>

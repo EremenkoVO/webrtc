@@ -48,3 +48,15 @@ type RoomRepository interface {
 	ListRooms(ctx context.Context) ([]*domain.Room, error)
 	DeleteRoom(ctx context.Context, roomID string) error
 }
+
+type ChatMessageRepository interface {
+	Store(ctx context.Context, msg *domain.ChatMessage) error
+	GetByID(ctx context.Context, id string) (*domain.ChatMessage, error)
+	ListByRoom(ctx context.Context, roomID string, limit int) ([]*domain.ChatMessage, error)
+	UpdateText(ctx context.Context, id, text string) error
+	Delete(ctx context.Context, id string) error
+	UpdateReactions(ctx context.Context, id string, reactions map[string][]string) error
+	GetOwner(ctx context.Context, id string) (string, error) // returns from_user
+	StoreVoice(ctx context.Context, msg *domain.ChatMessage, data []byte, contentType string) error
+	GetVoiceData(ctx context.Context, id string) (data []byte, contentType string, err error)
+}

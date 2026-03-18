@@ -101,6 +101,13 @@ export default {
     pressEscapeToCancel: 'Press Escape to cancel',
     addReaction: 'Add reaction',
     clickToRemove: 'Click to remove your reaction',
+    send: 'Send',
+    reply: 'Reply',
+    replyingTo: 'Replying to',
+    cancelReply: 'Cancel reply',
+    voiceMessage: 'Voice message',
+    voiceRecording: '{name} is recording a voice message...',
+    cancelRecording: 'Cancel',
   },
   call: {
     turnOffCamera: 'Turn Off Camera',
