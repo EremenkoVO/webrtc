@@ -134,6 +134,7 @@ async function submitSetup() {
 
 // ─── Actions ─────────────────────────────────────────────────────
 async function doDeleteUser(user: AdminUser) {
+  if (isPrimaryAdminProtected(user)) return
   confirmDeleteUser.value = null
   try {
     await adminStore.deleteUser(user.id)
@@ -523,8 +524,19 @@ const tabBadge = computed(() => ({
                   <font-awesome-icon :icon="user.role === 'admin' ? 'user' : 'crown'" class="text-xs" />
                 </button>
                 <button
-                  class="w-8 h-8 rounded flex items-center justify-center text-dc-text-muted hover:text-dc-red hover:bg-dc-red/10 transition-colors"
-                  :title="t('admin.users.delete')"
+                  type="button"
+                  :disabled="isPrimaryAdminProtected(user)"
+                  class="w-8 h-8 rounded flex items-center justify-center transition-colors"
+                  :class="
+                    isPrimaryAdminProtected(user)
+                      ? 'opacity-40 cursor-not-allowed text-dc-text-muted'
+                      : 'text-dc-text-muted hover:text-dc-red hover:bg-dc-red/10'
+                  "
+                  :title="
+                    isPrimaryAdminProtected(user)
+                      ? t('admin.users.primaryAdminLocked')
+                      : t('admin.users.delete')
+                  "
                   @click="confirmDeleteUser = user"
                 >
                   <font-awesome-icon icon="trash" class="text-xs" />
@@ -610,8 +622,19 @@ const tabBadge = computed(() => ({
                         </button>
                         <button
                           v-if="user.id !== currentUserId"
-                          class="p-1.5 rounded text-dc-text-muted hover:text-dc-red hover:bg-dc-red/10 transition-colors"
-                          :title="t('admin.users.delete')"
+                          type="button"
+                          :disabled="isPrimaryAdminProtected(user)"
+                          class="p-1.5 rounded transition-colors"
+                          :class="
+                            isPrimaryAdminProtected(user)
+                              ? 'opacity-40 cursor-not-allowed text-dc-text-muted'
+                              : 'text-dc-text-muted hover:text-dc-red hover:bg-dc-red/10'
+                          "
+                          :title="
+                            isPrimaryAdminProtected(user)
+                              ? t('admin.users.primaryAdminLocked')
+                              : t('admin.users.delete')
+                          "
                           @click="confirmDeleteUser = user"
                         >
                           <font-awesome-icon icon="trash" class="text-xs" />

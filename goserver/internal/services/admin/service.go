@@ -112,6 +112,14 @@ func (s *adminService) DeleteUser(ctx context.Context, adminID, targetID int) er
 		return domain.ErrForbidden
 	}
 
+	protected, err := s.userRepo.IsBootstrapAdmin(ctx, targetID)
+	if err != nil {
+		return domain.ErrServerError
+	}
+	if protected {
+		return domain.ErrPrimaryAdminProtected
+	}
+
 	target, _ := s.userRepo.FindByID(ctx, targetID)
 	targetName := strconv.Itoa(targetID)
 	if target != nil {

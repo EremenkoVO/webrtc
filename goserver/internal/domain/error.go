@@ -56,7 +56,7 @@ var (
 	ErrForbidden    = &AppError{Code: "FORBIDDEN", Message: "Insufficient permissions", StatusCode: 403}
 	ErrPrimaryAdminProtected = &AppError{
 		Code:       "PRIMARY_ADMIN_PROTECTED",
-		Message:    "The first administrator cannot be demoted",
+		Message:    "The first administrator cannot be demoted or deleted",
 		StatusCode: 403,
 	}
 	ErrUserExists   = &AppError{
