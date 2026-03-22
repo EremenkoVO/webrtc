@@ -457,9 +457,9 @@ wss.on('connection', async (ws, req) => {
             messageToReact.reactions[message.emoji] = [];
           }
 
-          // Add reaction if user hasn't already reacted
-          if (!messageToReact.reactions[message.emoji].includes(userId)) {
-            messageToReact.reactions[message.emoji].push(userId);
+          // Add reaction if user hasn't already reacted (store display name like Go backend)
+          if (!messageToReact.reactions[message.emoji].includes(username)) {
+            messageToReact.reactions[message.emoji].push(username);
           }
 
           // Broadcast reaction update to all clients in room
@@ -533,8 +533,8 @@ wss.on('connection', async (ws, req) => {
           }
 
           // Remove reaction
-          messageToUnreact.reactions[message.emoji] = 
-            messageToUnreact.reactions[message.emoji].filter(id => id !== userId);
+          messageToUnreact.reactions[message.emoji] =
+            messageToUnreact.reactions[message.emoji].filter((u) => u !== username);
 
           // Clean up empty reaction arrays
           if (messageToUnreact.reactions[message.emoji].length === 0) {

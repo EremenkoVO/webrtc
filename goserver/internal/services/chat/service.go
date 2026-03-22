@@ -20,15 +20,17 @@ type chatRoom struct {
 }
 
 type Service struct {
-	rooms   map[string]*chatRoom
-	roomsMu sync.RWMutex
-	msgRepo ports.ChatMessageRepository
+	rooms    map[string]*chatRoom
+	roomsMu  sync.RWMutex
+	msgRepo  ports.ChatMessageRepository
+	userRepo ports.UserRepository
 }
 
-func NewChatService(msgRepo ports.ChatMessageRepository) *Service {
+func NewChatService(msgRepo ports.ChatMessageRepository, userRepo ports.UserRepository) *Service {
 	return &Service{
-		rooms:   make(map[string]*chatRoom),
-		msgRepo: msgRepo,
+		rooms:    make(map[string]*chatRoom),
+		msgRepo:  msgRepo,
+		userRepo: userRepo,
 	}
 }
 
@@ -78,6 +80,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 		log.Printf("chat history load: %v", err)
 	}
 	if len(history) > 0 {
+		s.hydrateOutboundMessages(ctx, history)
 		_ = conn.WriteJSON(map[string]any{
 			"type":     "chat_history",
 			"room":     roomID,
@@ -157,6 +160,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Failed to save message"})
 				continue
 			}
+			s.hydrateOutboundMessages(ctx, []*domain.ChatMessage{chatMsg})
 			s.broadcastAll(room, chatMsg)
 
 		case "typing":
@@ -256,7 +260,12 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 			if target.Reactions == nil {
 				target.Reactions = map[string][]string{}
 			}
-			if !containsStr(target.Reactions[emoji], username) {
+			if err := s.normalizeReactionMapInPlace(ctx, target.Reactions); err != nil {
+				log.Printf("chat add_reaction normalize: %v", err)
+				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Failed to save reaction"})
+				continue
+			}
+			if !reactionListContainsUser(target.Reactions[emoji], username, userIDStr) {
 				target.Reactions[emoji] = append(target.Reactions[emoji], username)
 			}
 			if err := s.msgRepo.UpdateReactions(ctx, messageID, target.Reactions); err != nil {
@@ -285,7 +294,12 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 				continue
 			}
 			if target.Reactions != nil {
-				target.Reactions[emoji] = filterStr(target.Reactions[emoji], username)
+				if err := s.normalizeReactionMapInPlace(ctx, target.Reactions); err != nil {
+					log.Printf("chat remove_reaction normalize: %v", err)
+					_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Failed to save reaction"})
+					continue
+				}
+				target.Reactions[emoji] = removeUserFromReactionList(target.Reactions[emoji], username, userIDStr)
 				if len(target.Reactions[emoji]) == 0 {
 					delete(target.Reactions, emoji)
 				}
@@ -319,6 +333,9 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 }
 
 func (s *Service) BroadcastToRoom(roomID string, msg any) {
+	if cm, ok := msg.(*domain.ChatMessage); ok {
+		s.hydrateOutboundMessages(context.Background(), []*domain.ChatMessage{cm})
+	}
 	s.roomsMu.RLock()
 	room, ok := s.rooms[roomID]
 	s.roomsMu.RUnlock()
@@ -350,21 +367,3 @@ func (s *Service) broadcastExcept(room *chatRoom, msg any, exceptConnID string) 
 	}
 }
 
-func containsStr(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
-func filterStr(slice []string, remove string) []string {
-	result := slice[:0]
-	for _, v := range slice {
-		if v != remove {
-			result = append(result, v)
-		}
-	}
-	return result
-}

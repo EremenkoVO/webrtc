@@ -64,7 +64,7 @@ func (app *API) init(ctx context.Context) error {
 	userSvc := userService.NewUserService(userRepo)
 	roomSvc := roomService.NewRoomService(roomRepo)
 	msgRepo := sqlite.NewChatMessageRepository(app.db)
-	chatSvc := chatService.NewChatService(msgRepo)
+	chatSvc := chatService.NewChatService(msgRepo, userRepo)
 	adminSvc := adminService.NewAdminService(userRepo, roomRepo, authSvc, roomSvc, auditRepo)
 
 	// Initialize handlers

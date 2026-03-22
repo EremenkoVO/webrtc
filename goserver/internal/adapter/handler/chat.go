@@ -42,7 +42,7 @@ func (s *ServerWrapper) UploadVoiceMessage(w http.ResponseWriter, r *http.Reques
 		username = profile.Username
 	}
 	if username == "" {
-		username = strconv.Itoa(userID)
+		username = "Anonymous"
 	}
 
 	roomID := r.PathValue("roomId")
@@ -125,7 +125,7 @@ func (s *ServerWrapper) UploadFileMessage(w http.ResponseWriter, r *http.Request
 		username = profile.Username
 	}
 	if username == "" {
-		username = strconv.Itoa(userID)
+		username = "Anonymous"
 	}
 
 	roomID := r.PathValue("roomId")

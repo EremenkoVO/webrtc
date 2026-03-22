@@ -3,6 +3,8 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
 )
@@ -57,6 +59,48 @@ func (r *userRepository) FindByID(ctx context.Context, id int) (*domain.User, er
 	}
 
 	return &user, nil
+}
+
+func (r *userRepository) FindUsernamesByIDs(ctx context.Context, ids []int) (map[int]string, error) {
+	seen := make(map[int]struct{})
+	var unique []int
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	if len(unique) == 0 {
+		return map[int]string{}, nil
+	}
+
+	placeholders := make([]string, len(unique))
+	args := make([]any, len(unique))
+	for i, id := range unique {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	query := fmt.Sprintf(`SELECT id, username FROM users WHERE id IN (%s)`, strings.Join(placeholders, ","))
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() //nolint: errcheck
+
+	out := make(map[int]string)
+	for rows.Next() {
+		var id int
+		var username string
+		if err := rows.Scan(&id, &username); err != nil {
+			return nil, err
+		}
+		out[id] = username
+	}
+	return out, rows.Err()
 }
 
 func (r *userRepository) UserExists(ctx context.Context, username string) (bool, error) {

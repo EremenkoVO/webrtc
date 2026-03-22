@@ -11,6 +11,8 @@ type UserRepository interface {
 	CreateUser(ctx context.Context, user *domain.User) error
 	FindByUsername(ctx context.Context, username string) (*domain.User, error)
 	FindByID(ctx context.Context, id int) (*domain.User, error)
+	// FindUsernamesByIDs returns usernames for the given user IDs (missing IDs are omitted).
+	FindUsernamesByIDs(ctx context.Context, ids []int) (map[int]string, error)
 	UserExists(ctx context.Context, username string) (bool, error)
 	UpdateAvatar(ctx context.Context, userID int, data []byte, contentType string) error
 	GetAvatarByUsername(ctx context.Context, username string) ([]byte, string, error)
