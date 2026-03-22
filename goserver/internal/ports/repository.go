@@ -23,6 +23,8 @@ type UserRepository interface {
 	UpdateUserRole(ctx context.Context, userID int, role string) error
 	HasAdmin(ctx context.Context) (bool, error)
 	GetUserRole(ctx context.Context, userID int) (string, error)
+	IsBootstrapAdmin(ctx context.Context, userID int) (bool, error)
+	SetBootstrapAdmin(ctx context.Context, userID int) error
 }
 
 type AuditRepository interface {

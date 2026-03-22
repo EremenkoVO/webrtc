@@ -22,11 +22,12 @@ type setupStatusResponse struct {
 }
 
 type adminUserResponse struct {
-	ID         string  `json:"id"`
-	Username   string  `json:"username"`
-	Role       string  `json:"role"`
-	CreatedAt  string  `json:"created_at"`
-	LastSeenAt *string `json:"last_seen_at,omitempty"`
+	ID               string  `json:"id"`
+	Username         string  `json:"username"`
+	Role             string  `json:"role"`
+	BootstrapAdmin   bool    `json:"bootstrap_admin"`
+	CreatedAt        string  `json:"created_at"`
+	LastSeenAt       *string `json:"last_seen_at,omitempty"`
 }
 
 type adminRoomResponse struct {
@@ -78,10 +79,11 @@ func (s *ServerWrapper) GetAdminUsers(w http.ResponseWriter, r *http.Request) {
 	resp := make([]adminUserResponse, len(users))
 	for i, u := range users {
 		r := adminUserResponse{
-			ID:        strconv.Itoa(u.ID),
-			Username:  u.Username,
-			Role:      u.Role,
-			CreatedAt: u.CreatedAt.Format("2006-01-02 15:04:05"),
+			ID:               strconv.Itoa(u.ID),
+			Username:         u.Username,
+			Role:             u.Role,
+			BootstrapAdmin:   u.BootstrapAdmin,
+			CreatedAt:        u.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 		if u.LastSeenAt != nil {
 			s := u.LastSeenAt.Format("2006-01-02 15:04:05")

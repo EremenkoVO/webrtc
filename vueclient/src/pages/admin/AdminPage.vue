@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { useAdminStore, type AdminUser, type AdminRoom, type AuditEvent } from '@/shared/stores/adminStore'
+import {
+  useAdminStore,
+  type AdminUser,
+  type AdminRoom,
+  type AuditEvent,
+} from '@/shared/stores/adminStore'
 import { useAuthStore } from '@/shared/stores/authStore'
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
@@ -137,7 +142,12 @@ async function doDeleteUser(user: AdminUser) {
   }
 }
 
+function isPrimaryAdminProtected(user: AdminUser) {
+  return user.role === 'admin' && user.bootstrap_admin === true
+}
+
 async function toggleRole(user: AdminUser) {
+  if (isPrimaryAdminProtected(user)) return
   try {
     await adminStore.updateUserRole(user.id, user.role === 'admin' ? 'user' : 'admin')
   } catch (e: any) {
@@ -490,13 +500,24 @@ const tabBadge = computed(() => ({
               </div>
               <div v-if="user.id !== currentUserId" class="flex items-center gap-1 flex-shrink-0">
                 <button
+                  type="button"
+                  :disabled="isPrimaryAdminProtected(user)"
                   :class="[
                     'w-8 h-8 rounded flex items-center justify-center transition-colors',
+                    isPrimaryAdminProtected(user)
+                      ? 'opacity-40 cursor-not-allowed'
+                      : '',
                     user.role === 'admin'
                       ? 'bg-dc-bg-tertiary hover:bg-dc-bg-hover text-dc-text-muted hover:text-dc-text'
                       : 'bg-dc-blurple/10 hover:bg-dc-blurple/20 text-dc-blurple',
                   ]"
-                  :title="user.role === 'admin' ? t('admin.users.makeUser') : t('admin.users.makeAdmin')"
+                  :title="
+                    isPrimaryAdminProtected(user)
+                      ? t('admin.users.primaryAdminLocked')
+                      : user.role === 'admin'
+                        ? t('admin.users.makeUser')
+                        : t('admin.users.makeAdmin')
+                  "
                   @click="toggleRole(user)"
                 >
                   <font-awesome-icon :icon="user.role === 'admin' ? 'user' : 'crown'" class="text-xs" />
@@ -566,11 +587,22 @@ const tabBadge = computed(() => ({
                       <div class="flex items-center justify-end gap-1">
                         <button
                           v-if="user.id !== currentUserId"
+                          type="button"
+                          :disabled="isPrimaryAdminProtected(user)"
                           class="px-2 sm:px-2.5 py-1 rounded text-xs font-medium transition-colors"
-                          :class="user.role === 'admin'
-                            ? 'bg-dc-bg-tertiary hover:bg-dc-bg-hover text-dc-text-muted hover:text-dc-text'
-                            : 'bg-dc-blurple/10 hover:bg-dc-blurple/20 text-dc-blurple'"
-                          :title="user.role === 'admin' ? t('admin.users.makeUser') : t('admin.users.makeAdmin')"
+                          :class="[
+                            user.role === 'admin'
+                              ? 'bg-dc-bg-tertiary hover:bg-dc-bg-hover text-dc-text-muted hover:text-dc-text'
+                              : 'bg-dc-blurple/10 hover:bg-dc-blurple/20 text-dc-blurple',
+                            isPrimaryAdminProtected(user) ? 'opacity-40 cursor-not-allowed' : '',
+                          ]"
+                          :title="
+                            isPrimaryAdminProtected(user)
+                              ? t('admin.users.primaryAdminLocked')
+                              : user.role === 'admin'
+                                ? t('admin.users.makeUser')
+                                : t('admin.users.makeAdmin')
+                          "
                           @click="toggleRole(user)"
                         >
                           <font-awesome-icon :icon="user.role === 'admin' ? 'user' : 'crown'" class="mr-0 sm:mr-1" />

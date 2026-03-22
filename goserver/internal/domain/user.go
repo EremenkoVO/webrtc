@@ -11,4 +11,5 @@ type User struct {
 	AvatarData        []byte
 	AvatarContentType string
 	Role              string // "user" | "admin"
+	BootstrapAdmin    bool   // first / setup admin — role cannot be demoted to user
 }

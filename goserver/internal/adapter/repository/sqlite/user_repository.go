@@ -22,42 +22,46 @@ func (r *userRepository) CreateUser(ctx context.Context, user *domain.User) erro
 	if role == "" {
 		role = "user"
 	}
-	query := `INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)`
-	_, err := r.db.ExecContext(ctx, query, user.ID, user.Username, user.Password, role)
+	boot := 0
+	if user.BootstrapAdmin {
+		boot = 1
+	}
+	query := `INSERT INTO users (id, username, password, role, bootstrap_admin) VALUES (?, ?, ?, ?, ?)`
+	_, err := r.db.ExecContext(ctx, query, user.ID, user.Username, user.Password, role, boot)
 	return err
 }
 
 func (r *userRepository) FindByUsername(ctx context.Context, username string) (*domain.User, error) {
-	query := `SELECT id, username, password, created_at, role FROM users WHERE username = ?`
+	query := `SELECT id, username, password, created_at, role, COALESCE(bootstrap_admin, 0) FROM users WHERE username = ?`
 	row := r.db.QueryRowContext(ctx, query, username)
 
 	var user domain.User
-	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.CreatedAt, &user.Role)
+	var boot int
+	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.CreatedAt, &user.Role, &boot)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
-
 	if err != nil {
 		return nil, err
 	}
-
+	user.BootstrapAdmin = boot != 0
 	return &user, nil
 }
 
 func (r *userRepository) FindByID(ctx context.Context, id int) (*domain.User, error) {
-	query := `SELECT id, username, password, created_at, avatar, avatar_content_type, role FROM users WHERE id = ?`
+	query := `SELECT id, username, password, created_at, avatar, avatar_content_type, role, COALESCE(bootstrap_admin, 0) FROM users WHERE id = ?`
 	row := r.db.QueryRowContext(ctx, query, id)
 
 	var user domain.User
-	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.CreatedAt, &user.AvatarData, &user.AvatarContentType, &user.Role)
+	var boot int
+	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.CreatedAt, &user.AvatarData, &user.AvatarContentType, &user.Role, &boot)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
-
 	if err != nil {
 		return nil, err
 	}
-
+	user.BootstrapAdmin = boot != 0
 	return &user, nil
 }
 
@@ -144,7 +148,7 @@ func (r *userRepository) GetAvatarByUsername(ctx context.Context, username strin
 }
 
 func (r *userRepository) ListUsers(ctx context.Context) ([]*domain.User, error) {
-	query := `SELECT id, username, created_at, last_seen_at, role FROM users ORDER BY created_at ASC`
+	query := `SELECT id, username, created_at, last_seen_at, role, COALESCE(bootstrap_admin, 0) FROM users ORDER BY created_at ASC`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -154,9 +158,11 @@ func (r *userRepository) ListUsers(ctx context.Context) ([]*domain.User, error) 
 	var users []*domain.User
 	for rows.Next() {
 		var u domain.User
-		if err := rows.Scan(&u.ID, &u.Username, &u.CreatedAt, &u.LastSeenAt, &u.Role); err != nil {
+		var boot int
+		if err := rows.Scan(&u.ID, &u.Username, &u.CreatedAt, &u.LastSeenAt, &u.Role, &boot); err != nil {
 			return nil, err
 		}
+		u.BootstrapAdmin = boot != 0
 		users = append(users, &u)
 	}
 	return users, rows.Err()
@@ -189,4 +195,22 @@ func (r *userRepository) GetUserRole(ctx context.Context, userID int) (string, e
 		return "", nil
 	}
 	return role, err
+}
+
+func (r *userRepository) IsBootstrapAdmin(ctx context.Context, userID int) (bool, error) {
+	query := `SELECT COALESCE(bootstrap_admin, 0) FROM users WHERE id = ?`
+	var boot int
+	err := r.db.QueryRowContext(ctx, query, userID).Scan(&boot)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return boot != 0, nil
+}
+
+func (r *userRepository) SetBootstrapAdmin(ctx context.Context, userID int) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE users SET bootstrap_admin = 1 WHERE id = ?`, userID)
+	return err
 }

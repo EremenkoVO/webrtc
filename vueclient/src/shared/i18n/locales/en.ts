@@ -237,6 +237,7 @@ export default {
       actions: 'Actions',
       makeAdmin: 'Make Admin',
       makeUser: 'Revoke Admin',
+      primaryAdminLocked: 'The first administrator cannot be demoted',
       delete: 'Delete',
       deleteTitle: 'Delete User',
       deleteConfirm: 'Are you sure you want to delete "{name}"? This action cannot be undone.',

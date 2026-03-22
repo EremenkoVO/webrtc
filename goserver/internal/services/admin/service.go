@@ -65,6 +65,9 @@ func (s *adminService) Setup(ctx context.Context, username, password string) (*d
 		if err := s.userRepo.UpdateUserRole(ctx, existing.ID, "admin"); err != nil {
 			return nil, domain.ErrServerError
 		}
+		if err := s.userRepo.SetBootstrapAdmin(ctx, existing.ID); err != nil {
+			return nil, domain.ErrServerError
+		}
 	} else {
 		// Create new admin user
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -72,10 +75,11 @@ func (s *adminService) Setup(ctx context.Context, username, password string) (*d
 			return nil, domain.ErrServerError
 		}
 		user := &domain.User{
-			ID:       int(time.Now().UnixNano()),
-			Username: username,
-			Password: string(hashedPassword),
-			Role:     "admin",
+			ID:             int(time.Now().UnixNano()),
+			Username:       username,
+			Password:       string(hashedPassword),
+			Role:           "admin",
+			BootstrapAdmin: true,
 		}
 		if err := s.userRepo.CreateUser(ctx, user); err != nil {
 			return nil, domain.ErrServerError
@@ -134,6 +138,15 @@ func (s *adminService) UpdateUserRole(ctx context.Context, adminID, targetID int
 	}
 	if role != "user" && role != "admin" {
 		return domain.ErrValidation
+	}
+	if role == "user" {
+		protected, err := s.userRepo.IsBootstrapAdmin(ctx, targetID)
+		if err != nil {
+			return domain.ErrServerError
+		}
+		if protected {
+			return domain.ErrPrimaryAdminProtected
+		}
 	}
 	if err := s.userRepo.UpdateUserRole(ctx, targetID, role); err != nil {
 		return domain.ErrServerError

@@ -5,6 +5,7 @@ export interface AdminUser {
   id: string
   username: string
   role: string
+  bootstrap_admin?: boolean
   created_at: string
   last_seen_at?: string
 }

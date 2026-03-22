@@ -54,6 +54,11 @@ var (
 	}
 	ErrUnauthorized = &AppError{Code: "UNAUTHORIZED", Message: "Missing or invalid access token", StatusCode: 401}
 	ErrForbidden    = &AppError{Code: "FORBIDDEN", Message: "Insufficient permissions", StatusCode: 403}
+	ErrPrimaryAdminProtected = &AppError{
+		Code:       "PRIMARY_ADMIN_PROTECTED",
+		Message:    "The first administrator cannot be demoted",
+		StatusCode: 403,
+	}
 	ErrUserExists   = &AppError{
 		Code:       "USER_EXISTS",
 		Message:    "User with this username already exists",

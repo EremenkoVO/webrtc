@@ -237,6 +237,7 @@ export default {
       actions: 'Действия',
       makeAdmin: 'Сделать админом',
       makeUser: 'Забрать права',
+      primaryAdminLocked: 'Первого администратора нельзя лишить прав',
       delete: 'Удалить',
       deleteTitle: 'Удаление пользователя',
       deleteConfirm: 'Вы уверены, что хотите удалить "{name}"? Это действие необратимо.',
