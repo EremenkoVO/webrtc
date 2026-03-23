@@ -3,6 +3,7 @@ import { AuthService } from '@/api/index'
 import { useAuthStore } from '@/shared/stores/authStore'
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import SettingsModal from '@/widgets/settings/SettingsModal.vue'
+import AdminPage from '@/pages/admin/AdminPage.vue'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -16,6 +17,7 @@ const props = defineProps<{
 const authStore = useAuthStore()
 const router = useRouter()
 const showSettings = ref(false)
+const showAdmin = ref(false)
 const isAdmin = computed(() => authStore.userRole === 'admin')
 
 async function logout() {
@@ -50,7 +52,7 @@ async function logout() {
         type="button"
         class="w-8 h-8 rounded flex items-center justify-center text-dc-text-muted hover:text-dc-blurple hover:bg-dc-bg-hover transition-colors"
         :title="t('admin.title')"
-        @click="router.push('/admin')"
+        @click="showAdmin = true"
       >
         <font-awesome-icon icon="shield-halved" class="text-[16px]" />
       </button>
@@ -71,5 +73,30 @@ async function logout() {
       </button>
     </div>
     <SettingsModal v-if="showSettings" @close="showSettings = false" />
+
+    <Teleport to="body">
+      <Transition name="admin-modal">
+        <div
+          v-if="showAdmin"
+          class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm"
+          @click.self="showAdmin = false"
+        >
+          <div class="w-full h-full">
+            <AdminPage modal @close="showAdmin = false" />
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
+
+<style scoped>
+.admin-modal-enter-active,
+.admin-modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+.admin-modal-enter-from,
+.admin-modal-leave-to {
+  opacity: 0;
+}
+</style>

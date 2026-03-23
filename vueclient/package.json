@@ -1,8 +1,9 @@
 {
   "name": "vueclient",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "electron-dist/main.cjs",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
@@ -14,7 +15,13 @@
     "type-check": "vue-tsc --build",
     "lint": "eslint . --fix",
     "format": "prettier --write src/",
-    "generate-icons": "node scripts/generate-pwa-icons.js"
+    "generate-icons": "node scripts/generate-pwa-icons.js",
+    "electron:compile": "node electron/build.cjs",
+    "electron:dev": "concurrently -k -n \"vite,electron\" -c \"cyan,yellow\" \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development USE_SYSTEM_PICKER=true electron .\"",
+    "electron:dev:system-picker": "concurrently -k -n \"vite,electron\" -c \"cyan,yellow\" \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development USE_SYSTEM_PICKER=true electron .\"",
+    "electron:dev:custom-picker": "concurrently -k -n \"vite,electron\" -c \"cyan,yellow\" \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development USE_SYSTEM_PICKER=false electron .\"",
+    "electron:dev:mac-legacy-audio": "concurrently -k -n \"vite,electron\" -c \"cyan,yellow\" \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development USE_LEGACY_MAC_SCREEN_AUDIO=true electron .\"",
+    "electron:build": "vite build --base ./ && node electron/build.cjs && electron-builder"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.0.1",
@@ -39,6 +46,10 @@
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/eslint-config-typescript": "^14.6.0",
     "@vue/tsconfig": "^0.7.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "electron": "^36.9.5",
+    "electron-builder": "^25.1.8",
     "eslint": "^9.31.0",
     "eslint-plugin-vue": "~10.3.0",
     "jiti": "^2.4.2",
@@ -49,6 +60,59 @@
     "vite": "^7.0.6",
     "vite-plugin-pwa": "^1.2.0",
     "vite-plugin-vue-devtools": "^8.0.0",
-    "vue-tsc": "^3.0.4"
+    "vue-tsc": "^3.0.4",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.webrtc.vueclient",
+    "productName": "WebRTC Voice",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**",
+      "electron-dist/**",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.social-networking",
+      "entitlements": "electron/entitlements.mac.plist",
+      "entitlementsInherit": "electron/entitlements.mac.plist",
+      "hardenedRuntime": true,
+      "extendInfo": {
+        "NSAudioCaptureUsageDescription": "WebRTC Voice uses system audio capture to share your screen with sound.",
+        "NSScreenCaptureUsageDescription": "WebRTC Voice uses screen capture to share your screen."
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Network"
+    }
   }
 }

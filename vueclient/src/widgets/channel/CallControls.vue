@@ -45,13 +45,13 @@ function selectCamera(deviceId: string) {
   emits('update:currentCameraDeviceId', deviceId)
   cameraMenuOpen.value = false
 }
-function toggleAudio() {
-  emits('update:toggleMicrophone')
-  emits('update:audioEnabled', !props.audioEnabled)
-}
 async function toggleCameraMenu() {
   cameraMenuOpen.value = !cameraMenuOpen.value
   if (cameraMenuOpen.value) fetchVideoDevices()
+}
+function toggleAudio() {
+  emits('update:toggleMicrophone')
+  emits('update:audioEnabled', !props.audioEnabled)
 }
 function toggleMicrophoneMenu() {
   microphoneMenuOpen.value = !microphoneMenuOpen.value
@@ -65,7 +65,7 @@ function selectMicrophone(deviceId: string) {
 
 <template>
   <div class="px-4 py-3 2xl:py-4 bg-dc-bg-secondary border-t border-dc-separator/40">
-    <div class="flex items-center justify-center gap-2 2xl:gap-3">
+    <div class="flex items-center justify-center gap-2 2xl:gap-3 flex-wrap">
       <!-- Video toggle + camera select -->
       <div class="relative flex items-center">
         <button
@@ -210,4 +210,3 @@ function selectMicrophone(deviceId: string) {
     </div>
   </div>
 </template>
-

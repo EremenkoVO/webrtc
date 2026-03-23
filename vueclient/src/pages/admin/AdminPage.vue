@@ -10,6 +10,9 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
+const props = defineProps<{ modal?: boolean }>()
+const emit = defineEmits<{ (e: 'close'): void }>()
+
 const { t } = useI18n()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -49,6 +52,12 @@ const filteredUsers = computed(() =>
 
 // ─── Init ────────────────────────────────────────────────────────
 onMounted(async () => {
+  if (props.modal) {
+    screen.value = 'panel'
+    loadTab('dashboard')
+    return
+  }
+
   try {
     const initialized = await adminStore.checkSetupStatus()
     if (!initialized) {
@@ -61,7 +70,9 @@ onMounted(async () => {
       return
     }
 
-    const res = await fetch('/api/v1/me', {
+    const { OpenAPI } = await import('@/api/core/OpenAPI')
+    const base = OpenAPI.BASE || ''
+    const res = await fetch(`${base}/api/v1/me`, {
       headers: { Authorization: `Bearer ${authStore.token}` },
     })
     if (!res.ok) {
@@ -178,7 +189,11 @@ async function doPurge() {
 }
 
 function goBack() {
-  window.location.href = '/'
+  if (props.modal) {
+    emit('close')
+  } else {
+    window.location.href = '/'
+  }
 }
 
 function formatDate(s: string) {

@@ -1,8 +1,12 @@
 import { useAuthStore } from '@/shared/stores/authStore'
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router'
+
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: isElectron
+    ? createWebHashHistory(import.meta.env.BASE_URL)
+    : createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/auth',

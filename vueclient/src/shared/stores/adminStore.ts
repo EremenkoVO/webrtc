@@ -1,3 +1,4 @@
+import { OpenAPI } from '@/api/core/OpenAPI'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -48,7 +49,8 @@ function apiHeaders() {
 }
 
 async function apiFetch(path: string, options?: RequestInit) {
-  const res = await fetch(path, { ...options, headers: { ...apiHeaders(), ...options?.headers } })
+  const base = OpenAPI.BASE || ''
+  const res = await fetch(`${base}${path}`, { ...options, headers: { ...apiHeaders(), ...options?.headers } })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.message ?? `HTTP ${res.status}`)
@@ -66,7 +68,8 @@ export const useAdminStore = defineStore('adminStore', () => {
   const error = ref<string | null>(null)
 
   async function checkSetupStatus(): Promise<boolean> {
-    const res = await fetch('/api/v1/admin/setup')
+    const base = OpenAPI.BASE || ''
+    const res = await fetch(`${base}/api/v1/admin/setup`)
     const data = await res.json()
     return data.initialized as boolean
   }

@@ -64,6 +64,9 @@ export default {
     textChannelDesc: 'For text conversations without calls',
     channelNameLabel: 'Channel Name',
     create: 'Create',
+    switchVoiceTitle: 'Switch Voice Channel?',
+    switchVoiceBody: 'You are currently connected to "{current}". Switching will disconnect you and connect to "{target}".',
+    switchVoiceConfirm: 'Switch Channel',
   },
   channel: {
     selectChannel: 'Select a channel',
@@ -194,6 +197,22 @@ export default {
       notifications: 'Notifications',
       security: 'Security',
     },
+  },
+  serverPicker: {
+    title: 'Server Connection',
+    serverUrl: 'Server URL',
+    placeholder: 'https://your-server.com',
+    save: 'Save',
+    test: 'Test',
+    testing: 'Testing...',
+    connected: 'Connected',
+    failed: 'Failed',
+    invalidUrl: 'Enter a valid URL (https://... or http://...)',
+    savedServers: 'Recent Servers',
+    clearSaved: 'Clear',
+    selfSignedNote:
+      'Self-signed certificates are automatically trusted in the desktop app.',
+    defaultServer: 'Use default (browser proxy)',
   },
   admin: {
     title: 'Admin Panel',
