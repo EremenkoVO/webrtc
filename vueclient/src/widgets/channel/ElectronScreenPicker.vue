@@ -31,8 +31,11 @@ const list    = computed(() => (activeTab.value === 'screen' ? screens.value : w
 const selectedSource = computed(() =>
   sources.value.find((s) => s.id === selectedId.value) ?? null
 )
+const platform = computed(() => window.electronAPI?.platform ?? '')
 const canCaptureAudio = computed(() => {
-  return activeTab.value === 'screen'
+  const isWinOrLinux = platform.value === 'win32' || platform.value === 'linux'
+  if (!isWinOrLinux) return activeTab.value === 'screen'
+  return activeTab.value === 'screen' || activeTab.value === 'window'
 })
 
 const resolutionMap: Record<string, { width: number; height: number } | null> = {
@@ -62,7 +65,7 @@ function selectSource(s: CaptureSource) {
 
 function switchTab(tab: 'screen' | 'window') {
   activeTab.value = tab
-  if (tab === 'window') captureAudio.value = false
+  if (!canCaptureAudio.value) captureAudio.value = false
   const first = (tab === 'screen' ? screens : windows).value[0]
   if (first) selectedId.value = first.id
 }

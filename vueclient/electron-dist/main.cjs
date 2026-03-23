@@ -77,6 +77,7 @@ import_electron.app.on("certificate-error", (event, _webContents, url, _error, _
 });
 var isDev = process.env.NODE_ENV === "development" || !import_electron.app.isPackaged;
 var useSystemPicker = process.env.USE_SYSTEM_PICKER !== "false";
+var shouldUseSystemPicker = useSystemPicker && process.platform === "darwin";
 var useLegacyMacScreenAudio = process.env.USE_LEGACY_MAC_SCREEN_AUDIO === "true";
 if (process.platform === "darwin" && useLegacyMacScreenAudio) {
   import_electron.app.commandLine.appendSwitch("disable-features", "MacCatapLoopbackAudioForScreenShare");
@@ -138,7 +139,7 @@ import_electron.app.whenReady().then(() => {
     }
     callback(-3);
   });
-  if (useSystemPicker) {
+  if (shouldUseSystemPicker) {
     import_electron.session.defaultSession.setDisplayMediaRequestHandler(
       async (_request, callback) => {
         try {

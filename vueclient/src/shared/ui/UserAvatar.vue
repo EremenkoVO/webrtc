@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { OpenAPI } from '@/api'
 import { useAvatarStore } from '@/shared/stores/avatarStore'
 import { computed, ref, watch } from 'vue'
 
@@ -10,7 +11,9 @@ const imgError = ref(false)
 const src = computed(() => {
   if (!props.username) return ''
   const bust = avatarStore.getCacheBust(props.username)
-  const base = `/api/v1/avatars/${encodeURIComponent(props.username)}`
+  const path = `/api/v1/avatars/${encodeURIComponent(props.username)}`
+  const host = OpenAPI.BASE?.replace(/\/+$/, '') ?? ''
+  const base = host ? `${host}${path}` : path
   return bust ? `${base}?t=${bust}` : base
 })
 

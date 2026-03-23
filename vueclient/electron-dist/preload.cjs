@@ -2,11 +2,12 @@
 
 // electron/preload.ts
 var import_electron = require("electron");
+var useSystemPicker = process.env.USE_SYSTEM_PICKER !== "false" && process.platform === "darwin";
 import_electron.contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
-  useSystemPicker: "true",
-  useLegacyMacScreenAudio: "false",
-  preferScapCapture: "false",
+  useSystemPicker,
+  useLegacyMacScreenAudio: false,
+  preferScapCapture: false,
   preferredTransportMode: "p2p",
   preferredCaptureSource: "screen",
   preferredCaptureResolution: { width: 1920, height: 1080 },

@@ -32,31 +32,68 @@ export async function startElectronCapture(params: {
   captureAudio: boolean
 }): Promise<{ videoTrack: MediaStreamTrack; audioTrack: MediaStreamTrack | null }> {
   const capturer = window.electronAPI!.capturer
+  const platform = window.electronAPI?.platform ?? ''
+  // Chromium/Electron can terminate renderer with bad IPC for window-source
+  // audio when using legacy chromeMediaSourceId constraints. Keep window audio
+  // disabled on this path until migrated to a displayMedia handler flow.
   const allowAudio = params.captureAudio && params.sourceType === 'screen'
 
-  // ── Video ─────────────────────────────────────────────────────────────────
-  const constraints: MediaStreamConstraints = {
-    audio: false,
-    video: {
-      // @ts-expect-error — Electron-specific chrome constraints
-      mandatory: {
-        chromeMediaSource: 'desktop',
-        chromeMediaSourceId: params.sourceId,
-        ...(params.resolution
-          ? {
-              maxWidth: params.resolution.width,
-              maxHeight: params.resolution.height,
-            }
-          : {}),
-        ...(params.frameRate ? { maxFrameRate: params.frameRate } : {}),
-      },
-    },
+  // @ts-expect-error — Electron-specific chrome constraints
+  const mandatoryVideo = {
+    chromeMediaSource: 'desktop',
+    chromeMediaSourceId: params.sourceId,
+    ...(params.resolution
+      ? {
+          maxWidth: params.resolution.width,
+          maxHeight: params.resolution.height,
+        }
+      : {}),
+    ...(params.frameRate ? { maxFrameRate: params.frameRate } : {}),
   }
-  const videoStream = await navigator.mediaDevices.getUserMedia(constraints)
-  const videoTrack = videoStream.getVideoTracks()[0]
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   let audioTrack: MediaStreamTrack | null = null
+  let videoTrack: MediaStreamTrack | null = null
+
+  if (allowAudio) {
+    // On Windows, opening separate desktop capture sessions for video and audio
+    // can trigger renderer termination. Prefer a single combined stream request.
+    try {
+      const combinedStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          // @ts-expect-error
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: params.sourceId,
+          },
+        },
+        video: {
+          // @ts-expect-error
+          mandatory: mandatoryVideo,
+        },
+      })
+      videoTrack = combinedStream.getVideoTracks()[0] ?? null
+      audioTrack = combinedStream.getAudioTracks()[0] ?? null
+    } catch {
+      // Fall back to safer single-video capture below.
+    }
+  }
+
+  // ── Video ─────────────────────────────────────────────────────────────────
+  if (!videoTrack) {
+    const videoStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        // @ts-expect-error
+        mandatory: mandatoryVideo,
+      },
+    })
+    videoTrack = videoStream.getVideoTracks()[0] ?? null
+  }
+
+  if (!videoTrack) {
+    throw new Error('No screen video track available')
+  }
 
   if (allowAudio) {
     const hasNative = await capturer.isNativeAvailable()
@@ -94,8 +131,10 @@ export async function startElectronCapture(params: {
       }
     }
 
-    if (!audioTrack) {
-      // Fallback: system-wide desktop loopback audio (all supported platforms)
+    if (!audioTrack && platform !== 'win32') {
+      // Fallback: desktop source audio via selected sourceId.
+      // For screen source this is typically system loopback; for window source it is
+      // source-bound window/app audio when supported by Chromium/Electron.
       try {
         const audioStream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -114,7 +153,9 @@ export async function startElectronCapture(params: {
     }
   }
 
-  if (audioTrack) audioTrack.contentHint = 'screen'
+  if (audioTrack) {
+    audioTrack.contentHint = params.sourceType === 'screen' ? 'screen' : 'music'
+  }
   return { videoTrack, audioTrack }
 }
 

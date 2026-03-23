@@ -75,6 +75,7 @@ app.on('certificate-error', (event, _webContents, url, _error, _certificate, cal
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 const useSystemPicker = process.env.USE_SYSTEM_PICKER !== 'false'
+const shouldUseSystemPicker = useSystemPicker && process.platform === 'darwin'
 const useLegacyMacScreenAudio = process.env.USE_LEGACY_MAC_SCREEN_AUDIO === 'true'
 
 if (process.platform === 'darwin' && useLegacyMacScreenAudio) {
@@ -157,7 +158,7 @@ app.whenReady().then(() => {
     callback(-3)
   })
 
-  if (useSystemPicker) {
+  if (shouldUseSystemPicker) {
     // Optional system picker flow (experimental in Electron).
     // When system picker is available, this callback may be bypassed by Chromium.
     session.defaultSession.setDisplayMediaRequestHandler(

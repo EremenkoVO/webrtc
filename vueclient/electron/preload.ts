@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+const useSystemPicker = process.env.USE_SYSTEM_PICKER !== 'false' && process.platform === 'darwin'
+
 // ── Audio data event listeners ────────────────────────────────────────────────
 // These are stubs — native per-app audio capture (macOS SCK) is not implemented.
 // The renderer's useElectronCapture.ts falls back to desktop loopback audio automatically.
@@ -11,9 +13,9 @@ type AudioErrorCallback = (msg: string) => void
 
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
-  useSystemPicker: 'true',
-  useLegacyMacScreenAudio: 'false',
-  preferScapCapture: 'false',
+  useSystemPicker,
+  useLegacyMacScreenAudio: false,
+  preferScapCapture: false,
   preferredTransportMode: 'p2p',
   preferredCaptureSource: 'screen',
   preferredCaptureResolution: { width: 1920, height: 1080 },
