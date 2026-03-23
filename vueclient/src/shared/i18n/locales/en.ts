@@ -64,6 +64,9 @@ export default {
     textChannelDesc: 'For text conversations without calls',
     channelNameLabel: 'Channel Name',
     create: 'Create',
+    switchVoiceTitle: 'Switch Voice Channel?',
+    switchVoiceBody: 'You are currently connected to "{current}". Switching will disconnect you and connect to "{target}".',
+    switchVoiceConfirm: 'Switch Channel',
   },
   channel: {
     selectChannel: 'Select a channel',

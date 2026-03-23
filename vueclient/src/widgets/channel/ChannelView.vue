@@ -15,7 +15,7 @@ import { useSidebarStore } from '@/shared/stores/sidebarStore'
 import { useSignalingStore } from '@/shared/stores/signalingStore'
 import { useVoiceStateStore } from '@/shared/stores/voiceStateStore'
 import ChatPanel from '@/widgets/chat/ChatPanel.vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { startElectronCapture, stopElectronCapture } from '@/shared/lib/useElectronCapture'
 import CallControls from './CallControls.vue'
@@ -236,11 +236,14 @@ const videoGridStyle = computed(() => {
 function selectCamera(deviceId: string) {
   currentCameraDeviceId.value = deviceId
   videoEnabled.value = true
+  callStore.setCurrentCameraDeviceId(deviceId)
+  callStore.setVideoEnabled(true)
   if (callStore.isInCall) switchCamera(deviceId)
   toggleMedia(videoEnabled.value, audioEnabled.value, deviceId)
 }
 function selectMicrophone(deviceId: string) {
   currentMicrophoneDeviceId.value = deviceId
+  callStore.setCurrentMicrophoneDeviceId(deviceId)
   if (callStore.isInCall) switchMicrophone(deviceId)
 }
 function handlePeerMuteChange(peerId: string, muted: boolean) {
@@ -263,6 +266,14 @@ function toggleVideo() {
     videoEnabled.value = false
   }
   toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
+  callStore.setVideoEnabled(videoEnabled.value)
+  callStore.setCurrentCameraDeviceId(
+    videoEnabled.value
+      ? localStream.value?.getVideoTracks()[0]?.getSettings().deviceId ||
+          currentCameraDeviceId.value ||
+          null
+      : currentCameraDeviceId.value,
+  )
 }
 
 async function toggleMicrophone() {
@@ -274,6 +285,7 @@ async function toggleMicrophone() {
     }
   }
   toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
+  callStore.setAudioEnabled(audioEnabled.value)
 }
 
 async function startCall() {
@@ -298,6 +310,24 @@ async function startCall() {
         : false,
     })
     callStore.setStateCall(true)
+    callStore.setAudioEnabled(audioEnabled.value)
+    callStore.setDeafened(false)
+    {
+      const track = localStream.value?.getAudioTracks()[0]
+      const fromTrack = track?.getSettings().deviceId
+      callStore.setCurrentMicrophoneDeviceId(
+        fromTrack || currentMicrophoneDeviceId.value || settingsStore.defaultMicrophoneId || null,
+      )
+    }
+    callStore.setVideoEnabled(videoEnabled.value)
+    {
+      const vtrack = localStream.value?.getVideoTracks()[0]
+      const vid = vtrack?.getSettings().deviceId
+      callStore.setCurrentCameraDeviceId(
+        vid || currentCameraDeviceId.value || settingsStore.defaultCameraId || null,
+      )
+    }
+    callStore.setScreenSharing(isScreenSharing.value)
     roomStore.getListChannels()
     toggleMedia(videoEnabled.value, audioEnabled.value, preferredCamera || '')
   } catch (error) {
@@ -307,20 +337,19 @@ async function startCall() {
 
 function toggleDeafen() {
   if (!isDeafened.value) {
-    // Remember whether mic was already muted before deafening
     micMutedBeforeDeafen.value = !audioEnabled.value
     isDeafened.value = true
     voiceStateStore.setLocalDeafened(true)
     setDeafened(true)
-    // Mute mic if it was on
     if (audioEnabled.value) toggleMicrophone()
   } else {
     isDeafened.value = false
     voiceStateStore.setLocalDeafened(false)
     setDeafened(false)
-    // Unmute mic only if it was on before deafening
     if (!micMutedBeforeDeafen.value && !audioEnabled.value) toggleMicrophone()
   }
+  callStore.setDeafened(isDeafened.value)
+  callStore.setAudioEnabled(audioEnabled.value)
 }
 
 function endCall() {
@@ -336,6 +365,12 @@ function endCall() {
   isDeafened.value = false
   micMutedBeforeDeafen.value = false
   callStore.setStateCall(false)
+  callStore.setAudioEnabled(true)
+  callStore.setDeafened(false)
+  callStore.setCurrentMicrophoneDeviceId(null)
+  callStore.setVideoEnabled(false)
+  callStore.setCurrentCameraDeviceId(null)
+  callStore.setScreenSharing(false)
   voiceStateStore.clear()
 }
 
@@ -408,8 +443,22 @@ async function connectToRoom(id: string | undefined) {
 
 watch(
   () => roomStore.selectedChannelId,
-  (newId, oldId) => {
-    if (oldId && newId !== oldId && callStore.isInCall) endCall()
+  async (newId, oldId) => {
+    if (!oldId || newId === oldId || !callStore.isInCall) return
+
+    const newChannel = roomStore.channelById(newId!)
+    const isNewVoice = (newChannel?.type ?? 'voice') !== 'text'
+
+    if (!isNewVoice) return
+    if (newId === roomStore.roomId) return
+
+    const shouldAutoJoin = callStore.pendingAutoJoin
+    callStore.clearAutoJoin()
+    endCall()
+    if (shouldAutoJoin && newId) {
+      await nextTick()
+      startCall()
+    }
   },
 )
 watch(
@@ -419,6 +468,75 @@ watch(
       endCall()
       callStore.clearDisconnectRequest()
     }
+  },
+)
+watch(
+  () => callStore.toggleMicRequested,
+  (requested) => {
+    if (requested) {
+      toggleMicrophone()
+      callStore.clearToggleMicRequest()
+    }
+  },
+)
+watch(
+  () => callStore.toggleDeafenRequested,
+  (requested) => {
+    if (requested) {
+      toggleDeafen()
+      callStore.clearToggleDeafenRequest()
+    }
+  },
+)
+watch(
+  () => callStore.pendingMicrophoneDeviceId,
+  (deviceId) => {
+    if (deviceId) {
+      selectMicrophone(deviceId)
+      callStore.clearMicrophoneDeviceRequest()
+    }
+  },
+)
+watch(
+  () => callStore.toggleVideoRequested,
+  (requested) => {
+    if (requested) {
+      toggleVideo()
+      callStore.clearToggleVideoRequest()
+    }
+  },
+)
+watch(
+  () => callStore.pendingCameraDeviceId,
+  (deviceId) => {
+    if (deviceId) {
+      selectCamera(deviceId)
+      callStore.clearCameraDeviceRequest()
+    }
+  },
+)
+watch(
+  () => callStore.screenShareStartRequested,
+  (requested) => {
+    if (requested) {
+      handleRequestScreenShare()
+      callStore.clearScreenShareStartRequest()
+    }
+  },
+)
+watch(
+  () => callStore.screenShareStopRequested,
+  (requested) => {
+    if (requested) {
+      void stopScreenShare()
+      callStore.clearScreenShareStopRequest()
+    }
+  },
+)
+watch(
+  () => isScreenSharing.value,
+  (v) => {
+    callStore.setScreenSharing(v)
   },
 )
 watch(

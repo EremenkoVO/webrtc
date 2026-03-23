@@ -6,6 +6,7 @@ import { useRoomStore } from '@/shared/stores/roomStore'
 import { useSidebarStore } from '@/shared/stores/sidebarStore'
 import { useSignalingStore } from '@/shared/stores/signalingStore'
 import { useVoiceStateStore } from '@/shared/stores/voiceStateStore'
+import { useWebRTC } from '@/shared/lib/useWebRTC'
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import UserPanel from '@/widgets/user-panel/UserPanel.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -19,6 +20,42 @@ const callStore = useCallStore()
 const voiceStateStore = useVoiceStateStore()
 const signalingStore = useSignalingStore()
 
+const { audioDevices, videoDevices, fetchAudioDevices, fetchVideoDevices } = useWebRTC()
+const microphoneMenuOpen = ref(false)
+const cameraMenuOpen = ref(false)
+
+function toggleMicrophoneDeviceMenu() {
+  microphoneMenuOpen.value = !microphoneMenuOpen.value
+  if (microphoneMenuOpen.value) void fetchAudioDevices()
+}
+
+function closeMicrophoneMenu() {
+  microphoneMenuOpen.value = false
+}
+
+function pickMicrophoneDevice(deviceId: string) {
+  if (callStore.isInCall) {
+    callStore.requestSelectMicrophone(deviceId)
+  }
+  microphoneMenuOpen.value = false
+}
+
+function toggleCameraDeviceMenu() {
+  cameraMenuOpen.value = !cameraMenuOpen.value
+  if (cameraMenuOpen.value) void fetchVideoDevices()
+}
+
+function closeCameraMenu() {
+  cameraMenuOpen.value = false
+}
+
+function pickCameraDevice(deviceId: string) {
+  if (callStore.isInCall) {
+    callStore.requestSelectCamera(deviceId)
+  }
+  cameraMenuOpen.value = false
+}
+
 const props = defineProps<{ user: UserProfile }>()
 
 const showCreateModal = ref(false)
@@ -26,6 +63,10 @@ const newChannelName = ref('')
 const newChannelType = ref<'voice' | 'text'>('voice')
 const searchQuery = ref('')
 const isLoading = ref(false)
+
+const showSwitchModal = ref(false)
+const pendingSwitchChannelId = ref<string | undefined>()
+const pendingSwitchRoommates = ref<string[] | undefined>()
 
 // Context menu state
 const contextMenuUser = ref<string | null>(null)
@@ -87,8 +128,37 @@ async function addChannel() {
 
 function selectChannel(channelId: string | undefined, roommates?: string[]) {
   if (!channelId) return
+  if (channelId === roomStore.selectedChannelId) return
+
+  const target = roomStore.channelById(channelId)
+  const isTargetVoice = (target?.type ?? 'voice') !== 'text'
+
+  if (isTargetVoice && callStore.isInCall && channelId !== roomStore.roomId) {
+    pendingSwitchChannelId.value = channelId
+    pendingSwitchRoommates.value = roommates
+    showSwitchModal.value = true
+    return
+  }
+
   roomStore.selectChannel(channelId, roommates)
   sidebarStore.close()
+}
+
+function confirmSwitchChannel() {
+  showSwitchModal.value = false
+  if (pendingSwitchChannelId.value) {
+    callStore.requestAutoJoin()
+    roomStore.selectChannel(pendingSwitchChannelId.value, pendingSwitchRoommates.value)
+    sidebarStore.close()
+  }
+  pendingSwitchChannelId.value = undefined
+  pendingSwitchRoommates.value = undefined
+}
+
+function cancelSwitchChannel() {
+  showSwitchModal.value = false
+  pendingSwitchChannelId.value = undefined
+  pendingSwitchRoommates.value = undefined
 }
 
 async function refreshChannels() {
@@ -458,13 +528,13 @@ watch(
       </div>
     </div>
 
-    <!-- Voice connected indicator -->
+    <!-- Voice connected panel -->
     <div
-      v-if="callStore.isInCall && roomStore.selectedChannelName"
-      class="px-3 py-2 bg-dc-bg-secondary-alt border-t border-white/[0.04]"
+      v-if="callStore.isInCall"
+      class="bg-dc-bg-secondary-alt border-t border-white/[0.04]"
     >
-      <div class="flex items-center gap-2">
-        <div class="relative">
+      <div class="px-3 pt-2 pb-1.5 flex items-center gap-2">
+        <div class="relative flex-shrink-0">
           <font-awesome-icon icon="volume-high" class="text-dc-green text-lg sm:text-[16px]" />
           <div
             class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-dc-green border-2 border-dc-bg-secondary-alt"
@@ -475,12 +545,160 @@ watch(
             {{ t('common.voiceConnected') }}
           </div>
           <div class="text-sm sm:text-[11px] text-dc-text-muted truncate leading-tight">
-            {{ roomStore.selectedChannelName }}
+            {{ roomStore.channelById(roomStore.roomId)?.name ?? roomStore.selectedChannelName }}
           </div>
         </div>
+      </div>
+
+      <div class="px-2 pb-2 flex flex-wrap items-center justify-center gap-1">
+        <!-- Camera + device picker -->
+        <div class="relative flex items-center">
+          <button
+            @click="callStore.requestToggleVideo()"
+            :class="[
+              'w-9 h-9 sm:w-8 sm:h-8 rounded-l-md flex items-center justify-center transition-colors',
+              callStore.videoEnabled
+                ? 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text-secondary'
+                : 'bg-dc-red/20 text-dc-red hover:bg-dc-red/30',
+            ]"
+            :title="callStore.videoEnabled ? t('call.turnOffCamera') : t('call.turnOnCamera')"
+          >
+            <font-awesome-icon
+              :icon="callStore.videoEnabled ? 'video' : 'video-slash'"
+              class="text-base sm:text-sm"
+            />
+          </button>
+          <div class="relative">
+            <button
+              type="button"
+              :class="[
+                'w-6 h-9 sm:h-8 rounded-r-md border-l border-black/20 flex items-center justify-center transition-colors text-dc-text-muted',
+                callStore.videoEnabled
+                  ? 'bg-dc-bg-active hover:bg-[#4e5058]'
+                  : 'bg-dc-red/20 hover:bg-dc-red/30 text-dc-red',
+              ]"
+              :title="t('call.camera')"
+              @click="toggleCameraDeviceMenu()"
+            >
+              <font-awesome-icon
+                icon="chevron-up"
+                :class="['text-[9px] transition-transform', { 'rotate-180': cameraMenuOpen }]"
+              />
+            </button>
+            <Transition name="dropdown">
+              <ul
+                v-if="cameraMenuOpen"
+                class="absolute left-0 bottom-full mb-1 w-52 max-w-[min(13rem,calc(100vw-2rem))] bg-dc-bg-floating rounded-lg shadow-xl z-[60] py-1.5 max-h-48 overflow-y-auto border border-dc-separator/40"
+                v-click-outside="closeCameraMenu"
+              >
+                <li
+                  v-for="device in videoDevices"
+                  :key="device.deviceId"
+                  class="px-3 py-1.5 text-xs text-dc-text hover:bg-dc-blurple hover:text-white cursor-pointer transition-colors truncate"
+                  :class="{
+                    'bg-dc-bg-active': callStore.currentCameraDeviceId === device.deviceId,
+                  }"
+                  @click="pickCameraDevice(device.deviceId)"
+                >
+                  {{ device.label || `${t('call.camera')} ${videoDevices.indexOf(device) + 1}` }}
+                </li>
+              </ul>
+            </Transition>
+          </div>
+        </div>
+
+        <!-- Mic + input device picker -->
+        <div class="relative flex items-center">
+          <button
+            @click="callStore.requestToggleMic()"
+            :class="[
+              'w-9 h-9 sm:w-8 sm:h-8 rounded-l-md flex items-center justify-center transition-colors',
+              callStore.audioEnabled
+                ? 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text-secondary'
+                : 'bg-dc-red/20 text-dc-red hover:bg-dc-red/30',
+            ]"
+            :title="callStore.audioEnabled ? t('common.mute') : t('common.unmute')"
+          >
+            <font-awesome-icon
+              :icon="callStore.audioEnabled ? 'microphone' : 'microphone-slash'"
+              class="text-base sm:text-sm"
+            />
+          </button>
+          <div class="relative">
+            <button
+              type="button"
+              :class="[
+                'w-6 h-9 sm:h-8 rounded-r-md border-l border-black/20 flex items-center justify-center transition-colors text-dc-text-muted',
+                callStore.audioEnabled
+                  ? 'bg-dc-bg-active hover:bg-[#4e5058]'
+                  : 'bg-dc-red/20 hover:bg-dc-red/30 text-dc-red',
+              ]"
+              :title="t('call.microphone')"
+              @click="toggleMicrophoneDeviceMenu()"
+            >
+              <font-awesome-icon
+                icon="chevron-up"
+                :class="['text-[9px] transition-transform', { 'rotate-180': microphoneMenuOpen }]"
+              />
+            </button>
+            <Transition name="dropdown">
+              <ul
+                v-if="microphoneMenuOpen"
+                class="absolute left-0 bottom-full mb-1 w-52 max-w-[min(13rem,calc(100vw-2rem))] bg-dc-bg-floating rounded-lg shadow-xl z-[60] py-1.5 max-h-48 overflow-y-auto border border-dc-separator/40"
+                v-click-outside="closeMicrophoneMenu"
+              >
+                <li
+                  v-for="device in audioDevices"
+                  :key="device.deviceId"
+                  class="px-3 py-1.5 text-xs text-dc-text hover:bg-dc-blurple hover:text-white cursor-pointer transition-colors truncate"
+                  :class="{
+                    'bg-dc-bg-active': callStore.currentMicrophoneDeviceId === device.deviceId,
+                  }"
+                  @click="pickMicrophoneDevice(device.deviceId)"
+                >
+                  {{ device.label || `${t('call.microphone')} ${audioDevices.indexOf(device) + 1}` }}
+                </li>
+              </ul>
+            </Transition>
+          </div>
+        </div>
+
+        <button
+          @click="callStore.requestToggleDeafen()"
+          :class="[
+            'w-9 h-9 sm:w-8 sm:h-8 rounded-md flex items-center justify-center transition-colors',
+            callStore.isDeafened
+              ? 'bg-dc-red/20 text-dc-red hover:bg-dc-red/30'
+              : 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text-secondary',
+          ]"
+          :title="callStore.isDeafened ? t('common.undeafen') : t('common.deafen')"
+        >
+          <font-awesome-icon icon="headset" class="text-base sm:text-sm" />
+        </button>
+
+        <button
+          @click="
+            callStore.isScreenSharing
+              ? callStore.requestStopScreenShare()
+              : callStore.requestScreenShare()
+          "
+          :class="[
+            'w-9 h-9 sm:w-8 sm:h-8 rounded-md flex items-center justify-center transition-colors',
+            callStore.isScreenSharing
+              ? 'bg-dc-red/20 text-dc-red hover:bg-dc-red/30'
+              : 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text-secondary',
+          ]"
+          :title="callStore.isScreenSharing ? t('call.stopSharing') : t('call.shareScreen')"
+        >
+          <font-awesome-icon
+            :icon="callStore.isScreenSharing ? 'circle-stop' : 'desktop'"
+            class="text-base sm:text-sm"
+          />
+        </button>
+
         <button
           @click="callStore.requestDisconnect()"
-          class="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded hover:bg-dc-bg-hover text-dc-text-muted hover:text-dc-red transition-colors"
+          class="w-9 h-9 sm:w-8 sm:h-8 rounded-md flex items-center justify-center bg-dc-red/20 text-dc-red hover:bg-dc-red/30 transition-colors"
           :title="t('common.disconnect')"
         >
           <font-awesome-icon icon="phone-slash" class="text-base sm:text-sm" />
@@ -712,6 +930,57 @@ watch(
               class="px-5 py-2 rounded-md bg-dc-blurple hover:bg-dc-blurple/80 disabled:opacity-40 text-white text-sm font-medium transition-colors"
             >
               {{ t('sidebar.create') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <!-- Switch Voice Channel Modal -->
+  <Teleport to="body">
+    <Transition name="modal-fade">
+      <div
+        v-if="showSwitchModal"
+        class="fixed inset-0 z-[300] flex items-center justify-center p-4"
+        @click.self="cancelSwitchChannel()"
+      >
+        <div class="absolute inset-0 bg-black/70" />
+
+        <div
+          class="relative z-10 w-full max-w-sm bg-dc-bg-secondary rounded-xl shadow-2xl overflow-hidden"
+        >
+          <div class="px-6 pt-6 pb-2">
+            <h2 class="text-xl font-bold text-dc-text-heading">
+              {{ t('sidebar.switchVoiceTitle') }}
+            </h2>
+          </div>
+
+          <div class="px-6 pb-5">
+            <p class="text-sm text-dc-text-secondary leading-relaxed">
+              {{
+                t('sidebar.switchVoiceBody', {
+                  current: roomStore.channelById(roomStore.roomId)?.name ?? roomStore.selectedChannelName,
+                  target: roomStore.channelById(pendingSwitchChannelId ?? '')?.name ?? '',
+                })
+              }}
+            </p>
+          </div>
+
+          <div class="h-px bg-dc-separator mx-6" />
+
+          <div class="px-6 py-4 flex justify-end gap-3">
+            <button
+              @click="cancelSwitchChannel()"
+              class="px-4 py-2 rounded-md text-sm font-medium text-dc-text-secondary hover:text-dc-text hover:bg-dc-bg-hover transition-colors"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              @click="confirmSwitchChannel()"
+              class="px-5 py-2 rounded-md bg-dc-blurple hover:bg-dc-blurple/80 text-white text-sm font-medium transition-colors"
+            >
+              {{ t('sidebar.switchVoiceConfirm') }}
             </button>
           </div>
         </div>

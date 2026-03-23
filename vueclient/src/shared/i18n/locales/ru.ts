@@ -64,6 +64,9 @@ export default {
     textChannelDesc: 'Для текстового общения без звонков',
     channelNameLabel: 'Название канала',
     create: 'Создать',
+    switchVoiceTitle: 'Переключить голосовой канал?',
+    switchVoiceBody: 'Вы подключены к "{current}". Переключение отключит вас и подключит к "{target}".',
+    switchVoiceConfirm: 'Переключиться',
   },
   channel: {
     selectChannel: 'Выберите канал',

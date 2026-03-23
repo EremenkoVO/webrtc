@@ -1,6 +1,5 @@
 import { SignalingService, type Room, type RoomParticipant } from '@/api'
 import { defineStore } from 'pinia'
-import { useCallStore } from './callStore'
 
 export const useRoomStore = defineStore('room', {
   state: () => ({
@@ -53,17 +52,14 @@ export const useRoomStore = defineStore('room', {
         this.roommates = []
       }
     },
+    channelById(id: string) {
+      return this.channels.find((ch) => ch.id === id)
+    },
     async selectChannel(id: string | undefined, roommates?: string[]) {
       if (typeof id === 'undefined') return
       if (id === this.selectedChannelId) return
 
       const channel = this.channels.find((ch) => ch.id == id)
-      const isVoice = (channel?.type ?? 'voice') !== 'text'
-
-      if (isVoice && useCallStore().isInCall) {
-        const result = confirm('Switch to another channel? Your current call will end.')
-        if (!result) return
-      }
 
       this.selectedChannelId = id
       this.selectedChannelName = channel?.name || ''
