@@ -68,6 +68,8 @@ import { OpenAPI } from './api'
 import App from './app/App.vue'
 import router from './app/router'
 import i18n from './shared/i18n'
+import { useChatStore } from './shared/stores/chatStore'
+import { useSettingsStore } from './shared/stores/settingsStore'
 
 library.add(
   faVolumeHigh,
@@ -151,7 +153,19 @@ if (serverUrl) {
 const app = createApp(App)
 
 app.component('font-awesome-icon', FontAwesomeIcon)
-app.use(createPinia())
+const pinia = createPinia()
+app.use(pinia)
+
+// One source of truth: app-settings in localStorage. Chat store also reads
+// chatNotificationsEnabled — align on boot so reload keeps toggles consistent.
+{
+  const settingsStore = useSettingsStore()
+  const chatStore = useChatStore()
+  if (chatStore.notificationsEnabled !== settingsStore.notificationsEnabled) {
+    chatStore.setNotificationsEnabled(settingsStore.notificationsEnabled)
+  }
+}
+
 app.use(i18n)
 app.use(vClickOutside)
 app.use(router)

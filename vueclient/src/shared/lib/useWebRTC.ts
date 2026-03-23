@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { SignalingMessage } from '@/api/models/SignalingMessage'
 import { useSignalingStore } from '@/shared/stores/signalingStore'
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 
 export interface PeerConnection {
   peerId: string
@@ -989,10 +989,10 @@ export function useWebRTC() {
     checkSpeaking()
   }
 
-  onUnmounted(() => {
-    leaveRoom()
-    stopMedia()
-  })
+  // Do NOT register onUnmounted here: useWebRTC() is also used by SettingsModal,
+  // CallControls, and Sidebar only for device lists. Unmounting those would call
+  // leaveRoom() and clear global signaling, disconnecting the real call owned by
+  // ChannelView. ChannelView's onBeforeUnmount calls leaveRoom/stopMedia/endCall.
 
   return {
     localStream,

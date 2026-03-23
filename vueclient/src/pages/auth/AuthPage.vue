@@ -11,6 +11,7 @@ const route = useRoute()
 const isLogin = ref(true)
 const { t } = useI18n()
 const showServerPicker = ref(false)
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
 const currentServerDomain = computed(() => {
   const url = localStorage.getItem('serverUrl') ?? ''
@@ -35,8 +36,8 @@ function switchMode() {
 
 <template>
   <div class="min-h-screen min-h-dvh bg-dc-bg-tertiary flex items-center justify-center p-4">
-    <!-- Server picker (top-left) -->
-    <div class="fixed top-4 left-4 z-10">
+    <!-- Server picker (Electron desktop app only) -->
+    <div v-if="isElectron" class="fixed top-4 left-4 z-10">
       <button
         type="button"
         class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-dc-bg-secondary/80 hover:bg-dc-bg-secondary border border-dc-separator/30 text-dc-text-muted hover:text-dc-text transition-colors text-xs backdrop-blur-sm"
@@ -57,7 +58,7 @@ function switchMode() {
     </div>
 
     <!-- Server picker modal -->
-    <ServerPickerModal v-if="showServerPicker" @close="showServerPicker = false" />
+    <ServerPickerModal v-if="isElectron && showServerPicker" @close="showServerPicker = false" />
 
     <!-- Background decoration -->
     <div class="fixed inset-0 overflow-hidden pointer-events-none">
