@@ -97,15 +97,33 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      devTools: isDev,
       preload: path.join(__dirname, 'preload.cjs'),
     },
   })
+
+  if (!isDev) {
+    // Hide the top application menu in packaged builds.
+    mainWindow.setMenuBarVisibility(false)
+    mainWindow.removeMenu()
+  }
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+    // Ensure DevTools cannot be opened in production.
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      const isF12 = input.key === 'F12'
+      const isCtrlShiftI =
+        input.key.toLowerCase() === 'i' && input.control && input.shift
+      const isMetaAltI = input.key.toLowerCase() === 'i' && input.meta && input.alt
+
+      if (isF12 || isCtrlShiftI || isMetaAltI) {
+        event.preventDefault()
+      }
+    })
   }
 
   // Grant screen-capture permissions automatically in Electron
