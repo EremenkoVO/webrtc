@@ -127,6 +127,10 @@ function createWindow() {
   });
 }
 import_electron.app.whenReady().then(() => {
+  if (process.platform === "darwin") {
+    import_electron.app.setActivationPolicy("accessory");
+    import_electron.Menu.setApplicationMenu(null);
+  }
   import_electron.session.defaultSession.setCertificateVerifyProc((request, callback) => {
     if (isTrustedServerRequest(request.hostname)) {
       callback(0);

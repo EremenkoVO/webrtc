@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, session } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, session, Menu } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 
@@ -140,6 +140,13 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'darwin') {
+    // Hide app-level menu bar on macOS completely (accessory app mode).
+    // Note: this also hides app from Dock and Cmd+Tab app switcher.
+    app.setActivationPolicy('accessory')
+    Menu.setApplicationMenu(null)
+  }
+
   // Certificate verification hook for Chromium network stack.
   // Needed for some TLS failures that do not emit app-level certificate-error.
   session.defaultSession.setCertificateVerifyProc((request, callback) => {
