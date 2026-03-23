@@ -38,7 +38,6 @@ export async function startElectronCapture(params: {
   // disabled on this path until migrated to a displayMedia handler flow.
   const allowAudio = params.captureAudio && params.sourceType === 'screen'
 
-  // @ts-expect-error — Electron-specific chrome constraints
   const mandatoryVideo = {
     chromeMediaSource: 'desktop',
     chromeMediaSourceId: params.sourceId,
