@@ -195,6 +195,22 @@ export default {
       security: 'Security',
     },
   },
+  serverPicker: {
+    title: 'Server Connection',
+    serverUrl: 'Server URL',
+    placeholder: 'https://your-server.com',
+    save: 'Save',
+    test: 'Test',
+    testing: 'Testing...',
+    connected: 'Connected',
+    failed: 'Failed',
+    invalidUrl: 'Enter a valid URL (https://... or http://...)',
+    savedServers: 'Recent Servers',
+    clearSaved: 'Clear',
+    selfSignedNote:
+      'Self-signed certificates are automatically trusted in the desktop app.',
+    defaultServer: 'Use default (browser proxy)',
+  },
   admin: {
     title: 'Admin Panel',
     backToApp: 'Back to App',

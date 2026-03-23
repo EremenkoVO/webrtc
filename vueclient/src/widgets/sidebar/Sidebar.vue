@@ -247,7 +247,7 @@ watch(
 
   <aside
     :class="[
-      'fixed lg:relative inset-y-0 left-0 z-40 flex flex-col border-r-1 border-black bg-dc-bg-secondary transition-transform duration-200 ease-out',
+      'fixed lg:relative inset-y-0 left-0 z-40 flex flex-col border-r border-dc-separator/80 shadow-[1px_0_0_rgba(0,0,0,0.28)] bg-dc-bg-secondary transition-transform duration-200 ease-out',
       sidebarStore.isMobile
         ? sidebarStore.isOpen
           ? 'translate-x-0 w-[280px]'

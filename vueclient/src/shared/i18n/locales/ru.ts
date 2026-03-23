@@ -195,6 +195,22 @@ export default {
       security: 'Безопасность',
     },
   },
+  serverPicker: {
+    title: 'Подключение к серверу',
+    serverUrl: 'Адрес сервера',
+    placeholder: 'https://ваш-сервер.ru',
+    save: 'Сохранить',
+    test: 'Проверить',
+    testing: 'Проверка...',
+    connected: 'Подключено',
+    failed: 'Ошибка',
+    invalidUrl: 'Введите корректный URL (https://... или http://...)',
+    savedServers: 'Недавние серверы',
+    clearSaved: 'Очистить',
+    selfSignedNote:
+      'Самоподписанные сертификаты автоматически принимаются в десктоп-приложении.',
+    defaultServer: 'По умолчанию (прокси браузера)',
+  },
   admin: {
     title: 'Панель администратора',
     backToApp: 'Вернуться в приложение',

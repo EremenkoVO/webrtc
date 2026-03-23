@@ -31,6 +31,9 @@ const list    = computed(() => (activeTab.value === 'screen' ? screens.value : w
 const selectedSource = computed(() =>
   sources.value.find((s) => s.id === selectedId.value) ?? null
 )
+const canCaptureAudio = computed(() => {
+  return activeTab.value === 'screen'
+})
 
 const resolutionMap: Record<string, { width: number; height: number } | null> = {
   native: null,
@@ -59,6 +62,7 @@ function selectSource(s: CaptureSource) {
 
 function switchTab(tab: 'screen' | 'window') {
   activeTab.value = tab
+  if (tab === 'window') captureAudio.value = false
   const first = (tab === 'screen' ? screens : windows).value[0]
   if (first) selectedId.value = first.id
 }
@@ -76,7 +80,7 @@ function startShare() {
     emit('start', {
       sourceId:     selectedId.value!,
       sourceType:   selectedSource.value!.type,
-      captureAudio: captureAudio.value,
+      captureAudio: canCaptureAudio.value ? captureAudio.value : false,
       resolution:   resolutionMap[resolution.value],
       frameRate:    frameRateMap[frameRate.value],
     })
@@ -173,18 +177,21 @@ function startShare() {
         <!-- Settings bar -->
         <div class="flex flex-wrap items-center gap-3 px-5 py-3 border-t border-dc-separator/30 flex-shrink-0 bg-dc-bg-tertiary/40">
           <!-- Audio toggle (windows only) -->
-          <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-dc-text-secondary">
+          <label
+            class="flex items-center gap-2 select-none text-sm text-dc-text-secondary"
+            :class="canCaptureAudio ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'"
+          >
             <div
               class="w-9 h-5 rounded-full relative transition-colors"
-              :class="captureAudio ? 'bg-dc-brand' : 'bg-dc-separator'"
-              @click="captureAudio = !captureAudio"
+              :class="captureAudio && canCaptureAudio ? 'bg-dc-brand' : 'bg-dc-separator'"
+              @click="canCaptureAudio && (captureAudio = !captureAudio)"
             >
               <div
                 class="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-                :class="captureAudio ? 'translate-x-4' : 'translate-x-0.5'"
+                :class="captureAudio && canCaptureAudio ? 'translate-x-4' : 'translate-x-0.5'"
               />
             </div>
-            <font-awesome-icon :icon="captureAudio ? 'volume-high' : 'volume-xmark'" class="text-xs" />
+            <font-awesome-icon :icon="captureAudio && canCaptureAudio ? 'volume-high' : 'volume-xmark'" class="text-xs" />
             {{ activeTab === 'window' ? t('screenShare.appAudio') : t('screenShare.systemAudio') }}
           </label>
 

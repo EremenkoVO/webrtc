@@ -78,6 +78,7 @@ const showChatMobile = ref(false)
 const showScreenShareModal = ref(false)
 const showElectronPicker   = ref(false)
 const isElectron           = !!window.electronAPI
+const useElectronSystemPicker = isElectron && !!window.electronAPI?.useSystemPicker
 
 type PeerWithVideo = {
   peerId: string
@@ -339,7 +340,7 @@ function endCall() {
 }
 
 function handleRequestScreenShare() {
-  if (isElectron) {
+  if (isElectron && !useElectronSystemPicker) {
     showElectronPicker.value = true
   } else {
     showScreenShareModal.value = true
@@ -1043,7 +1044,7 @@ onBeforeUnmount(() => {
     <!-- Chat panel (desktop, voice channels only) -->
     <div
       v-if="!isTextChannel && sidebarStore.chatOpen && !sidebarStore.isMobile"
-      class="hidden lg:flex w-80 2xl:w-96 3xl:w-[420px] border-l border-dc-separator/40 flex-shrink-0"
+      class="hidden lg:flex w-80 2xl:w-96 3xl:w-[420px] border-l border-dc-separator/80 shadow-[-1px_0_0_rgba(0,0,0,0.22)] flex-shrink-0"
     >
       <ChatPanel :room-id="roomStore.selectedChannelId" :user-name="props.userName" />
     </div>

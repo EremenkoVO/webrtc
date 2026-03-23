@@ -24,6 +24,7 @@ interface ElectronAPI {
   setServerUrl(url: string): Promise<void>
   getAppVersion(): Promise<string>
   platform: string
+  useSystemPicker: boolean
   capturer: ElectronCapturer
 }
 
