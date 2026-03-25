@@ -19,6 +19,8 @@ type UserRepository interface {
 	UpdatePassword(ctx context.Context, userID int, hashedPassword string) error
 	UpdateLastSeen(ctx context.Context, userID int) error
 	ListUsers(ctx context.Context) ([]*domain.User, error)
+	// ListUsersForDirectory returns id, username, and whether an avatar exists (no blob loaded).
+	ListUsersForDirectory(ctx context.Context) ([]*domain.UserDirectoryEntry, error)
 	DeleteUser(ctx context.Context, userID int) error
 	UpdateUserRole(ctx context.Context, userID int, role string) error
 	HasAdmin(ctx context.Context) (bool, error)

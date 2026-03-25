@@ -130,8 +130,10 @@ type RoomParticipantsResponse struct {
 
 // UserProfile defines model for UserProfile.
 type UserProfile struct {
-	Id       *string `json:"id,omitempty"`
-	Username *string `json:"username,omitempty"`
+	// AvatarUrl Present when the user has an avatar; relative path e.g. /api/v1/avatars/{username}
+	AvatarUrl *string `json:"avatar_url,omitempty"`
+	Id        *string `json:"id,omitempty"`
+	Username  *string `json:"username,omitempty"`
 }
 
 // BadRequestError defines model for BadRequestError.
@@ -191,6 +193,9 @@ type ServerInterface interface {
 	// Get current user profile
 	// (GET /api/v1/me)
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
+	// List all registered users on the server
+	// (GET /api/v1/users)
+	ListServerUsers(w http.ResponseWriter, r *http.Request)
 	// List available rooms
 	// (GET /api/v1/rooms)
 	ListRooms(w http.ResponseWriter, r *http.Request)
@@ -347,6 +352,26 @@ func (siw *ServerInterfaceWrapper) GetCurrentUser(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCurrentUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListServerUsers operation middleware
+func (siw *ServerInterfaceWrapper) ListServerUsers(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListServerUsers(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -598,6 +623,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/register", wrapper.RegisterUser)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/chat/ws", wrapper.ChatWebSocket)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/me", wrapper.GetCurrentUser)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/users", wrapper.ListServerUsers)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/rooms", wrapper.ListRooms)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/rooms", wrapper.CreateRoom)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/rooms/{roomId}/join", wrapper.JoinRoom)

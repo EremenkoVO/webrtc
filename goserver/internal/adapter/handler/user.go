@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
 )
@@ -11,6 +12,42 @@ import (
 type changePasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
+}
+
+type directoryUserResponse struct {
+	ID        string  `json:"id"`
+	Username  string  `json:"username"`
+	AvatarURL *string `json:"avatar_url,omitempty"`
+}
+
+// ListServerUsers handles GET /api/v1/users
+func (s *ServerWrapper) ListServerUsers(w http.ResponseWriter, r *http.Request) {
+	_, ok := r.Context().Value(contextKeyUserID).(int)
+	if !ok {
+		WriteErrorResponse(w, http.StatusUnauthorized, domain.ToErrorResponse(domain.ErrUnauthorized))
+		return
+	}
+
+	entries, err := s.userService.ListPublicDirectory(r.Context())
+	if err != nil {
+		WriteErrorResponse(w, domain.GetStatusCode(err), domain.ToErrorResponse(err))
+		return
+	}
+
+	resp := make([]directoryUserResponse, len(entries))
+	for i, e := range entries {
+		item := directoryUserResponse{
+			ID:       strconv.Itoa(e.ID),
+			Username: e.Username,
+		}
+		if e.HasAvatar {
+			url := "/api/v1/avatars/" + e.Username
+			item.AvatarURL = &url
+		}
+		resp[i] = item
+	}
+
+	WriteJSONResponse(w, http.StatusOK, resp)
 }
 
 // ChangePassword handles POST /api/v1/me/password

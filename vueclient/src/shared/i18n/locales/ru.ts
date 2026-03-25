@@ -67,6 +67,10 @@ export default {
     switchVoiceTitle: 'Переключить голосовой канал?',
     switchVoiceBody: 'Вы подключены к "{current}". Переключение отключит вас и подключит к "{target}".',
     switchVoiceConfirm: 'Переключиться',
+    serverMembers: 'Участники сервера',
+    loadingMembers: 'Загрузка списка...',
+    noMembers: 'На сервере пока нет пользователей',
+    noMatchingMembers: 'Никого не найдено',
   },
   channel: {
     selectChannel: 'Выберите канал',

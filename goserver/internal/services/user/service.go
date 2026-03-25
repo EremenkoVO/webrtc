@@ -35,6 +35,14 @@ func (s *userService) GetProfile(ctx context.Context, userID int) (*domain.User,
 	}, nil
 }
 
+func (s *userService) ListPublicDirectory(ctx context.Context) ([]*domain.UserDirectoryEntry, error) {
+	entries, err := s.userRepo.ListUsersForDirectory(ctx)
+	if err != nil {
+		return nil, domain.ErrServerError
+	}
+	return entries, nil
+}
+
 func (s *userService) UploadAvatar(ctx context.Context, userID int, data []byte, contentType string) error {
 	if err := s.userRepo.UpdateAvatar(ctx, userID, data, contentType); err != nil {
 		return domain.ErrServerError

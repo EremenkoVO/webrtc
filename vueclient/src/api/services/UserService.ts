@@ -1,7 +1,7 @@
 /* generated using openapi-typescript-codegen -- do not edit */
 /* istanbul ignore file */
 /* tslint:disable */
-/* eslint-disable */
+ 
 import type { ErrorResponse } from '../models/ErrorResponse';
 import type { UserProfile } from '../models/UserProfile';
 import type { CancelablePromise } from '../core/CancelablePromise';
@@ -25,6 +25,19 @@ export class UserService {
             errors: {
                 401: `Unauthorized`,
                 404: `Resource Not Found`,
+            },
+        });
+    }
+
+    /**
+     * List all registered users on the server (directory).
+     */
+    public static listServerUsers(): CancelablePromise<Array<UserProfile> | ErrorResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/users',
+            errors: {
+                401: `Unauthorized`,
             },
         });
     }

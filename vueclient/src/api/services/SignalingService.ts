@@ -1,7 +1,7 @@
 /* generated using openapi-typescript-codegen -- do not edit */
 /* istanbul ignore file */
 /* tslint:disable */
-/* eslint-disable */
+ 
 import type { CreateRoomRequest } from '../models/CreateRoomRequest';
 import type { ErrorResponse } from '../models/ErrorResponse';
 import type { Room } from '../models/Room';

@@ -18,6 +18,7 @@ type AuthService interface {
 
 type UserService interface {
 	GetProfile(ctx context.Context, userID int) (*domain.User, error)
+	ListPublicDirectory(ctx context.Context) ([]*domain.UserDirectoryEntry, error)
 	UploadAvatar(ctx context.Context, userID int, data []byte, contentType string) error
 	GetAvatar(ctx context.Context, username string) ([]byte, string, error)
 	ChangePassword(ctx context.Context, userID int, currentPassword, newPassword string) error

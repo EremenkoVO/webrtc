@@ -30,7 +30,7 @@ function writeSettings(settings: Settings): void {
   }
 }
 
-let currentSettings = readSettings()
+const currentSettings = readSettings()
 
 // ── Certificate bypass for self-signed certs ──────────────────────────────────
 

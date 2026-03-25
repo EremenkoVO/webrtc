@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SignalingService, type UserProfile } from '@/api/index'
+import { SignalingService, UserService, type UserProfile } from '@/api/index'
 import { useApiErrors } from '@/shared/lib/useApiErrors'
 import { useCallStore } from '@/shared/stores/callStore'
 import { useRoomStore } from '@/shared/stores/roomStore'
@@ -64,6 +64,9 @@ const newChannelType = ref<'voice' | 'text'>('voice')
 const searchQuery = ref('')
 const isLoading = ref(false)
 
+const serverUsers = ref<UserProfile[]>([])
+const directoryLoading = ref(false)
+
 const showSwitchModal = ref(false)
 const pendingSwitchChannelId = ref<string | undefined>()
 const pendingSwitchRoommates = ref<string[] | undefined>()
@@ -94,6 +97,12 @@ const filteredVoiceChannels = computed(() =>
 const filteredTextChannels = computed(() =>
   filteredChannels.value.filter((ch) => ch.type === 'text'),
 )
+
+const filteredServerUsers = computed(() => {
+  if (!searchQuery.value.trim()) return serverUsers.value
+  const q = searchQuery.value.toLowerCase()
+  return serverUsers.value.filter((u) => (u.username ?? '').toLowerCase().includes(q))
+})
 
 function openCreateModal() {
   newChannelName.value = ''
@@ -161,10 +170,29 @@ function cancelSwitchChannel() {
   pendingSwitchRoommates.value = undefined
 }
 
+async function fetchServerUsers() {
+  directoryLoading.value = true
+  clearErrors()
+  try {
+    const res = await UserService.listServerUsers()
+    if (Array.isArray(res)) {
+      serverUsers.value = res
+    } else {
+      serverUsers.value = []
+    }
+  } catch (e) {
+    parseApiError(e)
+    serverUsers.value = []
+  } finally {
+    directoryLoading.value = false
+  }
+}
+
 async function refreshChannels() {
   isLoading.value = true
   try {
     await roomStore.getListChannels()
+    await fetchServerUsers()
   } catch (e) {
     parseApiError(e)
   } finally {
@@ -352,7 +380,10 @@ watch(
     <!-- Channel list -->
     <div class="flex-1 overflow-y-auto pt-4 dc-scrollbar-thin">
       <!-- Search (compact) -->
-      <div v-if="searchQuery || roomStore.channels.length > 5" class="px-2 mb-2">
+      <div
+        v-if="searchQuery || roomStore.channels.length > 5 || serverUsers.length > 5"
+        class="px-2 mb-2"
+      >
         <input
           v-model="searchQuery"
           type="text"
@@ -511,6 +542,57 @@ watch(
           </div>
         </div>
       </template>
+
+      <!-- Server members (directory) -->
+      <div class="mt-3 pt-2 border-t border-dc-separator/40">
+        <div class="flex items-center px-2 mb-1">
+          <font-awesome-icon
+            icon="chevron-down"
+            class="w-3 h-3 text-dc-text-muted mr-0.5 text-[10px]"
+          />
+          <span
+            class="text-sm sm:text-[11px] font-bold uppercase tracking-wider text-dc-text-muted flex-1"
+          >
+            {{ t('sidebar.serverMembers') }}
+          </span>
+        </div>
+        <div
+          v-if="directoryLoading && serverUsers.length === 0"
+          class="px-2 py-2 text-dc-text-muted text-base sm:text-sm"
+        >
+          {{ t('sidebar.loadingMembers') }}
+        </div>
+        <div
+          v-else-if="
+            searchQuery.trim() && filteredServerUsers.length === 0 && serverUsers.length > 0
+          "
+          class="px-2 py-2 text-dc-text-muted text-base sm:text-sm"
+        >
+          {{ t('sidebar.noMatchingMembers') }}
+        </div>
+        <div
+          v-else-if="!directoryLoading && serverUsers.length === 0"
+          class="px-2 py-2 text-dc-text-muted text-base sm:text-sm"
+        >
+          {{ t('sidebar.noMembers') }}
+        </div>
+        <div v-else class="px-2 space-y-px pb-1">
+          <div
+            v-for="u in filteredServerUsers"
+            :key="u.id || u.username"
+            class="flex items-center gap-2 py-[3px] px-1.5 rounded hover:bg-dc-bg-hover/50 transition-colors"
+          >
+            <div
+              class="w-7 h-7 sm:w-6 sm:h-6 rounded-full overflow-hidden flex-shrink-0"
+            >
+              <UserAvatar :username="u.username ?? ''" />
+            </div>
+            <span class="flex-1 text-base sm:text-[13px] leading-4 truncate text-dc-text-secondary">
+              {{ u.username }}
+            </span>
+          </div>
+        </div>
+      </div>
 
       <!-- Refresh -->
       <div class="px-2 mt-4">

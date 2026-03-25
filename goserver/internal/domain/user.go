@@ -13,3 +13,10 @@ type User struct {
 	Role              string // "user" | "admin"
 	BootstrapAdmin    bool   // first / setup admin — role cannot be demoted to user
 }
+
+// UserDirectoryEntry is one row for the public user directory (no secrets, no role).
+type UserDirectoryEntry struct {
+	ID        int
+	Username  string
+	HasAvatar bool
+}

@@ -168,6 +168,29 @@ func (r *userRepository) ListUsers(ctx context.Context) ([]*domain.User, error) 
 	return users, rows.Err()
 }
 
+func (r *userRepository) ListUsersForDirectory(ctx context.Context) ([]*domain.UserDirectoryEntry, error) {
+	query := `SELECT id, username,
+		CASE WHEN COALESCE(LENGTH(avatar), 0) > 0 THEN 1 ELSE 0 END
+		FROM users ORDER BY username COLLATE NOCASE ASC`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() //nolint: errcheck
+
+	var out []*domain.UserDirectoryEntry
+	for rows.Next() {
+		var e domain.UserDirectoryEntry
+		var hasAvatar int
+		if err := rows.Scan(&e.ID, &e.Username, &hasAvatar); err != nil {
+			return nil, err
+		}
+		e.HasAvatar = hasAvatar != 0
+		out = append(out, &e)
+	}
+	return out, rows.Err()
+}
+
 func (r *userRepository) DeleteUser(ctx context.Context, userID int) error {
 	query := `DELETE FROM users WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, userID)

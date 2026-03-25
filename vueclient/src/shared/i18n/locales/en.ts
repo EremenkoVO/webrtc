@@ -67,6 +67,10 @@ export default {
     switchVoiceTitle: 'Switch Voice Channel?',
     switchVoiceBody: 'You are currently connected to "{current}". Switching will disconnect you and connect to "{target}".',
     switchVoiceConfirm: 'Switch Channel',
+    serverMembers: 'Server members',
+    loadingMembers: 'Loading members...',
+    noMembers: 'No users on this server yet',
+    noMatchingMembers: 'No matching members',
   },
   channel: {
     selectChannel: 'Select a channel',

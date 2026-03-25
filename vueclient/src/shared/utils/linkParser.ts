@@ -78,7 +78,7 @@ export function parseLinks(text: string): ParsedLink[] {
     }
     
     let url = match[0]
-    let displayText = match[0]
+    const displayText = match[0]
     
     // Remove trailing punctuation that's not part of the URL
     // Common punctuation that shouldn't be part of URLs
