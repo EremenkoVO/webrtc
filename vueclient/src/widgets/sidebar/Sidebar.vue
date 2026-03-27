@@ -5,6 +5,8 @@ import { useCallStore } from '@/shared/stores/callStore'
 import { useRoomStore } from '@/shared/stores/roomStore'
 import { useSidebarStore } from '@/shared/stores/sidebarStore'
 import { useSignalingStore } from '@/shared/stores/signalingStore'
+import { usePresenceStore } from '@/shared/stores/presenceStore'
+import { useSettingsStore } from '@/shared/stores/settingsStore'
 import { useVoiceStateStore } from '@/shared/stores/voiceStateStore'
 import { useWebRTC } from '@/shared/lib/useWebRTC'
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
@@ -12,13 +14,15 @@ import UserPanel from '@/widgets/user-panel/UserPanel.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const { clearErrors, parseApiError } = useApiErrors()
 const roomStore = useRoomStore()
 const sidebarStore = useSidebarStore()
 const callStore = useCallStore()
 const voiceStateStore = useVoiceStateStore()
 const signalingStore = useSignalingStore()
+const presenceStore = usePresenceStore()
+const settingsStore = useSettingsStore()
 
 const { audioDevices, videoDevices, fetchAudioDevices, fetchVideoDevices } = useWebRTC()
 const microphoneMenuOpen = ref(false)
@@ -70,6 +74,12 @@ const directoryLoading = ref(false)
 const showSwitchModal = ref(false)
 const pendingSwitchChannelId = ref<string | undefined>()
 const pendingSwitchRoommates = ref<string[] | undefined>()
+const deviceIsHiDPI = ref(false)
+const useHiDPIDensity = computed(() => {
+  if (settingsStore.densityMode === 'comfortable') return true
+  if (settingsStore.densityMode === 'compact') return false
+  return deviceIsHiDPI.value
+})
 
 // Context menu state
 const contextMenuUser = ref<string | null>(null)
@@ -103,6 +113,14 @@ const filteredServerUsers = computed(() => {
   const q = searchQuery.value.toLowerCase()
   return serverUsers.value.filter((u) => (u.username ?? '').toLowerCase().includes(q))
 })
+
+const onlineServerUsers = computed(() =>
+  filteredServerUsers.value.filter((u) => presenceStore.isUserOnline(u.id)),
+)
+
+const offlineServerUsers = computed(() =>
+  filteredServerUsers.value.filter((u) => !presenceStore.isUserOnline(u.id)),
+)
 
 function openCreateModal() {
   newChannelName.value = ''
@@ -202,6 +220,7 @@ async function refreshChannels() {
 
 function handleResize() {
   sidebarStore.checkMobile()
+  deviceIsHiDPI.value = window.devicePixelRatio >= 1.5
 }
 
 // Context menu helpers
@@ -343,6 +362,36 @@ function isWatchingHoveredUser(): boolean {
   return userId ? voiceStateStore.watchingUserIds.has(userId) : false
 }
 
+function formatLastSeen(user: UserProfile): string {
+  const source =
+    presenceStore.getLastSeenAt(user.id) || ((user as UserProfile & { last_seen_at?: string }).last_seen_at ?? null)
+  if (!source) return '-'
+  const dt = new Date(source)
+  if (Number.isNaN(dt.getTime())) return '-'
+  const diffMs = Date.now() - dt.getTime()
+  const currentLocale = locale.value || undefined
+  const rtf = new Intl.RelativeTimeFormat(currentLocale, { numeric: 'auto' })
+
+  if (diffMs < 60_000) {
+    return rtf.format(0, 'minute')
+  }
+  if (diffMs < 3_600_000) {
+    return rtf.format(-Math.floor(diffMs / 60_000), 'minute')
+  }
+  if (diffMs < 86_400_000) {
+    return rtf.format(-Math.floor(diffMs / 3_600_000), 'hour')
+  }
+  if (diffMs < 604_800_000) {
+    return rtf.format(-Math.floor(diffMs / 86_400_000), 'day')
+  }
+
+  const formattedDate = new Intl.DateTimeFormat(currentLocale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(dt)
+  return t('sidebar.lastSeenOnDate', { date: formattedDate })
+}
+
 // Resize handle
 function onResizeStart(e: MouseEvent) {
   isResizing.value = true
@@ -367,6 +416,7 @@ function onResizeEnd() {
 
 onMounted(() => {
   sidebarStore.checkMobile()
+  deviceIsHiDPI.value = window.devicePixelRatio >= 1.5
   window.addEventListener('resize', handleResize)
   refreshChannels()
 })
@@ -397,6 +447,7 @@ watch(
   <aside
     :class="[
       'fixed lg:relative inset-y-0 left-0 z-40 flex flex-col border-r border-dc-separator/80 shadow-[1px_0_0_rgba(0,0,0,0.28)] bg-dc-bg-secondary transition-transform duration-200 ease-out',
+      useHiDPIDensity ? 'sidebar-hi-dpi' : '',
       sidebarStore.isMobile
         ? sidebarStore.isOpen
           ? 'translate-x-0 w-[280px]'
@@ -466,7 +517,7 @@ watch(
               class="w-3 h-3 text-dc-text-muted mr-0.5 text-[10px]"
             />
             <span
-              class="text-sm sm:text-[11px] font-bold uppercase tracking-wider text-dc-text-muted flex-1"
+              class="sidebar-section-label text-sm sm:text-[11px] font-bold uppercase tracking-wider text-dc-text-muted flex-1"
             >
               {{ t('common.voiceChannels') }}
             </span>
@@ -565,7 +616,7 @@ watch(
               class="w-3 h-3 text-dc-text-muted mr-0.5 text-[10px]"
             />
             <span
-              class="text-sm sm:text-[11px] font-bold uppercase tracking-wider text-dc-text-muted flex-1"
+              class="sidebar-section-label text-sm sm:text-[11px] font-bold uppercase tracking-wider text-dc-text-muted flex-1"
             >
               {{ t('common.textChannels') }}
             </span>
@@ -602,7 +653,7 @@ watch(
             class="w-3 h-3 text-dc-text-muted mr-0.5 text-[10px]"
           />
           <span
-            class="text-sm sm:text-[11px] font-bold uppercase tracking-wider text-dc-text-muted flex-1"
+            class="sidebar-section-label text-sm sm:text-[11px] font-bold uppercase tracking-wider text-dc-text-muted flex-1"
           >
             {{ t('sidebar.serverMembers') }}
           </span>
@@ -627,20 +678,62 @@ watch(
         >
           {{ t('sidebar.noMembers') }}
         </div>
-        <div v-else class="px-2 space-y-px pb-1">
-          <div
-            v-for="u in filteredServerUsers"
-            :key="u.id || u.username"
-            class="flex items-center gap-2 py-[3px] px-1.5 rounded hover:bg-dc-bg-hover/50 transition-colors"
-          >
-            <div
-              class="w-7 h-7 sm:w-6 sm:h-6 rounded-full overflow-hidden flex-shrink-0"
-            >
-              <UserAvatar :username="u.username ?? ''" />
+        <div v-else class="px-2 pb-1">
+          <div class="mb-2">
+            <div class="px-1.5 py-1 text-[10px] uppercase tracking-wide text-dc-text-muted font-semibold">
+              {{ t('sidebar.membersOnline') }} ({{ onlineServerUsers.length }})
             </div>
-            <span class="flex-1 text-base sm:text-[13px] leading-4 truncate text-dc-text-secondary">
-              {{ u.username }}
-            </span>
+            <div v-if="onlineServerUsers.length === 0" class="px-1.5 text-xs text-dc-text-muted">
+              {{ t('sidebar.noOnlineMembers') }}
+            </div>
+            <div v-else class="space-y-px">
+              <div
+                v-for="u in onlineServerUsers"
+                :key="`online-${u.id || u.username}`"
+                class="sidebar-member-row flex items-center gap-2 py-[3px] px-1.5 rounded hover:bg-dc-bg-hover/50 transition-colors"
+              >
+                <div class="relative w-7 h-7 sm:w-6 sm:h-6 flex-shrink-0">
+                  <div class="w-7 h-7 sm:w-6 sm:h-6 rounded-full overflow-hidden">
+                    <UserAvatar :username="u.username ?? ''" />
+                  </div>
+                  <span class="absolute right-0 bottom-0 w-2.5 h-2.5 rounded-full border-2 border-dc-bg-secondary bg-dc-green" />
+                </div>
+                <span class="flex-1 text-base sm:text-[13px] leading-4 truncate text-dc-text-secondary">
+                  {{ u.username }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="px-1.5 py-1 text-[10px] uppercase tracking-wide text-dc-text-muted font-semibold">
+              {{ t('sidebar.membersOffline') }} ({{ offlineServerUsers.length }})
+            </div>
+            <div v-if="offlineServerUsers.length === 0" class="px-1.5 text-xs text-dc-text-muted">
+              {{ t('sidebar.noOfflineMembers') }}
+            </div>
+            <div v-else class="space-y-px">
+              <div
+                v-for="u in offlineServerUsers"
+                :key="`offline-${u.id || u.username}`"
+                class="sidebar-member-row flex items-center gap-2 py-[3px] px-1.5 rounded hover:bg-dc-bg-hover/50 transition-colors"
+              >
+                <div class="relative w-7 h-7 sm:w-6 sm:h-6 flex-shrink-0">
+                  <div class="w-7 h-7 sm:w-6 sm:h-6 rounded-full overflow-hidden">
+                    <UserAvatar :username="u.username ?? ''" />
+                  </div>
+                  <span class="absolute right-0 bottom-0 w-2.5 h-2.5 rounded-full border-2 border-dc-bg-secondary bg-dc-text-muted/60" />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-base sm:text-[13px] leading-4 truncate text-dc-text-secondary">
+                    {{ u.username }}
+                  </div>
+                  <div class="sidebar-last-seen text-[10px] text-dc-text-muted">
+                    {{ t('sidebar.lastSeen') }}: {{ formatLastSeen(u) }}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1197,5 +1290,86 @@ watch(
 .modal-fade-leave-to .relative.z-10 {
   opacity: 0;
   transform: scale(0.95) translateY(-8px);
+}
+
+@media (min-resolution: 1.5dppx) {
+  .sidebar-hi-dpi {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .sidebar-hi-dpi :deep(input[type='text']) {
+    font-size: 14px;
+    line-height: 1.35;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .sidebar-hi-dpi :deep(button) {
+    min-height: 34px;
+  }
+
+  .sidebar-hi-dpi .sidebar-section-label {
+    font-size: 12px;
+    letter-spacing: 0.05em;
+  }
+
+  .sidebar-hi-dpi .sidebar-member-row {
+    padding-top: 6px;
+    padding-bottom: 6px;
+    gap: 10px;
+  }
+
+  .sidebar-hi-dpi :deep(.text-\[10px\]) {
+    font-size: 11px !important;
+  }
+
+  .sidebar-hi-dpi :deep(.text-\[11px\]) {
+    font-size: 12px !important;
+  }
+
+  .sidebar-hi-dpi :deep(.text-\[13px\]) {
+    font-size: 14px !important;
+    line-height: 1.35;
+  }
+
+  .sidebar-hi-dpi :deep(.text-\[15px\]) {
+    font-size: 16px !important;
+    line-height: 1.3;
+  }
+
+  .sidebar-hi-dpi :deep(.w-7.h-7) {
+    width: 1.95rem;
+    height: 1.95rem;
+  }
+
+  .sidebar-hi-dpi :deep(.w-2\.5.h-2\.5) {
+    width: 0.78rem;
+    height: 0.78rem;
+  }
+
+  .sidebar-hi-dpi :deep(.w-3.h-3) {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+
+  .sidebar-hi-dpi :deep(.w-6.h-6) {
+    width: 1.6rem;
+    height: 1.6rem;
+  }
+
+  .sidebar-hi-dpi :deep(.w-5.h-5) {
+    width: 1.35rem;
+    height: 1.35rem;
+  }
+
+  .sidebar-hi-dpi :deep(.text-lg) {
+    font-size: 1.18rem !important;
+  }
+
+  .sidebar-hi-dpi .sidebar-last-seen {
+    font-size: 12px;
+    line-height: 1.3;
+  }
 }
 </style>

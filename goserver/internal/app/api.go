@@ -20,6 +20,7 @@ import (
 	adminService "github.com/EremenkoVO/webrtc/goserver/internal/services/admin"
 	authService "github.com/EremenkoVO/webrtc/goserver/internal/services/auth"
 	chatService "github.com/EremenkoVO/webrtc/goserver/internal/services/chat"
+	presenceService "github.com/EremenkoVO/webrtc/goserver/internal/services/presence"
 	roomService "github.com/EremenkoVO/webrtc/goserver/internal/services/room"
 	userService "github.com/EremenkoVO/webrtc/goserver/internal/services/user"
 )
@@ -62,13 +63,14 @@ func (app *API) init(ctx context.Context) error {
 	// Initialize services
 	authSvc := authService.NewAuthService(userRepo, tokenRepo, jwtManager, accessTokenRepo, auditRepo)
 	userSvc := userService.NewUserService(userRepo)
-	roomSvc := roomService.NewRoomService(roomRepo)
+	presenceSvc := presenceService.NewPresenceService()
+	roomSvc := roomService.NewRoomService(roomRepo, presenceSvc)
 	msgRepo := sqlite.NewChatMessageRepository(app.db)
 	chatSvc := chatService.NewChatService(msgRepo, userRepo)
 	adminSvc := adminService.NewAdminService(userRepo, roomRepo, authSvc, roomSvc, auditRepo)
 
 	// Initialize handlers
-	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc, chatSvc, adminSvc, auditRepo, msgRepo, app.config.UploadDir)
+	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc, chatSvc, presenceSvc, adminSvc, auditRepo, msgRepo, app.config.UploadDir)
 	authenticator := handler.NewAuthenticator(authSvc)
 
 	// Setup HTTP server with routes
@@ -85,6 +87,7 @@ func (app *API) init(ctx context.Context) error {
 	mux.HandleFunc("GET /api/v1/chat/messages/{id}/voice", serverWrapper.GetVoiceMessage)
 	mux.HandleFunc("POST /api/v1/chat/{roomId}/file", authenticator.RequireAuth(serverWrapper.UploadFileMessage))
 	mux.HandleFunc("GET /api/v1/chat/files/{id}", serverWrapper.GetFileAttachment)
+	mux.HandleFunc("GET /api/v1/presence/ws", serverWrapper.PresenceWebSocket)
 	// Admin routes
 	mux.HandleFunc("GET /api/v1/admin/setup", serverWrapper.GetAdminSetupStatus)
 	mux.HandleFunc("POST /api/v1/admin/setup", serverWrapper.PostAdminSetup)

@@ -7,6 +7,7 @@ import { useChatStore } from '@/shared/stores/chatStore'
 import { useRoomStore } from '@/shared/stores/roomStore'
 import { useSidebarStore } from '@/shared/stores/sidebarStore'
 import { useSignalingStore } from '@/shared/stores/signalingStore'
+import { usePresenceStore } from '@/shared/stores/presenceStore'
 import Sidebar from '@/widgets/sidebar/Sidebar.vue'
 import ChannelView from '@/widgets/channel/ChannelView.vue'
 import router from '@/app/router'
@@ -20,6 +21,7 @@ const callStore = useCallStore()
 const chatStore = useChatStore()
 const roomStore = useRoomStore()
 const signalingStore = useSignalingStore()
+const presenceStore = usePresenceStore()
 const user: Ref<UserProfile> = ref({ id: '', username: '' })
 const containerRef = ref<HTMLElement | null>(null)
 const channelViewRef = ref<HTMLElement | null>(null)
@@ -54,6 +56,7 @@ function cleanup() {
     roomStore.selectedChannelId = ''
     roomStore.selectedChannelName = ''
     if (chatStore.isConnected) chatStore.disconnect()
+    if (presenceStore.isConnected) presenceStore.disconnect()
     chatStore.clearMessages()
   } catch (error) {
     console.error('Cleanup error:', error)
@@ -67,6 +70,7 @@ onMounted(async () => {
   }
   sidebarStore.checkMobile()
   await getUser()
+  presenceStore.connect()
 
   // Initialize HammerJS for swipe gestures after DOM is ready
   await nextTick()

@@ -345,6 +345,28 @@ paths:
       responses:
         '101':
           description: Switching Protocols (WebSocket upgrade)
+  /api/v1/presence/ws:
+    get:
+      tags: [Presence]
+      summary: WebSocket connection for global user presence
+      description: |
+        Upgrade to a WebSocket connection for real-time global presence updates.
+        Authenticate via `token` query param (JWT).
+
+        Server emits:
+        - `presence_snapshot` with currently online user IDs
+        - `user_online` when a user comes online
+        - `user_offline` when a user goes offline
+      operationId: presenceWebSocket
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching Protocols (WebSocket upgrade)
   /api/v1/ws:
     get:
       tags: [Signaling]
@@ -431,6 +453,10 @@ components:
         avatar_url:
           type: string
           description: Present when the user has an avatar; relative path e.g. /api/v1/avatars/{username}
+        last_seen_at:
+          type: string
+          format: date-time
+          description: Last known activity timestamp; omitted for users who have never logged in.
     ErrorResponse:
       type: object
       properties:

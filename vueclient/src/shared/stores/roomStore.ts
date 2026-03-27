@@ -1,6 +1,8 @@
 import { SignalingService, type Room, type RoomParticipant } from '@/api'
 import { defineStore } from 'pinia'
 
+type ChannelMember = { user_id: string; username: string }
+
 export const useRoomStore = defineStore('room', {
   state: () => ({
     roomId: '' as string,
@@ -77,6 +79,35 @@ export const useRoomStore = defineStore('room', {
       this.roommates = participants
         .map((p) => p.username || p.client_id || '')
         .filter((name) => name !== '')
+    },
+    setRealtimeChannelMembers(channelMembers: Record<string, ChannelMember[]>) {
+      this.channels = this.channels.map((ch) => {
+        const channelId = ch.id || ''
+        const members = channelMembers[channelId] || []
+        const roommates = members
+          .map((m) => m.username)
+          .filter((name) => typeof name === 'string' && name.length > 0)
+        return {
+          ...ch,
+          roommates,
+        }
+      })
+    },
+    updateRealtimeUserChannel(_userId: string, username: string | undefined, channelId: string) {
+      this.channels = this.channels.map((ch) => {
+        const chId = ch.id || ''
+        const current = Array.isArray(ch.roommates) ? [...ch.roommates] : []
+
+        // Remove user from all channels first.
+        const withoutUser = current.filter((name) => name !== username)
+        if (!channelId || chId !== channelId || !username) {
+          return { ...ch, roommates: withoutUser }
+        }
+        if (withoutUser.includes(username)) {
+          return { ...ch, roommates: withoutUser }
+        }
+        return { ...ch, roommates: [...withoutUser, username] }
+      })
     },
   },
 })

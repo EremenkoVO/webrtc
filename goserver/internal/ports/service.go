@@ -37,6 +37,11 @@ type ChatService interface {
 	BroadcastToRoom(roomID string, msg any)
 }
 
+type PresenceService interface {
+	HandleWebSocketConnection(conn *websocket.Conn, userID int)
+	UpdateUserChannel(userID int, username, channelID string)
+}
+
 type AdminService interface {
 	GetSetupStatus(ctx context.Context) (bool, error)
 	Setup(ctx context.Context, username, password string) (*domain.AuthTokens, error)

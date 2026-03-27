@@ -16,15 +16,17 @@ import (
 )
 
 type Service struct {
-	repo    ports.RoomRepository
-	rooms   map[string]*domain.Room // In-memory кэш для активных комнат с подключенными клиентами
-	roomsMu sync.RWMutex
+	repo        ports.RoomRepository
+	presenceSvc ports.PresenceService
+	rooms       map[string]*domain.Room // In-memory кэш для активных комнат с подключенными клиентами
+	roomsMu     sync.RWMutex
 }
 
-func NewRoomService(repo ports.RoomRepository) *Service {
+func NewRoomService(repo ports.RoomRepository, presenceSvc ports.PresenceService) *Service {
 	return &Service{
-		repo:  repo,
-		rooms: make(map[string]*domain.Room),
+		repo:        repo,
+		presenceSvc: presenceSvc,
+		rooms:       make(map[string]*domain.Room),
 	}
 }
 
@@ -157,11 +159,9 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 func (s *Service) readPump(client *domain.Client) {
 	defer func() {
 		if client.Room != nil {
-			client.Room.Mu.Lock()
-			delete(client.Room.Clients, client.ID)
-			client.Room.Mu.Unlock()
-			client.Room.BroadcastExcept(domain.SignalingMessage{Type: "leave", From: client.ID}, client.ID)
+			s.leaveRoom(client)
 		}
+		s.presenceSvc.UpdateUserChannel(client.UserID, client.Username, "")
 		_ = client.Conn.Close()
 	}()
 
@@ -177,6 +177,9 @@ func (s *Service) readPump(client *domain.Client) {
 			room := s.GetRoom(msg.Room)
 			if room == nil {
 				continue
+			}
+			if client.Room != nil && client.Room.ID != room.ID {
+				s.leaveRoom(client)
 			}
 			client.Room = room
 			room.Mu.Lock()
@@ -209,6 +212,7 @@ func (s *Service) readPump(client *domain.Client) {
 				domain.SignalingMessage{Type: "peer-joined", From: client.ID, Username: client.Username},
 				client.ID,
 			)
+			s.presenceSvc.UpdateUserChannel(client.UserID, client.Username, room.ID)
 
 		case "offer", "answer", "ice":
 			if client.Room == nil {
@@ -225,14 +229,23 @@ func (s *Service) readPump(client *domain.Client) {
 
 		case "leave":
 			if client.Room != nil {
-				client.Room.Mu.Lock()
-				delete(client.Room.Clients, client.ID)
-				client.Room.Mu.Unlock()
-				client.Room.BroadcastExcept(domain.SignalingMessage{Type: "leave", From: client.ID}, client.ID)
-				client.Room = nil
+				s.leaveRoom(client)
+				s.presenceSvc.UpdateUserChannel(client.UserID, client.Username, "")
 			}
 		}
 	}
+}
+
+func (s *Service) leaveRoom(client *domain.Client) {
+	if client.Room == nil {
+		return
+	}
+	room := client.Room
+	room.Mu.Lock()
+	delete(room.Clients, client.ID)
+	room.Mu.Unlock()
+	room.BroadcastExcept(domain.SignalingMessage{Type: "leave", From: client.ID}, client.ID)
+	client.Room = nil
 }
 
 func (s *Service) writePump(ctx context.Context, client *domain.Client) {

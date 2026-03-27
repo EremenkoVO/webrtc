@@ -207,3 +207,28 @@ func (s *ServerWrapper) ChatWebSocket(w http.ResponseWriter, r *http.Request, pa
 
 	s.chatService.HandleWebSocketConnection(conn, userID, username, params.Room)
 }
+
+// PresenceWebSocket upgrades to a dedicated presence websocket.
+func (s *ServerWrapper) PresenceWebSocket(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := s.authService.ValidateToken(r.Context(), token)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, api.ErrorResponse{
+			Message: fmt.Sprintf("failed to upgrade connection: %v", err),
+		})
+		return
+	}
+
+	s.presenceSvc.HandleWebSocketConnection(conn, userID)
+}

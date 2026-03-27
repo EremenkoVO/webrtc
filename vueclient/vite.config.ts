@@ -33,6 +33,11 @@ export default defineConfig({
           });
         },
       },
+      '/api/v1/presence/ws': {
+        target: 'http://localhost:8080',
+        ws: true,
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,

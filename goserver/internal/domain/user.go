@@ -16,7 +16,8 @@ type User struct {
 
 // UserDirectoryEntry is one row for the public user directory (no secrets, no role).
 type UserDirectoryEntry struct {
-	ID        int
-	Username  string
-	HasAvatar bool
+	ID         int
+	Username   string
+	HasAvatar  bool
+	LastSeenAt *time.Time
 }

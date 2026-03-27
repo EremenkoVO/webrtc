@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/EremenkoVO/webrtc/goserver/internal/domain"
 )
@@ -15,9 +16,10 @@ type changePasswordRequest struct {
 }
 
 type directoryUserResponse struct {
-	ID        string  `json:"id"`
-	Username  string  `json:"username"`
-	AvatarURL *string `json:"avatar_url,omitempty"`
+	ID         string     `json:"id"`
+	Username   string     `json:"username"`
+	AvatarURL  *string    `json:"avatar_url,omitempty"`
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
 }
 
 // ListServerUsers handles GET /api/v1/users
@@ -37,8 +39,9 @@ func (s *ServerWrapper) ListServerUsers(w http.ResponseWriter, r *http.Request) 
 	resp := make([]directoryUserResponse, len(entries))
 	for i, e := range entries {
 		item := directoryUserResponse{
-			ID:       strconv.Itoa(e.ID),
-			Username: e.Username,
+			ID:         strconv.Itoa(e.ID),
+			Username:   e.Username,
+			LastSeenAt: e.LastSeenAt,
 		}
 		if e.HasAvatar {
 			url := "/api/v1/avatars/" + e.Username

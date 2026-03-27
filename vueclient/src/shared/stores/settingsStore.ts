@@ -4,6 +4,7 @@ import { ref, watch } from 'vue'
 const STORAGE_KEY = 'app-settings'
 
 export type Theme = 'dark' | 'light' | 'midnight' | 'nord' | 'dracula' | 'tokyo-night'
+export type DensityMode = 'auto' | 'comfortable' | 'compact'
 
 export const THEMES: Array<{ id: Theme; label: string; colors: [string, string, string] }> = [
   { id: 'dark', label: 'Dark', colors: ['#313338', '#2b2d31', '#5865f2'] },
@@ -20,6 +21,7 @@ export interface AppSettings {
   notificationsEnabled: boolean
   soundOnConnect: boolean
   theme: Theme
+  densityMode: DensityMode
 }
 
 function loadSettings(): AppSettings {
@@ -34,6 +36,7 @@ function loadSettings(): AppSettings {
         notificationsEnabled: parsed.notificationsEnabled ?? fallbackNotifications,
         soundOnConnect: parsed.soundOnConnect ?? true,
         theme: (parsed.theme as Theme) ?? 'dark',
+        densityMode: (parsed.densityMode as DensityMode) ?? 'auto',
       }
     }
   } catch {
@@ -45,6 +48,7 @@ function loadSettings(): AppSettings {
     notificationsEnabled: fallbackNotifications,
     soundOnConnect: true,
     theme: 'dark',
+    densityMode: 'auto',
   }
 }
 
@@ -64,6 +68,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const notificationsEnabled = ref<boolean>(saved.notificationsEnabled)
   const soundOnConnect = ref<boolean>(saved.soundOnConnect)
   const theme = ref<Theme>(saved.theme)
+  const densityMode = ref<DensityMode>(saved.densityMode)
 
   function setDefaultMicrophone(deviceId: string | null) {
     defaultMicrophoneId.value = deviceId
@@ -85,6 +90,10 @@ export const useSettingsStore = defineStore('settings', () => {
     theme.value = t
   }
 
+  function setDensityMode(mode: DensityMode) {
+    densityMode.value = mode
+  }
+
   watch(
     theme,
     (t) => document.documentElement.setAttribute('data-theme', t),
@@ -98,6 +107,7 @@ export const useSettingsStore = defineStore('settings', () => {
       notificationsEnabled: notificationsEnabled.value,
       soundOnConnect: soundOnConnect.value,
       theme: theme.value,
+      densityMode: densityMode.value,
     }),
     (s) => saveSettings(s),
     { deep: true },
@@ -109,10 +119,12 @@ export const useSettingsStore = defineStore('settings', () => {
     notificationsEnabled,
     soundOnConnect,
     theme,
+    densityMode,
     setDefaultMicrophone,
     setDefaultCamera,
     setNotificationsEnabled,
     setSoundOnConnect,
     setTheme,
+    setDensityMode,
   }
 })

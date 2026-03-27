@@ -83,6 +83,15 @@ docker-compose up --build
 - [vueclient/SIGNALING_GUIDE.md](vueclient/SIGNALING_GUIDE.md) — описание signaling-протокола
 - OpenAPI спецификация: `goserver/api/openapi.yaml`
 
+## Presence (online/offline)
+
+- Глобальный presence WebSocket: `GET /api/v1/presence/ws?token=<JWT>`
+- События:
+  - `presence_snapshot`: `{ "type": "presence_snapshot", "online_users": ["1", "2"] }`
+  - `user_online`: `{ "type": "user_online", "user_id": "1" }`
+  - `user_offline`: `{ "type": "user_offline", "user_id": "1" }`
+- Для списка участников `GET /api/v1/users` может возвращать `last_seen_at` у оффлайн-пользователей.
+
 ---
 
 _Для production используйте docker-compose.prod.yml и настройте домен/сертификаты._

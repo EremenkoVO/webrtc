@@ -171,6 +171,7 @@ func (r *userRepository) ListUsers(ctx context.Context) ([]*domain.User, error) 
 func (r *userRepository) ListUsersForDirectory(ctx context.Context) ([]*domain.UserDirectoryEntry, error) {
 	query := `SELECT id, username,
 		CASE WHEN COALESCE(LENGTH(avatar), 0) > 0 THEN 1 ELSE 0 END
+		,last_seen_at
 		FROM users ORDER BY username COLLATE NOCASE ASC`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
@@ -182,7 +183,7 @@ func (r *userRepository) ListUsersForDirectory(ctx context.Context) ([]*domain.U
 	for rows.Next() {
 		var e domain.UserDirectoryEntry
 		var hasAvatar int
-		if err := rows.Scan(&e.ID, &e.Username, &hasAvatar); err != nil {
+		if err := rows.Scan(&e.ID, &e.Username, &hasAvatar, &e.LastSeenAt); err != nil {
 			return nil, err
 		}
 		e.HasAvatar = hasAvatar != 0

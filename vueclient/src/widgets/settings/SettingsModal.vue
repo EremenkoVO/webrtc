@@ -5,7 +5,7 @@ import { setLocale, SUPPORTED_LOCALES, type SupportedLocale } from '@/shared/i18
 import { useWebRTC } from '@/shared/lib/useWebRTC'
 import { useAvatarStore } from '@/shared/stores/avatarStore'
 import { useChatStore } from '@/shared/stores/chatStore'
-import { THEMES, useSettingsStore, type Theme } from '@/shared/stores/settingsStore'
+import { THEMES, useSettingsStore, type Theme, type DensityMode } from '@/shared/stores/settingsStore'
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -64,6 +64,11 @@ const menuItems = computed(() => [
 
 const { videoDevices, audioDevices, fetchVideoDevices, fetchAudioDevices } = useWebRTC()
 const labels: Record<SupportedLocale, string> = { en: 'English', ru: 'Русский' }
+const densityModes: Array<{ id: DensityMode; labelKey: string }> = [
+  { id: 'auto', labelKey: 'settings.densityAuto' },
+  { id: 'comfortable', labelKey: 'settings.densityComfortable' },
+  { id: 'compact', labelKey: 'settings.densityCompact' },
+]
 
 const showAvatarEditor = ref(false)
 const currentUsername = ref<string | null>(null)
@@ -167,7 +172,7 @@ function selectSectionMobile(s: Section) {
     <Transition name="modal">
       <div
         v-if="visible"
-        class="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center sm:bg-black/60 sm:backdrop-blur-sm"
+        class="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center sm:bg-[#03040a]/70 sm:backdrop-blur-md"
         :style="
           dragOffset > 0
             ? { backgroundColor: `rgba(0,0,0,${Math.max(0, 0.4 - dragOffset / 400)})` }
@@ -176,7 +181,7 @@ function selectSectionMobile(s: Section) {
         @click.self="close"
       >
         <div
-          class="modal-content relative bg-dc-bg-secondary w-full h-[92dvh] sm:h-[85vh] rounded-t-2xl sm:rounded-lg shadow-2xl sm:max-w-2xl sm:mx-4 flex flex-col sm:flex-row overflow-hidden sm:border sm:border-dc-separator/40"
+          class="modal-content relative bg-dc-bg-secondary w-full h-[92dvh] sm:h-[85vh] rounded-t-2xl sm:rounded-2xl shadow-2xl sm:max-w-[980px] sm:mx-4 flex flex-col sm:flex-row overflow-hidden sm:border sm:border-white/10"
           :style="
             dragOffset > 0 || isDragging
               ? {
@@ -191,10 +196,10 @@ function selectSectionMobile(s: Section) {
         >
           <!-- ── Desktop: left sidebar (hidden on mobile) ── -->
           <div
-            class="hidden sm:flex w-44 flex-shrink-0 bg-dc-bg-tertiary flex-col py-4 overflow-y-auto dc-scrollbar-thin"
+            class="hidden sm:flex w-52 flex-shrink-0 settings-nav-surface flex-col py-4 overflow-y-auto dc-scrollbar-thin"
           >
             <p
-              class="px-4 mb-2 text-[10px] font-bold uppercase tracking-widest text-dc-text-muted select-none"
+              class="px-4 mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-dc-text-muted/90 select-none"
             >
               {{ t('settings.title') }}
             </p>
@@ -204,10 +209,10 @@ function selectSectionMobile(s: Section) {
                 :key="item.id"
                 type="button"
                 :class="[
-                  'flex items-center gap-3 px-3 py-2 rounded text-sm font-medium text-left w-full transition-colors',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left w-full transition-all duration-150',
                   activeSection === item.id
-                    ? 'bg-dc-bg-active text-dc-text-heading'
-                    : 'text-dc-text-muted hover:bg-dc-bg-hover hover:text-dc-text',
+                    ? 'bg-dc-bg-active text-dc-text-heading ring-1 ring-white/10 shadow-[0_6px_22px_rgba(0,0,0,0.22)]'
+                    : 'text-dc-text-muted hover:bg-dc-bg-hover/70 hover:text-dc-text',
                 ]"
                 @click="selectSection(item.id)"
               >
@@ -258,7 +263,7 @@ function selectSectionMobile(s: Section) {
                   v-for="item in menuItems"
                   :key="item.id"
                   type="button"
-                  class="flex items-center gap-4 w-full px-5 py-3.5 text-dc-text hover:bg-dc-bg-hover active:bg-dc-bg-active transition-colors"
+                  class="flex items-center gap-4 w-full px-5 py-3.5 text-dc-text hover:bg-dc-bg-hover active:bg-dc-bg-active transition-colors rounded-xl"
                   @click="selectSectionMobile(item.id)"
                 >
                   <div
@@ -310,7 +315,7 @@ function selectSectionMobile(s: Section) {
             </div>
 
             <!-- Section body -->
-            <div class="flex-1 px-5 sm:px-8 pb-6 overflow-y-auto dc-scrollbar-thin">
+            <div class="settings-surface flex-1 px-5 sm:px-8 pb-6 overflow-y-auto dc-scrollbar-thin">
               <Transition name="section" mode="out-in">
                 <div :key="activeSection">
                   <!-- ── Profile ── -->
@@ -461,6 +466,31 @@ function selectSectionMobile(s: Section) {
                             />
                           </button>
                         </div>
+                      </div>
+
+                      <div>
+                        <label class="block text-sm font-medium text-dc-text-heading mb-2">{{
+                          t('settings.interfaceDensity')
+                        }}</label>
+                        <div class="flex rounded-md bg-dc-bg-tertiary p-0.5">
+                          <button
+                            v-for="mode in densityModes"
+                            :key="mode.id"
+                            type="button"
+                            :class="[
+                              'flex-1 py-2 px-3 rounded-[5px] text-sm font-medium transition-colors',
+                              settings.densityMode === mode.id
+                                ? 'bg-dc-bg-active text-dc-text-heading'
+                                : 'text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover',
+                            ]"
+                            @click="settings.setDensityMode(mode.id)"
+                          >
+                            {{ t(mode.labelKey) }}
+                          </button>
+                        </div>
+                        <p class="text-xs text-dc-text-muted mt-1.5">
+                          {{ t('settings.interfaceDensityDesc') }}
+                        </p>
                       </div>
                     </div>
                   </template>
@@ -638,6 +668,38 @@ function selectSectionMobile(s: Section) {
 </template>
 
 <style scoped>
+.modal-content {
+  background:
+    radial-gradient(900px 420px at 100% -20%, rgba(88, 101, 242, 0.16), transparent 60%),
+    radial-gradient(700px 360px at -20% 120%, rgba(120, 119, 198, 0.1), transparent 62%),
+    var(--dc-bg-secondary, #2b2d31);
+}
+
+.settings-nav-surface {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    var(--dc-bg-tertiary, #232428);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.settings-surface :deep(h3) {
+  letter-spacing: 0.12em;
+}
+
+.settings-surface :deep(select),
+.settings-surface :deep(input[type='password']),
+.settings-surface :deep(input[type='url']) {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.settings-surface :deep(select:focus),
+.settings-surface :deep(input[type='password']:focus),
+.settings-surface :deep(input[type='url']:focus) {
+  box-shadow:
+    inset 0 0 0 1px rgba(88, 101, 242, 0.35),
+    0 0 0 3px rgba(88, 101, 242, 0.18);
+}
+
 /* Mobile-menu page transition (slides in/out horizontally) */
 .mobile-menu-enter-active {
   transition:

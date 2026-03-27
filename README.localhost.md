@@ -90,6 +90,7 @@ If WebSockets don't connect:
 4. **Verify WebSocket endpoints**:
    - Signaling: `wss://localhost:5001/api/v1/ws`
    - Chat: `wss://localhost:5001/api/v1/chat/ws`
+   - Presence: `wss://localhost:5001/api/v1/presence/ws`
 5. **Test direct connection** (bypass Nginx):
    - Backend: `ws://localhost:8080/api/v1/ws`
    - Chat: `ws://localhost:3001/ws`
