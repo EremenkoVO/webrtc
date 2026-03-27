@@ -31,12 +31,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   <Teleport to="body">
     <div
       ref="overlayRef"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-dc-modal-backdrop backdrop-blur-sm"
       @click="onOverlayClick"
     >
       <!-- Close button -->
       <button
-        class="absolute top-4 right-4 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+        class="absolute top-4 right-4 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-dc-bg-floating/95 hover:bg-dc-bg-hover text-dc-text-heading border border-dc-separator/50 shadow-md transition-colors"
         @click="close"
       >
         <font-awesome-icon icon="xmark" class="text-lg" />
@@ -46,7 +46,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <a
         :href="src"
         :download="fileName"
-        class="absolute top-4 right-16 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+        class="absolute top-4 right-16 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-dc-bg-floating/95 hover:bg-dc-bg-hover text-dc-text-heading border border-dc-separator/50 shadow-md transition-colors"
         @click.stop
       >
         <font-awesome-icon icon="download" class="text-sm" />

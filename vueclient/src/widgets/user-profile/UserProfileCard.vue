@@ -36,11 +36,11 @@ onMounted(loadProfile)
     <Transition name="modal">
       <div
         v-if="open"
-        class="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+        class="fixed inset-0 z-[10000] bg-dc-modal-backdrop backdrop-blur-sm flex items-center justify-center p-4"
         @click.self="emit('close')"
       >
         <div
-          class="w-full max-w-md rounded-2xl bg-dc-bg-secondary border border-white/10 shadow-2xl overflow-hidden"
+          class="w-full max-w-md rounded-2xl bg-dc-bg-secondary border border-dc-separator/50 shadow-2xl overflow-hidden"
         >
           <div
             class="h-24 bg-gradient-to-r from-indigo-500/60 to-fuchsia-500/60"

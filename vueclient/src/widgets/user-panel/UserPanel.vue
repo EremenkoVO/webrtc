@@ -84,7 +84,7 @@ async function logout() {
       <Transition name="admin-modal">
         <div
           v-if="showAdmin"
-          class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm"
+          class="fixed inset-0 z-[9999] bg-dc-modal-backdrop backdrop-blur-sm"
           @click.self="showAdmin = false"
         >
           <div class="w-full h-full">

@@ -15,6 +15,12 @@ export const THEMES: Array<{ id: Theme; label: string; colors: [string, string, 
   { id: 'tokyo-night', label: 'Tokyo Night', colors: ['#1a1b26', '#16161e', '#7aa2f7'] },
 ]
 
+const THEME_IDS = new Set<string>(THEMES.map((t) => t.id))
+
+function normalizeTheme(value: unknown): Theme {
+  return typeof value === 'string' && THEME_IDS.has(value) ? (value as Theme) : 'dark'
+}
+
 export interface AppSettings {
   defaultMicrophoneId: string | null
   defaultCameraId: string | null
@@ -35,7 +41,7 @@ function loadSettings(): AppSettings {
         defaultCameraId: parsed.defaultCameraId ?? null,
         notificationsEnabled: parsed.notificationsEnabled ?? fallbackNotifications,
         soundOnConnect: parsed.soundOnConnect ?? true,
-        theme: (parsed.theme as Theme) ?? 'dark',
+        theme: normalizeTheme(parsed.theme),
         densityMode: (parsed.densityMode as DensityMode) ?? 'auto',
       }
     }

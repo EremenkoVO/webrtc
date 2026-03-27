@@ -459,7 +459,7 @@ watch(
   <Transition name="fade">
     <div
       v-if="sidebarStore.isMobile && sidebarStore.isOpen"
-      class="fixed inset-0 bg-black/60 z-40 lg:hidden"
+      class="fixed inset-0 bg-dc-modal-backdrop z-40 lg:hidden"
       @click="sidebarStore.close"
     />
   </Transition>
@@ -802,7 +802,7 @@ watch(
     <!-- Voice connected panel -->
     <div
       v-if="callStore.isInCall"
-      class="bg-dc-bg-secondary-alt border-t border-white/[0.04]"
+      class="bg-dc-bg-secondary-alt border-t border-dc-separator/40"
     >
       <div class="px-3 pt-2 pb-1.5 flex items-center gap-2">
         <div class="relative flex-shrink-0">
@@ -829,7 +829,7 @@ watch(
             :class="[
               'w-9 h-9 sm:w-8 sm:h-8 rounded-l-md flex items-center justify-center transition-colors',
               callStore.videoEnabled
-                ? 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text-secondary'
+                ? 'bg-dc-bg-active hover:bg-dc-control-hover text-dc-text-secondary'
                 : 'bg-dc-red/20 text-dc-red hover:bg-dc-red/30',
             ]"
             :title="callStore.videoEnabled ? t('call.turnOffCamera') : t('call.turnOnCamera')"
@@ -843,9 +843,9 @@ watch(
             <button
               type="button"
               :class="[
-                'w-6 h-9 sm:h-8 rounded-r-md border-l border-black/20 flex items-center justify-center transition-colors text-dc-text-muted',
+                'w-6 h-9 sm:h-8 rounded-r-md border-l border-dc-separator/60 flex items-center justify-center transition-colors text-dc-text-muted',
                 callStore.videoEnabled
-                  ? 'bg-dc-bg-active hover:bg-[#4e5058]'
+                  ? 'bg-dc-bg-active hover:bg-dc-control-hover'
                   : 'bg-dc-red/20 hover:bg-dc-red/30 text-dc-red',
               ]"
               :title="t('call.camera')"
@@ -885,7 +885,7 @@ watch(
             :class="[
               'w-9 h-9 sm:w-8 sm:h-8 rounded-l-md flex items-center justify-center transition-colors',
               callStore.audioEnabled
-                ? 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text-secondary'
+                ? 'bg-dc-bg-active hover:bg-dc-control-hover text-dc-text-secondary'
                 : 'bg-dc-red/20 text-dc-red hover:bg-dc-red/30',
             ]"
             :title="callStore.audioEnabled ? t('common.mute') : t('common.unmute')"
@@ -899,9 +899,9 @@ watch(
             <button
               type="button"
               :class="[
-                'w-6 h-9 sm:h-8 rounded-r-md border-l border-black/20 flex items-center justify-center transition-colors text-dc-text-muted',
+                'w-6 h-9 sm:h-8 rounded-r-md border-l border-dc-separator/60 flex items-center justify-center transition-colors text-dc-text-muted',
                 callStore.audioEnabled
-                  ? 'bg-dc-bg-active hover:bg-[#4e5058]'
+                  ? 'bg-dc-bg-active hover:bg-dc-control-hover'
                   : 'bg-dc-red/20 hover:bg-dc-red/30 text-dc-red',
               ]"
               :title="t('call.microphone')"
@@ -940,7 +940,7 @@ watch(
             'w-9 h-9 sm:w-8 sm:h-8 rounded-md flex items-center justify-center transition-colors',
             callStore.isDeafened
               ? 'bg-dc-red/20 text-dc-red hover:bg-dc-red/30'
-              : 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text-secondary',
+              : 'bg-dc-bg-active hover:bg-dc-control-hover text-dc-text-secondary',
           ]"
           :title="callStore.isDeafened ? t('common.undeafen') : t('common.deafen')"
         >
@@ -957,7 +957,7 @@ watch(
             'w-9 h-9 sm:w-8 sm:h-8 rounded-md flex items-center justify-center transition-colors',
             callStore.isScreenSharing
               ? 'bg-dc-red/20 text-dc-red hover:bg-dc-red/30'
-              : 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text-secondary',
+              : 'bg-dc-bg-active hover:bg-dc-control-hover text-dc-text-secondary',
           ]"
           :title="callStore.isScreenSharing ? t('call.stopSharing') : t('call.shareScreen')"
         >
@@ -1062,7 +1062,7 @@ watch(
         @click.self="closeCreateModal()"
       >
         <!-- Backdrop -->
-        <div class="absolute inset-0 bg-black/70" />
+        <div class="absolute inset-0 bg-dc-modal-backdrop backdrop-blur-sm" />
 
         <!-- Modal card -->
         <div
@@ -1216,7 +1216,7 @@ watch(
         class="fixed inset-0 z-[300] flex items-center justify-center p-4"
         @click.self="cancelSwitchChannel()"
       >
-        <div class="absolute inset-0 bg-black/70" />
+        <div class="absolute inset-0 bg-dc-modal-backdrop backdrop-blur-sm" />
 
         <div
           class="relative z-10 w-full max-w-sm bg-dc-bg-secondary rounded-xl shadow-2xl overflow-hidden"

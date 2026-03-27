@@ -61,7 +61,7 @@ function handleCancel() {
 
 <template>
   <Transition name="modal">
-    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="handleCancel">
+    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-dc-modal-backdrop backdrop-blur-sm" @click.self="handleCancel">
       <div class="bg-dc-bg-secondary rounded-lg shadow-xl w-full max-w-md mx-4 border border-dc-separator/40 modal-content" @click.stop>
       <!-- Header -->
       <div class="px-6 py-4 border-b border-dc-separator/40">

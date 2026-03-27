@@ -356,7 +356,7 @@ const tabBadge = computed(() => ({
     <Transition name="fade">
       <div
         v-if="sidebarOpen"
-        class="fixed inset-0 z-20 bg-black/60 md:hidden"
+        class="fixed inset-0 z-20 bg-dc-modal-backdrop md:hidden"
         @click="sidebarOpen = false"
       />
     </Transition>
@@ -955,7 +955,7 @@ const tabBadge = computed(() => ({
     <Transition name="fade">
       <div
         v-if="confirmDeleteUser"
-        class="fixed inset-0 z-[10050] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+        class="fixed inset-0 z-[10050] flex items-end sm:items-center justify-center bg-dc-modal-backdrop backdrop-blur-sm"
         @click.self="confirmDeleteUser = null"
       >
         <div class="bg-dc-bg-secondary rounded-t-2xl sm:rounded-xl border border-white/[0.06] shadow-2xl p-6 w-full sm:max-w-sm">
@@ -989,7 +989,7 @@ const tabBadge = computed(() => ({
     <Transition name="fade">
       <div
         v-if="confirmPurge"
-        class="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+        class="fixed inset-0 z-[10050] flex items-center justify-center bg-dc-modal-backdrop backdrop-blur-sm px-4"
         @click.self="confirmPurge = false"
       >
         <div class="bg-dc-bg-secondary rounded-2xl border border-white/[0.06] shadow-2xl p-6 w-full max-w-sm flex flex-col gap-4">
@@ -1028,7 +1028,7 @@ const tabBadge = computed(() => ({
     <Transition name="fade">
       <div
         v-if="confirmDeleteRoom"
-        class="fixed inset-0 z-[10050] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+        class="fixed inset-0 z-[10050] flex items-end sm:items-center justify-center bg-dc-modal-backdrop backdrop-blur-sm"
         @click.self="confirmDeleteRoom = null"
       >
         <div class="bg-dc-bg-secondary rounded-t-2xl sm:rounded-xl border border-white/[0.06] shadow-2xl p-6 w-full sm:max-w-sm">

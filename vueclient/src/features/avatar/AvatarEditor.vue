@@ -194,7 +194,7 @@ onBeforeUnmount(() => {
     <Transition name="modal">
     <div
       v-if="visible"
-      class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      class="fixed inset-0 z-[10000] flex items-center justify-center bg-dc-modal-backdrop backdrop-blur-sm"
       @click.self="close"
     >
       <div

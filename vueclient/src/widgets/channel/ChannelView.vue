@@ -931,7 +931,7 @@ onBeforeUnmount(() => {
               <button
                 @click="startCall"
                 :disabled="!roomStore.selectedChannelId"
-                class="px-8 py-3 rounded-full bg-dc-green hover:bg-dc-green/80 disabled:opacity-40 text-white font-medium text-sm transition-colors shadow-lg"
+                class="px-8 py-3 rounded-full bg-dc-green hover:bg-dc-green-hover disabled:opacity-40 text-white font-medium text-sm transition-colors shadow-lg"
               >
                 {{ t('channel.joinVoice') }}
               </button>

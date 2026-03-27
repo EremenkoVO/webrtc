@@ -72,8 +72,8 @@ function selectMicrophone(deviceId: string) {
           :class="[
             'w-10 h-10 2xl:w-12 2xl:h-12 rounded-l-full flex items-center justify-center transition-colors',
             props.videoEnabled
-              ? 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text'
-              : 'bg-dc-red hover:bg-dc-red/80 text-white',
+              ? 'bg-dc-bg-active hover:bg-dc-control-hover text-dc-text'
+              : 'bg-dc-red hover:bg-dc-danger-hover text-white',
           ]"
           @click="toggleVideo"
           :title="props.videoEnabled ? t('call.turnOffCamera') : t('call.turnOnCamera')"
@@ -85,7 +85,7 @@ function selectMicrophone(deviceId: string) {
         </button>
         <div class="relative">
           <button
-            class="w-7 h-10 2xl:w-8 2xl:h-12 rounded-r-full bg-dc-bg-active hover:bg-[#4e5058] flex items-center justify-center transition-colors text-dc-text-muted"
+            class="w-7 h-10 2xl:w-8 2xl:h-12 rounded-r-full bg-dc-bg-active hover:bg-dc-control-hover flex items-center justify-center transition-colors text-dc-text-muted"
             @click="toggleCameraMenu"
           >
             <font-awesome-icon
@@ -119,8 +119,8 @@ function selectMicrophone(deviceId: string) {
           :class="[
             'w-12 h-12 sm:w-10 sm:h-10 2xl:w-12 2xl:h-12 rounded-l-full flex items-center justify-center transition-colors',
             props.audioEnabled
-              ? 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text'
-              : 'bg-dc-red hover:bg-dc-red/80 text-white',
+              ? 'bg-dc-bg-active hover:bg-dc-control-hover text-dc-text'
+              : 'bg-dc-red hover:bg-dc-danger-hover text-white',
           ]"
           @click="toggleAudio"
           :title="props.audioEnabled ? t('common.mute') : t('common.unmute')"
@@ -132,7 +132,7 @@ function selectMicrophone(deviceId: string) {
         </button>
         <div class="relative">
           <button
-            class="w-8 h-12 sm:w-7 sm:h-10 2xl:w-8 2xl:h-12 rounded-r-full bg-dc-bg-active hover:bg-[#4e5058] flex items-center justify-center transition-colors text-dc-text-muted"
+            class="w-8 h-12 sm:w-7 sm:h-10 2xl:w-8 2xl:h-12 rounded-r-full bg-dc-bg-active hover:bg-dc-control-hover flex items-center justify-center transition-colors text-dc-text-muted"
             @click="toggleMicrophoneMenu"
           >
             <font-awesome-icon
@@ -168,8 +168,8 @@ function selectMicrophone(deviceId: string) {
         :class="[
           'w-12 h-12 sm:w-10 sm:h-10 2xl:w-12 2xl:h-12 rounded-full flex items-center justify-center transition-colors',
           props.isDeafened
-            ? 'bg-dc-red hover:bg-dc-red/80 text-white'
-            : 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text',
+            ? 'bg-dc-red hover:bg-dc-danger-hover text-white'
+            : 'bg-dc-bg-active hover:bg-dc-control-hover text-dc-text',
         ]"
         @click="emits('toggleDeafen')"
         :title="props.isDeafened ? t('common.undeafen') : t('common.deafen')"
@@ -182,8 +182,8 @@ function selectMicrophone(deviceId: string) {
         :class="[
           'w-12 h-12 sm:w-10 sm:h-10 2xl:w-12 2xl:h-12 rounded-full flex items-center justify-center transition-colors',
           props.isScreenSharing
-            ? 'bg-dc-red hover:bg-[#a12d2f] text-white'
-            : 'bg-dc-bg-active hover:bg-[#4e5058] text-dc-text',
+            ? 'bg-dc-red hover:bg-dc-danger-hover text-white'
+            : 'bg-dc-bg-active hover:bg-dc-control-hover text-dc-text',
         ]"
         @click="props.isScreenSharing ? stopScreenShare() : emits('requestScreenShare')"
         :title="props.isScreenSharing ? t('call.stopSharing') : t('call.shareScreen')"
@@ -196,7 +196,7 @@ function selectMicrophone(deviceId: string) {
 
       <!-- Disconnect -->
       <button
-        class="w-16 h-12 sm:w-14 sm:h-10 2xl:w-16 2xl:h-12 rounded-full bg-dc-red hover:bg-[#a12d2f] flex items-center justify-center transition-colors text-white"
+        class="w-16 h-12 sm:w-14 sm:h-10 2xl:w-16 2xl:h-12 rounded-full bg-dc-red hover:bg-dc-danger-hover flex items-center justify-center transition-colors text-white"
         @click="emits('endCall')"
         :title="t('common.disconnect')"
       >

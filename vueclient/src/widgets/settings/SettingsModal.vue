@@ -240,7 +240,7 @@ function pickStatusEmoji(emoji: string) {
     <Transition name="modal">
       <div
         v-if="visible"
-        class="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center sm:bg-[#03040a]/70 sm:backdrop-blur-md"
+        class="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-dc-modal-backdrop backdrop-blur-sm sm:backdrop-blur-md"
         :style="
           dragOffset > 0
             ? { backgroundColor: `rgba(0,0,0,${Math.max(0, 0.4 - dragOffset / 400)})` }
@@ -250,7 +250,7 @@ function pickStatusEmoji(emoji: string) {
         @click="showStatusEmojiPicker = false"
       >
         <div
-          class="modal-content relative bg-dc-bg-secondary w-full h-[92dvh] sm:h-[85vh] rounded-t-2xl sm:rounded-2xl shadow-2xl sm:max-w-[980px] sm:mx-4 flex flex-col sm:flex-row overflow-hidden sm:border sm:border-white/10"
+          class="modal-content relative bg-dc-bg-secondary w-full h-[92dvh] sm:h-[85vh] rounded-t-2xl sm:rounded-2xl shadow-2xl sm:max-w-[980px] sm:mx-4 flex flex-col sm:flex-row overflow-hidden sm:border sm:border-dc-separator/50"
           :style="
             dragOffset > 0 || isDragging
               ? {
@@ -411,7 +411,7 @@ function pickStatusEmoji(emoji: string) {
                           />
                         </div>
                         <div
-                          class="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                          class="absolute inset-0 rounded-full bg-dc-text-heading/35 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                         >
                           <font-awesome-icon icon="camera" class="text-white text-xl" />
                         </div>
@@ -835,16 +835,28 @@ function pickStatusEmoji(emoji: string) {
 <style scoped>
 .modal-content {
   background:
-    radial-gradient(900px 420px at 100% -20%, rgba(88, 101, 242, 0.16), transparent 60%),
-    radial-gradient(700px 360px at -20% 120%, rgba(120, 119, 198, 0.1), transparent 62%),
-    var(--dc-bg-secondary, #2b2d31);
+    radial-gradient(
+      900px 420px at 100% -20%,
+      color-mix(in srgb, var(--color-dc-blurple) 18%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      700px 360px at -20% 120%,
+      color-mix(in srgb, var(--color-dc-blurple) 11%, transparent),
+      transparent 62%
+    ),
+    var(--color-dc-bg-secondary);
 }
 
 .settings-nav-surface {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
-    var(--dc-bg-tertiary, #232428);
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-dc-text-heading) 5%, transparent),
+      color-mix(in srgb, var(--color-dc-text-heading) 1.5%, transparent)
+    ),
+    var(--color-dc-bg-tertiary);
+  border-right: 1px solid color-mix(in srgb, var(--color-dc-separator) 70%, transparent);
 }
 
 .settings-surface :deep(h3) {
@@ -854,15 +866,15 @@ function pickStatusEmoji(emoji: string) {
 .settings-surface :deep(select),
 .settings-surface :deep(input[type='password']),
 .settings-surface :deep(input[type='url']) {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-dc-text-heading) 4%, transparent);
 }
 
 .settings-surface :deep(select:focus),
 .settings-surface :deep(input[type='password']:focus),
 .settings-surface :deep(input[type='url']:focus) {
   box-shadow:
-    inset 0 0 0 1px rgba(88, 101, 242, 0.35),
-    0 0 0 3px rgba(88, 101, 242, 0.18);
+    inset 0 0 0 1px color-mix(in srgb, var(--color-dc-blurple) 35%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--color-dc-blurple) 18%, transparent);
 }
 
 /* Mobile-menu page transition (slides in/out horizontally) */
