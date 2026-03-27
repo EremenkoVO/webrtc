@@ -217,40 +217,59 @@ function closeContextMenu() {
   contextMenuUser.value = null
 }
 
+function resolveUserId(username: string): string | null {
+  const fromRoomMates = Object.entries(signalingStore.room_mates).find(([, name]) => name === username)?.[0]
+  if (fromRoomMates) return fromRoomMates
+  const fromParticipants = roomStore.participants.find((p) => p.username === username)?.client_id
+  return fromParticipants || null
+}
+
 function getVolumeForUser(username: string): number {
-  return voiceStateStore.peerVolumeSettings[username]?.volume ?? 1
+  const userId = resolveUserId(username)
+  if (!userId) return 1
+  return voiceStateStore.peerVolumeSettings[userId]?.volume ?? 1
 }
 
 function isMutedByUs(username: string): boolean {
-  return voiceStateStore.peerVolumeSettings[username]?.muted ?? false
+  const userId = resolveUserId(username)
+  if (!userId) return false
+  return voiceStateStore.peerVolumeSettings[userId]?.muted ?? false
 }
 
 function handleVolumeChange(username: string, raw: number) {
+  const userId = resolveUserId(username)
+  if (!userId) return
   const volume = raw / 100
-  voiceStateStore.setPeerVolume(username, volume)
-  if (volume > 0 && isMutedByUs(username)) voiceStateStore.setPeerMuted(username, false)
+  voiceStateStore.setPeerVolume(userId, volume)
+  if (volume > 0 && isMutedByUs(username)) voiceStateStore.setPeerMuted(userId, false)
 }
 
 function handleMuteToggle(username: string) {
-  voiceStateStore.setPeerMuted(username, !isMutedByUs(username))
+  const userId = resolveUserId(username)
+  if (!userId) return
+  voiceStateStore.setPeerMuted(userId, !isMutedByUs(username))
 }
 
 // Stream preview helpers
 function getScreenShareStream(username: string): MediaStream | null {
-  return voiceStateStore.screenShareStreams[username] ?? null
+  const userId = resolveUserId(username)
+  if (!userId) return null
+  return voiceStateStore.screenShareStreams[userId] ?? null
 }
 
 function handleWatchStream(username: string, channelId: string | undefined, roommates?: string[]) {
   if (!callStore.isInCall || roomStore.selectedChannelId !== channelId) {
     selectChannel(channelId, roommates)
   } else {
-    voiceStateStore.requestWatch(username)
+    const userId = resolveUserId(username)
+    if (userId) voiceStateStore.requestWatch(userId)
   }
   hoveredStreamUser.value = null
 }
 
 function onParticipantRowEnter(event: MouseEvent, mate: string) {
-  if (!voiceStateStore.isScreenSharing(mate)) return
+  const userId = resolveUserId(mate)
+  if (!userId || !voiceStateStore.isScreenSharing(userId)) return
   if (hoverLeaveTimer) {
     clearTimeout(hoverLeaveTimer)
     hoverLeaveTimer = null
@@ -268,7 +287,8 @@ function onParticipantRowLeave() {
 }
 
 function stopWatchingStream() {
-  voiceStateStore.requestUnwatch(hoveredStreamUser.value!)
+  const userId = hoveredStreamUser.value ? resolveUserId(hoveredStreamUser.value) : null
+  if (userId) voiceStateStore.requestUnwatch(userId)
   hoveredStreamUser.value = null
 }
 
@@ -290,6 +310,37 @@ function onPreviewCardLeave() {
 
 function channelForUser(username: string) {
   return filteredChannels.value.find((c) => c.roommates?.includes(username))
+}
+
+function isUserSpeaking(username: string): boolean {
+  const userId = resolveUserId(username)
+  return userId ? voiceStateStore.isSpeaking(userId) : false
+}
+
+function isUserConnecting(username: string): boolean {
+  const userId = resolveUserId(username)
+  return userId ? voiceStateStore.isConnecting(userId) : false
+}
+
+function isUserScreenSharing(username: string): boolean {
+  const userId = resolveUserId(username)
+  return userId ? voiceStateStore.isScreenSharing(userId) : false
+}
+
+function isUserDeafened(username: string): boolean {
+  const userId = resolveUserId(username)
+  return userId ? voiceStateStore.isDeafened(userId) : false
+}
+
+function isUserMuted(username: string): boolean {
+  const userId = resolveUserId(username)
+  return userId ? voiceStateStore.isMuted(userId) : false
+}
+
+function isWatchingHoveredUser(): boolean {
+  if (!hoveredStreamUser.value) return false
+  const userId = resolveUserId(hoveredStreamUser.value)
+  return userId ? voiceStateStore.watchingUserIds.has(userId) : false
 }
 
 // Resize handle
@@ -456,13 +507,13 @@ watch(
                     <div
                       :class="[
                         'w-7 h-7 sm:w-6 sm:h-6 rounded-full overflow-hidden transition-all duration-200',
-                        voiceStateStore.isSpeaking(mate) ? 'ring-[2.5px] ring-dc-green' : '',
+                        isUserSpeaking(mate) ? 'ring-[2.5px] ring-dc-green' : '',
                       ]"
                     >
                       <UserAvatar :username="mate" />
                     </div>
                     <div
-                      v-if="voiceStateStore.isConnecting(mate)"
+                      v-if="isUserConnecting(mate)"
                       class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-dc-blurple border-2 border-dc-bg-secondary-alt flex items-center justify-center"
                     >
                       <div class="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
@@ -471,32 +522,32 @@ watch(
                   <span
                     :class="[
                       'flex-1 text-base sm:text-[13px] leading-4 truncate transition-colors',
-                      voiceStateStore.isSpeaking(mate)
+                      isUserSpeaking(mate)
                         ? 'text-dc-text-heading'
                         : 'text-dc-text-secondary',
                     ]"
                   >
                     {{ mate }}
                     <span
-                      v-if="voiceStateStore.isConnecting(mate)"
+                      v-if="isUserConnecting(mate)"
                       class="ml-1.5 text-xs sm:text-[10px] text-dc-text-muted"
                       >{{ t('common.connecting') }}</span
                     >
                   </span>
                   <span
-                    v-if="voiceStateStore.isScreenSharing(mate)"
+                    v-if="isUserScreenSharing(mate)"
                     class="flex items-center gap-0.5 px-1 py-px rounded bg-dc-red/20 text-dc-red text-[9px] font-bold uppercase leading-none flex-shrink-0"
                   >
                     <font-awesome-icon icon="desktop" class="text-[8px]" />
                     {{ t('common.live') }}
                   </span>
                   <font-awesome-icon
-                    v-if="voiceStateStore.isDeafened(mate)"
+                    v-if="isUserDeafened(mate)"
                     icon="headset"
                     class="text-sm sm:text-[11px] flex-shrink-0 text-dc-red/80"
                   />
                   <font-awesome-icon
-                    v-if="voiceStateStore.isMuted(mate)"
+                    v-if="isUserMuted(mate)"
                     icon="microphone-slash"
                     class="text-sm sm:text-[11px] flex-shrink-0 text-dc-red/80"
                   />
@@ -804,7 +855,7 @@ watch(
   <Teleport to="body">
     <Transition name="popup">
       <div
-        v-if="hoveredStreamUser && voiceStateStore.isScreenSharing(hoveredStreamUser)"
+        v-if="hoveredStreamUser && isUserScreenSharing(hoveredStreamUser)"
         class="fixed z-[150] w-52 bg-dc-bg-floating border border-dc-separator rounded-lg shadow-xl overflow-hidden"
         :style="{
           top: previewCardY + 'px',
@@ -835,7 +886,7 @@ watch(
           <p class="text-xs font-semibold text-dc-text truncate">{{ hoveredStreamUser }}</p>
           <p class="text-[10px] text-dc-text-muted mb-1.5">{{ t('common.isStreaming') }}</p>
           <button
-            v-if="voiceStateStore.watchingUsernames.has(hoveredStreamUser!)"
+            v-if="isWatchingHoveredUser()"
             @click="stopWatchingStream()"
             class="w-full text-[11px] py-1 rounded bg-dc-red/80 hover:bg-dc-red text-white font-medium transition-colors"
           >

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"maps"
+	"strconv"
 	"sync"
 	"time"
 
@@ -136,12 +137,14 @@ func (s *Service) GetRoomParticipants(roomID string) []*domain.Client {
 	return participants
 }
 
-func (s *Service) HandleWebSocketConnection(conn *websocket.Conn) {
-	clientID := uuid.NewString()
+func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, username string) {
+	clientID := strconv.Itoa(userID)
 	client := &domain.Client{
-		ID:   clientID,
-		Conn: conn,
-		Send: make(chan domain.SignalingMessage, 32),
+		ID:       clientID,
+		UserID:   userID,
+		Username: username,
+		Conn:     conn,
+		Send:     make(chan domain.SignalingMessage, 32),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -176,31 +179,34 @@ func (s *Service) readPump(client *domain.Client) {
 				continue
 			}
 			client.Room = room
-			client.Username = msg.Username
 			room.Mu.Lock()
+
+			// Keep one active signaling connection per user in room.
+			if existing := room.Clients[client.ID]; existing != nil && existing != client {
+				_ = existing.Conn.Close()
+				delete(room.Clients, existing.ID)
+			}
 			room.Clients[client.ID] = client
+
+			roommates := make(map[string]string, len(room.Clients)-1)
+			for id, c := range room.Clients {
+				if client.ID == c.ID {
+					continue
+				}
+				roommates[id] = c.Username
+			}
 			room.Mu.Unlock()
 
 			client.Send <- domain.SignalingMessage{
 				Type:     "joined",
 				From:     client.ID,
-				Username: msg.Username,
+				Username: client.Username,
 				Payload: JoinPayload{
-					RoomMates: func(clients map[string]*domain.Client) map[string]string {
-						roommates := make(map[string]string, len(clients)-1)
-						for id, c := range clients {
-							if client.ID == c.ID {
-								continue
-							}
-
-							roommates[id] = c.Username
-						}
-						return roommates
-					}(room.Clients),
+					RoomMates: roommates,
 				},
 			}
 			room.BroadcastExcept(
-				domain.SignalingMessage{Type: "peer-joined", From: client.ID, Username: msg.Username},
+				domain.SignalingMessage{Type: "peer-joined", From: client.ID, Username: client.Username},
 				client.ID,
 			)
 

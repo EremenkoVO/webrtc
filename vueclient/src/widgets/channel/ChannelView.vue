@@ -93,36 +93,36 @@ const showLocalPreview = ref(false)
 
 const isTextChannel = computed(() => roomStore.selectedChannelType === 'text')
 
+function hasLiveVideoTrack(stream: MediaStream | null | undefined): boolean {
+  if (!stream) return false
+  return stream.getVideoTracks().some((track) => track.readyState === 'live')
+}
+
 const peersWithVideo = computed<PeerWithVideo[]>(() => {
   const result: PeerWithVideo[] = []
   const localClientId = signalingStore.clientId
-  if (localStream.value && localStream.value.getVideoTracks().length > 0 && localClientId) {
+  if (videoEnabled.value && hasLiveVideoTrack(localStream.value) && localClientId) {
     // Skip local tile when screen sharing and preview is disabled
     if (!isScreenSharing.value || showLocalPreview.value) {
       result.push({
         peerId: localClientId,
         connection: null,
-        remoteStream: localStream.value,
+        remoteStream: localStream.value!,
         room_mates: {},
         isLocal: true,
       })
     }
   }
   remotePeers.value.forEach((peer) => {
-    if (peer.remoteStream && peer.remoteStream.getVideoTracks().length > 0) {
-      // Check if peer is screen sharing
-      const isScreenSharing = peerStates.value[peer.peerId]?.screen === true
-      const isWatching = watchingStreams.value.has(peer.peerId)
-      // Only show video if it's not screen sharing, or if user is watching this stream
-      if (!isScreenSharing || isWatching) {
-        result.push({
-          peerId: peer.peerId,
-          connection: peer.connection,
-          remoteStream: peer.remoteStream,
-          room_mates: peer.room_mates,
-          isLocal: false,
-        })
-      }
+    const isWatching = watchingStreams.value.has(peer.peerId)
+    if (hasLiveVideoTrack(peer.remoteStream) && isWatching) {
+      result.push({
+        peerId: peer.peerId,
+        connection: peer.connection,
+        remoteStream: peer.remoteStream!,
+        room_mates: peer.room_mates,
+        isLocal: false,
+      })
     }
   })
   return result
@@ -131,20 +131,28 @@ const peersWithVideo = computed<PeerWithVideo[]>(() => {
 // Set of peer IDs whose streams we're currently watching (computed for reliable reactivity)
 const watchingPeerIds = computed(() => new Set(watchingStreams.value))
 
-// Available screen sharing streams (not being watched)
+// Available watchable remote video streams (camera or screen) not being watched
 const availableScreenShares = computed(() => {
-  return remotePeers.value
-    .filter((peer) => {
-      const isScreenSharing = peerStates.value[peer.peerId]?.screen === true
-      return isScreenSharing && !watchingPeerIds.value.has(peer.peerId)
+  return roomStore.participants
+    .filter((participant) => {
+      const peerId = participant.client_id || ''
+      if (!peerId || peerId === signalingStore.clientId) return false
+      const state = peerStates.value[peerId]
+      const peer = remotePeers.value.find((p) => p.peerId === peerId)
+      const hasTrack = hasLiveVideoTrack(peer?.remoteStream)
+      const hasStateVideo = state?.video === true || state?.screen === true
+      const hasWatchableVideo = hasTrack || hasStateVideo
+      return hasWatchableVideo && !watchingPeerIds.value.has(peerId)
     })
-    .map((peer) => {
-      const name =
-        signalingStore.room_mates[peer.peerId] ||
-        roomStore.participants.find((p) => p.client_id === peer.peerId)?.username ||
-        peer.peerId
-      return { peerId: peer.peerId, name }
+    .map((participant) => {
+      const peerId = participant.client_id || ''
+      return {
+        peerId,
+        name: participant.username || peerId,
+        isScreenSharing: peerStates.value[peerId]?.screen === true,
+      }
     })
+    .filter((item) => item.peerId !== '')
 })
 
 type PeerWithoutVideo = {
@@ -161,7 +169,7 @@ type PeerWithoutVideo = {
 const peersWithoutVideo = computed<PeerWithoutVideo[]>(() => {
   const result: PeerWithoutVideo[] = []
   const localClientId = signalingStore.clientId
-  if ((!localStream.value || localStream.value.getVideoTracks().length === 0) && localClientId) {
+  if (!hasLiveVideoTrack(localStream.value) && localClientId) {
     result.push({
       peerId: localClientId,
       name: props.userName || t('common.you'),
@@ -175,7 +183,8 @@ const peersWithoutVideo = computed<PeerWithoutVideo[]>(() => {
     const name = participant.username || peerId
     if (peerId === localClientId) return
     const peer = remotePeers.value.find((p) => p.peerId === peerId)
-    const hasVideo = peer?.remoteStream && peer.remoteStream.getVideoTracks().length > 0
+    const hasVideo =
+      hasLiveVideoTrack(peer?.remoteStream) && peerStates.value[peerId]?.video === true
     if (!hasVideo) {
       const peerState = peerStates.value[peerId]
       const playback = peerPlayback.value[peerId]
@@ -233,13 +242,30 @@ const videoGridStyle = computed(() => {
   }
 })
 
-function selectCamera(deviceId: string) {
+async function selectCamera(deviceId: string) {
   currentCameraDeviceId.value = deviceId
   videoEnabled.value = true
   callStore.setCurrentCameraDeviceId(deviceId)
   callStore.setVideoEnabled(true)
-  if (callStore.isInCall) switchCamera(deviceId)
-  toggleMedia(videoEnabled.value, audioEnabled.value, deviceId)
+  if (callStore.isInCall) {
+    const resolvedDeviceId = await switchCamera(deviceId)
+    if (resolvedDeviceId && resolvedDeviceId !== currentCameraDeviceId.value) {
+      currentCameraDeviceId.value = resolvedDeviceId
+      callStore.setCurrentCameraDeviceId(resolvedDeviceId)
+    }
+    await toggleMedia(
+      true,
+      audioEnabled.value,
+      currentCameraDeviceId.value || resolvedDeviceId || deviceId || '',
+    )
+  } else {
+    await toggleMedia(videoEnabled.value, audioEnabled.value, deviceId)
+    const fromTrack = localStream.value?.getVideoTracks()[0]?.getSettings().deviceId || null
+    if (fromTrack && fromTrack !== currentCameraDeviceId.value) {
+      currentCameraDeviceId.value = fromTrack
+      callStore.setCurrentCameraDeviceId(fromTrack)
+    }
+  }
 }
 function selectMicrophone(deviceId: string) {
   currentMicrophoneDeviceId.value = deviceId
@@ -254,18 +280,14 @@ function handlePeerVolumeChange(peerId: string, volume: number) {
 }
 
 function toggleVideo() {
-  if (!currentCameraDeviceId.value && localStream.value && !videoEnabled.value) {
-    selectCamera(videoDevices.value[0]?.deviceId || '')
+  if (!videoEnabled.value) {
+    const cameraId = currentCameraDeviceId.value || videoDevices.value[0]?.deviceId || ''
+    void selectCamera(cameraId)
     videoEnabled.value = true
-  } else if (currentCameraDeviceId.value && localStream.value && !videoEnabled.value) {
-    selectCamera(currentCameraDeviceId.value)
-    videoEnabled.value = true
-  } else if (videoEnabled.value && localStream.value) {
-    localStream.value.getVideoTracks().forEach((t) => t.stop())
-    localStream.value.removeTrack(localStream.value.getVideoTracks()[0])
+  } else {
     videoEnabled.value = false
+    void toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
   }
-  toggleMedia(videoEnabled.value, audioEnabled.value, currentCameraDeviceId.value || '')
   callStore.setVideoEnabled(videoEnabled.value)
   callStore.setCurrentCameraDeviceId(
     videoEnabled.value
@@ -430,11 +452,6 @@ async function connectToRoom(id: string | undefined) {
     if (isErrorResponse(response)) throw response
     if (response.client_id && response.room_id) {
       await roomStore.setClientAndRoomId(response.client_id, id)
-      if (!signalingStore.isConnected) {
-        signalingStore.connect()
-        await new Promise((r) => setTimeout(r, 1000))
-      }
-      signalingStore.joinRoom(id)
     }
   } catch (e) {
     console.error(e)
@@ -474,7 +491,7 @@ watch(
   () => callStore.toggleMicRequested,
   (requested) => {
     if (requested) {
-      toggleMicrophone()
+      void toggleMicrophone()
       callStore.clearToggleMicRequest()
     }
   },
@@ -510,7 +527,7 @@ watch(
   () => callStore.pendingCameraDeviceId,
   (deviceId) => {
     if (deviceId) {
-      selectCamera(deviceId)
+      void selectCamera(deviceId)
       callStore.clearCameraDeviceRequest()
     }
   },
@@ -589,12 +606,9 @@ watch(
       return
     }
     const states: Record<string, boolean> = {}
-    if (props.userName) states[props.userName] = isLocalSpeaking.value
+    if (signalingStore.clientId) states[signalingStore.clientId] = isLocalSpeaking.value
     for (const [peerId, speaking] of Object.entries(speakingPeers.value)) {
-      const name =
-        signalingStore.room_mates[peerId] ||
-        roomStore.participants.find((p) => p.client_id === peerId)?.username
-      if (name) states[name] = speaking
+      states[peerId] = speaking
     }
     voiceStateStore.updateSpeaking(states)
   },
@@ -610,12 +624,9 @@ watch(
       return
     }
     const states: Record<string, boolean> = {}
-    if (props.userName) states[props.userName] = isScreenSharing.value
+    if (signalingStore.clientId) states[signalingStore.clientId] = isScreenSharing.value
     for (const [peerId, state] of Object.entries(peerStates.value)) {
-      const name =
-        signalingStore.room_mates[peerId] ||
-        roomStore.participants.find((p) => p.client_id === peerId)?.username
-      if (name && typeof state.screen === 'boolean') states[name] = state.screen
+      if (typeof state.screen === 'boolean') states[peerId] = state.screen
     }
     voiceStateStore.updateScreenSharing(states)
   },
@@ -641,30 +652,34 @@ watch(
     roomStore.participants.forEach((participant) => {
       const peerId = participant.client_id || ''
       if (peerId === localClientId) return
-      const name = participant.username || peerId
       const peer = remotePeers.value.find((p) => p.peerId === peerId)
       const hasPeerState = peerStates.value[peerId] !== undefined
       // Participant is connecting if they're in the list but don't have a peer connection or peer state yet
       const isConnecting = !peer || !hasPeerState
-      if (name) states[name] = isConnecting
+      if (peerId) states[peerId] = isConnecting
     })
     voiceStateStore.updateConnecting(states)
   },
   { deep: true },
 )
 
-// Auto-unwatch screen sharing streams when they stop
+// Auto-unwatch when remote source no longer has watchable video.
 watch(
   [peerStates, () => Array.from(watchingStreams.value)],
   () => {
     // Copy to avoid mutation-during-iteration
     const streamsToCheck = Array.from(watchingStreams.value)
     streamsToCheck.forEach((peerId) => {
-      // Unwatch only when the peer has explicitly stopped sharing (or disconnected)
-      // Do NOT use hasVideoTrack here — that causes a race where the watcher fires
-      // before the video track arrives and immediately kills the watching session.
-      const isStillSharing = peerStates.value[peerId]?.screen === true
-      if (!isStillSharing) {
+      const state = peerStates.value[peerId]
+      const explicitlyOff = state && state.screen !== true && state.video !== true
+      if (explicitlyOff) {
+        unwatchStream(peerId)
+        return
+      }
+      const peer = remotePeers.value.find((p) => p.peerId === peerId)
+      const hasTrack = hasLiveVideoTrack(peer?.remoteStream)
+      const hasWatchableVideo = hasTrack || state?.screen === true || state?.video === true
+      if (!hasWatchableVideo) {
         unwatchStream(peerId)
       }
     })
@@ -681,12 +696,9 @@ watch(
       return
     }
     const states: Record<string, boolean> = {}
-    if (props.userName) states[props.userName] = !audioEnabled.value
+    if (signalingStore.clientId) states[signalingStore.clientId] = !audioEnabled.value
     for (const [peerId, state] of Object.entries(peerStates.value)) {
-      const name =
-        signalingStore.room_mates[peerId] ||
-        roomStore.participants.find((p) => p.client_id === peerId)?.username
-      if (name && typeof state.microphone === 'boolean') states[name] = !state.microphone
+      if (typeof state.microphone === 'boolean') states[peerId] = !state.microphone
     }
     voiceStateStore.updateMuted(states)
   },
@@ -702,12 +714,9 @@ watch(
       return
     }
     const states: Record<string, boolean> = {}
-    if (props.userName) states[props.userName] = isDeafened.value
+    if (signalingStore.clientId) states[signalingStore.clientId] = isDeafened.value
     for (const [peerId, state] of Object.entries(peerStates.value)) {
-      const name =
-        signalingStore.room_mates[peerId] ||
-        roomStore.participants.find((p) => p.client_id === peerId)?.username
-      if (name && typeof state.deafened === 'boolean') states[name] = state.deafened
+      if (typeof state.deafened === 'boolean') states[peerId] = state.deafened
     }
     voiceStateStore.updateDeafened(states)
   },
@@ -718,11 +727,7 @@ watch(
 watch(
   () => voiceStateStore.peerVolumeSettings,
   (settings) => {
-    for (const [username, { volume, muted }] of Object.entries(settings)) {
-      const peerId = Object.entries(signalingStore.room_mates).find(
-        ([, name]) => name === username,
-      )?.[0]
-      if (!peerId) continue
+    for (const [peerId, { volume, muted }] of Object.entries(settings)) {
       setPeerVolume(peerId, volume)
       setPeerMuted(peerId, muted)
     }
@@ -733,12 +738,9 @@ watch(
 // Watch request from sidebar: watch a peer's screen share stream
 watch(
   () => voiceStateStore.watchRequest,
-  (username) => {
-    if (!username) return
-    const peerId = Object.entries(signalingStore.room_mates).find(
-      ([, name]) => name === username,
-    )?.[0]
-    if (peerId) watchStream(peerId)
+  (peerId) => {
+    if (!peerId) return
+    watchStream(peerId)
     voiceStateStore.watchRequest = null
   },
 )
@@ -746,12 +748,9 @@ watch(
 // Unwatch request from sidebar
 watch(
   () => voiceStateStore.unwatchRequest,
-  (username) => {
-    if (!username) return
-    const peerId = Object.entries(signalingStore.room_mates).find(
-      ([, name]) => name === username,
-    )?.[0]
-    if (peerId) unwatchStream(peerId)
+  (peerId) => {
+    if (!peerId) return
+    unwatchStream(peerId)
     voiceStateStore.unwatchRequest = null
   },
 )
@@ -761,28 +760,25 @@ watch(
   [watchingStreams, peerStates, remotePeers],
   () => {
     // Sync watching usernames (peerId → username mapping)
-    const newWatchingUsernames = new Set<string>()
+    const newWatchingUserIds = new Set<string>()
     for (const peerId of watchingStreams.value) {
-      const username = signalingStore.room_mates[peerId]
-      if (username) newWatchingUsernames.add(username)
+      newWatchingUserIds.add(peerId)
     }
-    voiceStateStore.setWatchingUsernames(newWatchingUsernames)
+    voiceStateStore.setWatchingUserIds(newWatchingUserIds)
 
     // Sync live preview streams
     for (const peerId of watchingStreams.value) {
       if (peerStates.value[peerId]?.screen) {
         const peer = remotePeers.value.find((p) => p.peerId === peerId)
-        const username = signalingStore.room_mates[peerId]
-        if (username && peer?.remoteStream) {
-          voiceStateStore.setScreenShareStream(username, peer.remoteStream)
+        if (peer?.remoteStream) {
+          voiceStateStore.setScreenShareStream(peerId, peer.remoteStream)
         }
       }
     }
     // Clear streams for peers who stopped sharing
-    for (const username of Object.keys(voiceStateStore.screenShareStreams)) {
-      const peerId = Object.entries(signalingStore.room_mates).find(([, n]) => n === username)?.[0]
-      if (!peerId || !peerStates.value[peerId]?.screen) {
-        voiceStateStore.setScreenShareStream(username, null)
+    for (const peerId of Object.keys(voiceStateStore.screenShareStreams)) {
+      if (!peerStates.value[peerId]?.screen) {
+        voiceStateStore.setScreenShareStream(peerId, null)
       }
     }
   },
@@ -960,7 +956,9 @@ onBeforeUnmount(() => {
                 >
                   <font-awesome-icon icon="desktop" class="text-dc-blurple text-base" />
                   <span class="text-sm font-medium text-dc-text-heading">{{ share.name }}</span>
-                  <span class="text-xs text-dc-text-muted">{{ t('channel.isSharingScreen') }}</span>
+                  <span class="text-xs text-dc-text-muted">{{
+                    share.isScreenSharing ? t('channel.isSharingScreen') : t('call.camera')
+                  }}</span>
                   <button
                     @click="watchStream(share.peerId)"
                     class="ml-auto px-4 py-1.5 rounded text-xs font-medium bg-dc-blurple hover:bg-dc-blurple-hover text-white transition-colors flex items-center gap-1.5"

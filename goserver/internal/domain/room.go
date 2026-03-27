@@ -20,6 +20,7 @@ type Room struct {
 
 type Client struct {
 	ID       string
+	UserID   int
 	Username string
 	Conn     *websocket.Conn
 	Send     chan SignalingMessage

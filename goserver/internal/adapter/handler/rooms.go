@@ -145,15 +145,28 @@ func (s *ServerWrapper) GetRoomParticipants(w http.ResponseWriter, r *http.Reque
 
 // WebSocket connection for signaling
 // (GET /api/v1/ws)
-func (s *ServerWrapper) SignalingWebSocket(w http.ResponseWriter, r *http.Request) {
+func (s *ServerWrapper) SignalingWebSocket(w http.ResponseWriter, r *http.Request, params api.SignalingWebSocketParams) {
+	token := params.Token
+	userID, err := s.authService.ValidateToken(r.Context(), token)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	username := "Anonymous"
+	if profile, err := s.userService.GetProfile(r.Context(), userID); err == nil && profile.Username != "" {
+		username = profile.Username
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		WriteErrorResponse(w, http.StatusBadRequest, api.ErrorResponse{
 			Message: fmt.Sprintf("failed to upgrade connection: %v", err),
 		})
+		return
 	}
 
-	s.roomService.HandleWebSocketConnection(conn)
+	s.roomService.HandleWebSocketConnection(conn, userID, username)
 }
 
 // WebSocket connection for text chat

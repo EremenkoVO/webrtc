@@ -161,6 +161,11 @@ type ChatWebSocketParams struct {
 	Username *string `form:"username,omitempty" json:"username,omitempty"`
 }
 
+// SignalingWebSocketParams defines parameters for SignalingWebSocket.
+type SignalingWebSocketParams struct {
+	Token string `form:"token" json:"token"`
+}
+
 // LoginUserJSONRequestBody defines body for LoginUser for application/json ContentType.
 type LoginUserJSONRequestBody = LoginRequest
 
@@ -193,9 +198,6 @@ type ServerInterface interface {
 	// Get current user profile
 	// (GET /api/v1/me)
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
-	// List all registered users on the server
-	// (GET /api/v1/users)
-	ListServerUsers(w http.ResponseWriter, r *http.Request)
 	// List available rooms
 	// (GET /api/v1/rooms)
 	ListRooms(w http.ResponseWriter, r *http.Request)
@@ -208,9 +210,12 @@ type ServerInterface interface {
 	// Get room participants
 	// (GET /api/v1/rooms/{roomId}/participants)
 	GetRoomParticipants(w http.ResponseWriter, r *http.Request, roomId string)
+	// List all registered users on the server
+	// (GET /api/v1/users)
+	ListServerUsers(w http.ResponseWriter, r *http.Request)
 	// WebSocket connection for signaling
 	// (GET /api/v1/ws)
-	SignalingWebSocket(w http.ResponseWriter, r *http.Request)
+	SignalingWebSocket(w http.ResponseWriter, r *http.Request, params SignalingWebSocketParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -361,26 +366,6 @@ func (siw *ServerInterfaceWrapper) GetCurrentUser(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
-// ListServerUsers operation middleware
-func (siw *ServerInterfaceWrapper) ListServerUsers(w http.ResponseWriter, r *http.Request) {
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListServerUsers(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // ListRooms operation middleware
 func (siw *ServerInterfaceWrapper) ListRooms(w http.ResponseWriter, r *http.Request) {
 
@@ -483,11 +468,51 @@ func (siw *ServerInterfaceWrapper) GetRoomParticipants(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ListServerUsers operation middleware
+func (siw *ServerInterfaceWrapper) ListServerUsers(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListServerUsers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SignalingWebSocket operation middleware
 func (siw *ServerInterfaceWrapper) SignalingWebSocket(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SignalingWebSocketParams
+
+	// ------------- Required query parameter "token" -------------
+
+	if paramValue := r.URL.Query().Get("token"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "token"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "token", r.URL.Query(), &params.Token)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SignalingWebSocket(w, r)
+		siw.Handler.SignalingWebSocket(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -623,11 +648,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/register", wrapper.RegisterUser)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/chat/ws", wrapper.ChatWebSocket)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/me", wrapper.GetCurrentUser)
-	m.HandleFunc("GET "+options.BaseURL+"/api/v1/users", wrapper.ListServerUsers)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/rooms", wrapper.ListRooms)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/rooms", wrapper.CreateRoom)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/rooms/{roomId}/join", wrapper.JoinRoom)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/rooms/{roomId}/participants", wrapper.GetRoomParticipants)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/users", wrapper.ListServerUsers)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/ws", wrapper.SignalingWebSocket)
 
 	return m

@@ -29,7 +29,7 @@ type RoomService interface {
 	CreateRoom(roomName, roomType string) *domain.Room
 	GetRoom(roomID string) *domain.Room
 	GetRoomParticipants(roomID string) []*domain.Client
-	HandleWebSocketConnection(conn *websocket.Conn)
+	HandleWebSocketConnection(conn *websocket.Conn, userID int, username string)
 }
 
 type ChatService interface {

@@ -37,7 +37,11 @@ export const useSignalingStore = defineStore('signaling', () => {
 
       const wsUrl = `${baseUrl}/api/v1/ws`
       const token = typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : localStorage.getItem('token') || ''
-      const url = token ? `${wsUrl}?token=${encodeURIComponent(token)}` : wsUrl
+      if (!token) {
+        connectionState.value = 'disconnected'
+        return
+      }
+      const url = `${wsUrl}?token=${encodeURIComponent(token)}`
 
       ws.value = new WebSocket(url)
 
@@ -122,9 +126,7 @@ export const useSignalingStore = defineStore('signaling', () => {
     if (!isConnected.value) return false
     currentRoomId.value = roomId
     if (userName) username.value = userName
-    if (clientId.value && username.value) {
-      room_mates.value[clientId.value] = username.value
-    }
+    room_mates.value = {}
     return sendMessage({
       type: SignalingMessage.type.JOIN,
       room: roomId,
@@ -202,7 +204,7 @@ export const useSignalingStore = defineStore('signaling', () => {
         break
 
       case SignalingMessage.type.PEER_JOINED:
-        if (message.from) {
+        if (message.from && message.username) {
           connectedPeers.value.set(message.from, message.username || 'Anonymous')
           room_mates.value[message.from] = message.username || 'Anonymous'
           const roomStore = useRoomStore()

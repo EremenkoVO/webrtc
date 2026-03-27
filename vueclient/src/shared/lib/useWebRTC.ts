@@ -38,6 +38,7 @@ export function useWebRTC() {
   const audioContextRef = ref<AudioContext | null>(null)
   const analyserRef = ref<AnalyserNode | null>(null)
   const animationFrameId = ref<number | null>(null)
+  let localSpeakingMonitorToken = 0
 
   const iceConfiguration: RTCConfiguration = {
     iceServers: [
@@ -60,6 +61,10 @@ export function useWebRTC() {
   let screenShareStream: MediaStream | null = null
   let activeScreenAudioTrack: MediaStreamTrack | null = null
   const screenAudioSenders = new Map<string, { sender: RTCRtpSender; track: MediaStreamTrack }>()
+  const renegotiationRetries = new Map<string, ReturnType<typeof setTimeout>>()
+  const pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>()
+  let signalingHandlersSetup = false
+  let mediaDeviceChangeHandler: (() => void) | null = null
 
   function ensurePeerPlayback(peerId: string) {
     if (!peerPlayback.value[peerId]) {
@@ -68,6 +73,14 @@ export function useWebRTC() {
         [peerId]: { volume: 1, muted: false },
       }
     }
+  }
+
+  function findSenderByKind(connection: RTCPeerConnection, kind: 'audio' | 'video') {
+    return connection.getSenders().find((sender) => {
+      if (sender.track?.kind === kind) return true
+      const transceiver = connection.getTransceivers().find((t) => t.sender === sender)
+      return transceiver?.receiver?.track?.kind === kind
+    })
   }
 
   function updatePeerAudioStream(peerId: string, stream: MediaStream | null) {
@@ -118,12 +131,45 @@ export function useWebRTC() {
   async function createOfferSafe(peerId: string) {
     const peer = peers.value.get(peerId)
     if (!peer) return
-    if (peer.connection.signalingState !== 'stable') return
+    if (peer.connection.signalingState !== 'stable') {
+      if (!renegotiationRetries.has(peerId)) {
+        const timer = setTimeout(() => {
+          renegotiationRetries.delete(peerId)
+          void createOfferSafe(peerId)
+        }, 300)
+        renegotiationRetries.set(peerId, timer)
+      }
+      return
+    }
+    const existingTimer = renegotiationRetries.get(peerId)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+      renegotiationRetries.delete(peerId)
+    }
     try {
       await createOffer(peerId)
     } catch (err) {
       console.error('createOfferSafe error:', err)
     }
+  }
+
+  async function ensureConnected() {
+    if (signalingStore.isConnected) return
+    signalingStore.connect()
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now()
+      const timer = setInterval(() => {
+        if (signalingStore.isConnected) {
+          clearInterval(timer)
+          resolve()
+          return
+        }
+        if (Date.now() - startedAt > 5000) {
+          clearInterval(timer)
+          reject(new Error('Signaling websocket connect timeout'))
+        }
+      }, 100)
+    })
   }
 
   async function fetchVideoDevices() {
@@ -142,6 +188,68 @@ export function useWebRTC() {
     } catch (error) {
       console.error('Failed to enumerate audio devices:', error)
     }
+  }
+
+  function cleanupLocalSpeakingMonitor() {
+    localSpeakingMonitorToken += 1
+    if (animationFrameId.value) {
+      cancelAnimationFrame(animationFrameId.value)
+      animationFrameId.value = null
+    }
+    if (audioContextRef.value) {
+      audioContextRef.value.close().catch(() => undefined)
+      audioContextRef.value = null
+    }
+    analyserRef.value = null
+    isLocalSpeaking.value = false
+  }
+
+  function isCameraConstraintError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false
+    const name = (error as { name?: string }).name ?? ''
+    return (
+      name === 'OverconstrainedError' ||
+      name === 'ConstraintNotSatisfiedError' ||
+      name === 'NotFoundError' ||
+      name === 'DevicesNotFoundError'
+    )
+  }
+
+  async function getVideoStreamWithFallback(preferredDeviceId?: string) {
+    await fetchVideoDevices()
+    const canUsePreferred =
+      !!preferredDeviceId && videoDevices.value.some((d) => d.deviceId === preferredDeviceId)
+
+    const attempts: Array<MediaTrackConstraints | true> = []
+    if (canUsePreferred && preferredDeviceId) {
+      attempts.push({ deviceId: { exact: preferredDeviceId } })
+      attempts.push({ deviceId: { ideal: preferredDeviceId } })
+    }
+    attempts.push(true)
+
+    let lastError: unknown
+    for (const videoConstraints of attempts) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraints,
+          audio: false,
+        })
+        return stream
+      } catch (error) {
+        lastError = error
+        if (!isCameraConstraintError(error)) throw error
+      }
+    }
+    throw lastError
+  }
+
+  function setupDeviceChangeListener() {
+    if (mediaDeviceChangeHandler || !navigator.mediaDevices?.addEventListener) return
+    mediaDeviceChangeHandler = async () => {
+      await fetchAudioDevices()
+      await fetchVideoDevices()
+    }
+    navigator.mediaDevices.addEventListener('devicechange', mediaDeviceChangeHandler)
   }
 
   async function initializeMedia(
@@ -172,15 +280,11 @@ export function useWebRTC() {
       localStream.value.getTracks().forEach((track) => track.stop())
       localStream.value = null
       isMediaInitialized.value = false
-      if (animationFrameId.value) {
-        cancelAnimationFrame(animationFrameId.value)
-        animationFrameId.value = null
-      }
-      if (audioContextRef.value) {
-        audioContextRef.value.close()
-        audioContextRef.value = null
-        analyserRef.value = null
-      }
+      cleanupLocalSpeakingMonitor()
+    }
+    if (mediaDeviceChangeHandler && navigator.mediaDevices?.removeEventListener) {
+      navigator.mediaDevices.removeEventListener('devicechange', mediaDeviceChangeHandler)
+      mediaDeviceChangeHandler = null
     }
   }
 
@@ -199,6 +303,9 @@ export function useWebRTC() {
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') removePeer(peerId)
+    }
+    pc.onnegotiationneeded = () => {
+      void createOfferSafe(peerId)
     }
 
     const remoteStream = new MediaStream()
@@ -309,13 +416,8 @@ export function useWebRTC() {
     peers.value.set(peerId, newPeer)
     ensurePeerPlayback(peerId)
 
-    if (isScreenSharing.value && activeScreenAudioTrack && !screenAudioSenders.has(peerId)) {
-      const clonedTrack = activeScreenAudioTrack.clone()
-      clonedTrack.contentHint = 'screen'
-      const senderStream = new MediaStream([clonedTrack])
-      const sender = pc.addTrack(clonedTrack, senderStream)
-      screenAudioSenders.set(peerId, { sender, track: clonedTrack })
-    }
+    // Do not add a dedicated screen-audio sender. Keeping a single audio m-line
+    // (microphone) avoids SDP m-line reordering/demuxing failures on some clients.
 
     return pc
   }
@@ -342,7 +444,16 @@ export function useWebRTC() {
   function updateRemoteVideo(peerId: string, enabled: boolean) {
     const peer = peers.value.get(peerId)
     if (!peer || !peer.remoteStream) return
-    if (enabled && peer.remoteStream.getVideoTracks().length === 0) createOfferSafe(peerId)
+    if (enabled && peer.remoteStream.getVideoTracks().length === 0) {
+      createOfferSafe(peerId)
+      return
+    }
+    if (!enabled) {
+      // Remove stale remote video tracks immediately to avoid frozen frames.
+      const audioOnlyStream = new MediaStream()
+      peer.remoteStream.getAudioTracks().forEach((t) => audioOnlyStream.addTrack(t))
+      updatePeerRemoteStream(peerId, audioOnlyStream)
+    }
   }
 
   const soundEventHandlers = new Set<(eventType: string) => void>()
@@ -402,12 +513,12 @@ export function useWebRTC() {
     try {
       const pc = peers.value.get(peerId)?.connection || createPeerConnection(peerId)
       await pc.setRemoteDescription(new RTCSessionDescription(offer))
+      await flushPendingIceCandidates(peerId)
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
       signalingStore.sendAnswer(peerId, answer)
     } catch (error) {
       console.error('Failed to handle offer:', error)
-      throw error
     }
   }
 
@@ -417,10 +528,26 @@ export function useWebRTC() {
       if (!peer) return
       if (peer.connection.signalingState === 'have-local-offer') {
         await peer.connection.setRemoteDescription(new RTCSessionDescription(answer))
+        await flushPendingIceCandidates(peerId)
       }
     } catch (error) {
       console.error('Failed to handle answer:', error)
-      throw error
+    }
+  }
+
+  async function flushPendingIceCandidates(peerId: string) {
+    const peer = peers.value.get(peerId)
+    if (!peer) return
+    if (!peer.connection.remoteDescription) return
+    const queued = pendingIceCandidates.get(peerId)
+    if (!queued || queued.length === 0) return
+    pendingIceCandidates.delete(peerId)
+    for (const candidate of queued) {
+      try {
+        await peer.connection.addIceCandidate(new RTCIceCandidate(candidate))
+      } catch (error) {
+        console.warn('Ignoring stale queued ICE candidate:', error)
+      }
     }
   }
 
@@ -428,10 +555,16 @@ export function useWebRTC() {
     try {
       const peer = peers.value.get(peerId)
       if (!peer) return
+      if (!peer.connection.remoteDescription) {
+        const queued = pendingIceCandidates.get(peerId) || []
+        queued.push(candidate)
+        pendingIceCandidates.set(peerId, queued)
+        return
+      }
       await peer.connection.addIceCandidate(new RTCIceCandidate(candidate))
     } catch (error) {
-      console.error('Failed to handle ICE candidate:', error)
-      throw error
+      // Candidate can legitimately become stale across renegotiation/restarts.
+      console.warn('Ignoring stale ICE candidate:', error)
     }
   }
 
@@ -458,13 +591,28 @@ export function useWebRTC() {
       }
       const screenSender = screenAudioSenders.get(peerId)
       if (screenSender) {
-        screenSender.track.stop()
+        try {
+          screenSender.sender.replaceTrack(null)
+        } catch {}
+        if (screenSender.track.readyState !== 'ended') {
+          try {
+            screenSender.track.stop()
+          } catch {}
+        }
         screenAudioSenders.delete(peerId)
       }
+      const retryTimer = renegotiationRetries.get(peerId)
+      if (retryTimer) {
+        clearTimeout(retryTimer)
+        renegotiationRetries.delete(peerId)
+      }
+      pendingIceCandidates.delete(peerId)
     }
   }
 
   function setupSignalingHandlers() {
+    if (signalingHandlersSetup) return
+    signalingHandlersSetup = true
     signalingStore.onMessage(SignalingMessage.type.PEER_JOINED, (message) => {
       if (message.from && message.from !== signalingStore.clientId) {
         createOffer(message.from)
@@ -518,8 +666,9 @@ export function useWebRTC() {
   ) {
     try {
       if (!isMediaInitialized.value) await initializeMedia(mediaConstraints)
+      setupDeviceChangeListener()
       setupSignalingHandlers()
-      if (!signalingStore.isConnected) await signalingStore.connect()
+      await ensureConnected()
       signalingStore.joinRoom(roomId, username)
     } catch (error) {
       console.error('Failed to join room with media:', error)
@@ -532,8 +681,12 @@ export function useWebRTC() {
     broadcastSoundEvent('disconnect')
     peers.value.forEach(({ connection }) => connection.close())
     peers.value.clear()
+    renegotiationRetries.forEach((timer) => clearTimeout(timer))
+    renegotiationRetries.clear()
+    pendingIceCandidates.clear()
     signalingStore.leaveRoom()
     signalingStore.clearHandlers()
+    signalingHandlersSetup = false
     speakingPeers.value = {}
     peerStates.value = {}
     peerPlayback.value = {}
@@ -542,27 +695,28 @@ export function useWebRTC() {
     localState.value = { video: false, microphone: true, deafened: false }
   }
 
-  async function switchCamera(deviceId: string) {
+  async function switchCamera(deviceId: string): Promise<string | null> {
     try {
-      if (!localStream.value) return
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: deviceId } },
-        audio: false,
-      })
+      if (!localStream.value) return null
+      const newStream = await getVideoStreamWithFallback(deviceId)
       const newVideoTrack = newStream.getVideoTracks()[0]
-      if (!newVideoTrack) return
+      if (!newVideoTrack) return null
       const oldVideoTrack = localStream.value.getVideoTracks()[0] || null
+      const replaceOps: Promise<void>[] = []
       peers.value.forEach(({ connection }, peerId) => {
-        const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'video')
-        if (sender) sender.replaceTrack(newVideoTrack)
+        const sender = findSenderByKind(connection, 'video')
+        if (sender) replaceOps.push(sender.replaceTrack(newVideoTrack))
         else connection.addTrack(newVideoTrack, localStream.value!)
         createOfferSafe(peerId)
       })
+      await Promise.allSettled(replaceOps)
       if (oldVideoTrack) oldVideoTrack.stop()
       const audioTrack = localStream.value?.getAudioTracks()[0]
       localStream.value = new MediaStream([newVideoTrack, ...(audioTrack ? [audioTrack] : [])])
+      return newVideoTrack.getSettings().deviceId || null
     } catch (error) {
       console.error('Failed to switch camera:', error)
+      return null
     }
   }
 
@@ -576,14 +730,21 @@ export function useWebRTC() {
       const newAudioTrack = newStream.getAudioTracks()[0]
       if (!newAudioTrack) return
       newAudioTrack.contentHint = 'speech'
+      newAudioTrack.enabled = localState.value.microphone
       const oldAudioTrack = localStream.value.getAudioTracks()[0]
-      peers.value.forEach(({ connection }) => {
-        const sender = connection.getSenders().find((s) => s.track && s.track.kind === 'audio')
-        if (sender) sender.replaceTrack(newAudioTrack)
+      peers.value.forEach(({ connection }, peerId) => {
+        const sender = findSenderByKind(connection, 'audio')
+        if (sender) {
+          sender.replaceTrack(newAudioTrack)
+        } else {
+          connection.addTrack(newAudioTrack, localStream.value!)
+          createOfferSafe(peerId)
+        }
       })
       if (oldAudioTrack) oldAudioTrack.stop()
       const videoTracks = localStream.value.getVideoTracks()
       localStream.value = new MediaStream([newAudioTrack, ...videoTracks])
+      monitorLocalSpeaking(localStream.value)
     } catch (error) {
       console.error('Failed to switch microphone:', error)
     }
@@ -591,10 +752,14 @@ export function useWebRTC() {
 
   async function replaceVideoTrackInPeers(newTrack: MediaStreamTrack | null) {
     peers.value.forEach(({ connection }, peerId) => {
-      const videoSenders = connection.getSenders().filter((s) => s.track?.kind === 'video')
-      if (videoSenders.length > 0) {
-        if (newTrack) videoSenders[0].replaceTrack(newTrack)
-        else connection.removeTrack(videoSenders[0])
+      const videoSender = findSenderByKind(connection, 'video')
+      if (videoSender) {
+        if (newTrack) {
+          videoSender.replaceTrack(newTrack)
+        } else {
+          // Keep sender/transceiver stable to preserve SDP m-line ordering.
+          videoSender.replaceTrack(null)
+        }
       } else if (newTrack && localStream.value) {
         connection.addTrack(newTrack, localStream.value)
       }
@@ -706,10 +871,7 @@ export function useWebRTC() {
       const microphoneChanged = previousState.microphone !== microphoneEnable
 
       if (videoEnable && videoChanged && localStream.value.getVideoTracks().length === 0) {
-        const newVideoStream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: deviceId } },
-          audio: false,
-        })
+        const newVideoStream = await getVideoStreamWithFallback(deviceId || undefined)
         const newVideoTrack = newVideoStream.getVideoTracks()[0]
         if (newVideoTrack) {
           const existingVideoTracks = localStream.value.getVideoTracks()
@@ -720,6 +882,16 @@ export function useWebRTC() {
           })
           await replaceVideoTrackInPeers(newVideoTrack)
         }
+      }
+      if (!videoEnable && videoChanged) {
+        const existingVideoTracks = localStream.value.getVideoTracks()
+        existingVideoTracks.forEach((track) => {
+          try {
+            track.stop()
+          } catch {}
+          localStream.value?.removeTrack(track)
+        })
+        await replaceVideoTrackInPeers(null)
       }
 
       if (videoChanged) {
@@ -807,47 +979,20 @@ export function useWebRTC() {
 
       peers.value.forEach(({ connection }, peerId) => {
         // Replace video track
-        const videoSender = connection.getSenders().find((s) => s.track?.kind === 'video')
+        const videoSender = findSenderByKind(connection, 'video')
         if (videoSender) videoSender.replaceTrack(screenVideoTrack)
         else connection.addTrack(screenVideoTrack, composedStream)
 
         // Ensure microphone track is sent (it's in composedStream, so it should be sent automatically)
         // But we need to make sure it's not removed
-        const micAudioSender = connection.getSenders().find((s) => s.track?.kind === 'audio' && s.track.contentHint !== 'screen' && s.track.contentHint !== 'music')
+        const micAudioSender = findSenderByKind(connection, 'audio')
         if (!micAudioSender && previousAudioTrack) {
           // Microphone track is missing, add it
           connection.addTrack(previousAudioTrack, composedStream)
         }
 
-        // Send screen audio track separately (not in composedStream) if it was obtained from the stream
-        if (screenAudioTrack) {
-          const existingSender = screenAudioSenders.get(peerId)
-          if (existingSender) {
-            try {
-              connection.removeTrack(existingSender.sender)
-            } catch (error) {
-              console.warn('Failed to remove existing screen audio sender:', error)
-            }
-            existingSender.track.stop()
-            screenAudioSenders.delete(peerId)
-          }
-
-          const clonedTrack = screenAudioTrack.clone()
-          clonedTrack.contentHint = 'screen'
-          const senderStream = new MediaStream([clonedTrack])
-          const sender = connection.addTrack(clonedTrack, senderStream)
-          screenAudioSenders.set(peerId, { sender, track: clonedTrack })
-        } else {
-          // No screen audio track available - clean up any existing senders
-          const existingSender = screenAudioSenders.get(peerId)
-          if (existingSender) {
-            try {
-              connection.removeTrack(existingSender.sender)
-              existingSender.track.stop()
-            } catch {}
-            screenAudioSenders.delete(peerId)
-          }
-        }
+        // We intentionally do not send a separate screen-audio RTP stream.
+        // Mic audio continues over the primary audio sender.
         createOfferSafe(peerId)
       })
 
@@ -871,10 +1016,7 @@ export function useWebRTC() {
       activeScreenAudioTrack = null
 
       screenAudioSenders.forEach(({ sender, track }, peerId) => {
-        const peer = peers.value.get(peerId)
-        if (peer) {
-          try { peer.connection.removeTrack(sender) } catch {}
-        }
+        try { sender.replaceTrack(null) } catch {}
         // Only stop the track if it's not already stopped (tracks from screenShareStream are stopped above)
         if (track.readyState !== 'ended') {
           try {
@@ -894,7 +1036,7 @@ export function useWebRTC() {
       localStream.value.getAudioTracks().forEach((t) => (t.enabled = localState.value.microphone))
 
       peers.value.forEach(({ connection }, peerId) => {
-        const videoSender = connection.getSenders().find((s) => s.track?.kind === 'video')
+        const videoSender = findSenderByKind(connection, 'video')
         if (videoSender && previousVideoTrack) videoSender.replaceTrack(previousVideoTrack)
         createOfferSafe(peerId)
       })
@@ -935,24 +1077,28 @@ export function useWebRTC() {
   }
 
   function monitorLocalSpeaking(stream: MediaStream | null) {
+    cleanupLocalSpeakingMonitor()
     if (!stream) return
     // Filter out screen audio tracks - only monitor microphone
     const audioTracks = stream.getAudioTracks()
     const micTracks = audioTracks.filter(track => !isScreenAudioTrack(track))
     if (micTracks.length === 0) return
-    
+    const token = localSpeakingMonitorToken
     const micOnlyStream = new MediaStream(micTracks)
     const audioContext = new AudioContext()
+    audioContextRef.value = audioContext
     const source = audioContext.createMediaStreamSource(micOnlyStream)
     const analyser = audioContext.createAnalyser()
+    analyserRef.value = analyser
     source.connect(analyser)
     analyser.fftSize = 512
     const dataArray = new Uint8Array(analyser.frequencyBinCount)
     function checkSpeaking() {
+      if (token !== localSpeakingMonitorToken || audioContext.state === 'closed') return
       analyser.getByteFrequencyData(dataArray)
       const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
       isLocalSpeaking.value = volume > 5
-      requestAnimationFrame(checkSpeaking)
+      animationFrameId.value = requestAnimationFrame(checkSpeaking)
     }
     checkSpeaking()
   }

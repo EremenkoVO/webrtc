@@ -52,9 +52,11 @@ const isFullscreen = computed(() => {
 
 watchEffect(() => {
   const stream = (props.stream as MediaStream | null) ?? null
+  const hasLiveVideoTrack = !!stream?.getVideoTracks().some((track) => track.readyState === 'live')
+  const renderStream = hasLiveVideoTrack ? stream : null
   const videoEl = videoRef.value
-  if (videoEl && videoEl.srcObject !== stream) {
-    videoEl.srcObject = stream
+  if (videoEl && videoEl.srcObject !== renderStream) {
+    videoEl.srcObject = renderStream
     videoEl.muted = true
   }
   // Don't play audio through audioStreamRef - it will be handled by rebuildAudioGraph

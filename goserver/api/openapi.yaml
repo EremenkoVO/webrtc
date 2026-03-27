@@ -352,6 +352,7 @@ paths:
       description: |
         Upgrade to a WebSocket connection for exchanging signaling messages
         (`offer`, `answer`, `ice`, `join`, `leave`).
+        Authenticate via `token` query param (JWT).
 
         **Example message:**
         ```json
@@ -364,6 +365,12 @@ paths:
         }
         ```
       operationId: signalingWebSocket
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
       responses:
         '101':
           description: Switching Protocols (WebSocket upgrade)
