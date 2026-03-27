@@ -22,6 +22,8 @@ type UserService interface {
 	UploadAvatar(ctx context.Context, userID int, data []byte, contentType string) error
 	GetAvatar(ctx context.Context, username string) ([]byte, string, error)
 	ChangePassword(ctx context.Context, userID int, currentPassword, newPassword string) error
+	UpdateProfile(ctx context.Context, userID int, profile *domain.User) (*domain.User, error)
+	GetPublicProfileByUsername(ctx context.Context, username string) (*domain.User, error)
 }
 
 type RoomService interface {

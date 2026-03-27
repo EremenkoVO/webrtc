@@ -105,5 +105,5 @@ func (s *ServerWrapper) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, convertToUserProfile(profile))
+	WriteJSONResponse(w, http.StatusOK, convertToUserProfile(profile, true))
 }

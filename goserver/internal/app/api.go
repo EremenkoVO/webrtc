@@ -87,7 +87,6 @@ func (app *API) init(ctx context.Context) error {
 	mux.HandleFunc("GET /api/v1/chat/messages/{id}/voice", serverWrapper.GetVoiceMessage)
 	mux.HandleFunc("POST /api/v1/chat/{roomId}/file", authenticator.RequireAuth(serverWrapper.UploadFileMessage))
 	mux.HandleFunc("GET /api/v1/chat/files/{id}", serverWrapper.GetFileAttachment)
-	mux.HandleFunc("GET /api/v1/presence/ws", serverWrapper.PresenceWebSocket)
 	// Admin routes
 	mux.HandleFunc("GET /api/v1/admin/setup", serverWrapper.GetAdminSetupStatus)
 	mux.HandleFunc("POST /api/v1/admin/setup", serverWrapper.PostAdminSetup)

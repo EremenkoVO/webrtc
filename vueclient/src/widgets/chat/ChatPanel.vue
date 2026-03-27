@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { OpenAPI } from '@/api/core/OpenAPI'
 import { useChatStore } from '@/shared/stores/chatStore'
+import { useDisplayNameStore } from '@/shared/stores/displayNameStore'
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -8,10 +9,12 @@ import EmojiPicker from './EmojiPicker.vue'
 import MediaPreview from './MediaPreview.vue'
 import MessageContent from './MessageContent.vue'
 import VoicePlayer from './VoicePlayer.vue'
+import UserProfileCard from '@/widgets/user-profile/UserProfileCard.vue'
 
 const { t } = useI18n()
 const props = defineProps<{ roomId: string | null; userName: string | undefined }>()
 const chatStore = useChatStore()
+const displayNameStore = useDisplayNameStore()
 const messageInput = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -29,6 +32,8 @@ const showReactionPickerFor = ref<{
 const reactionPickerPosition = ref<{ top: number; left: number } | null>(null)
 const reactionButtonRefs = ref<Map<string, HTMLElement>>(new Map())
 const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏']
+const profileUsername = ref<string | null>(null)
+const showProfile = ref(false)
 
 // Voice recording state
 const isRecording = ref(false)
@@ -221,6 +226,15 @@ function resolveFileUrl(url: string): string {
   if (!url) return ''
   if (url.startsWith('http')) return url
   return (OpenAPI.BASE || '') + url
+}
+
+function openProfile(username: string) {
+  profileUsername.value = username
+  showProfile.value = true
+}
+
+function displayNameOf(username: string): string {
+  return displayNameStore.get(username)
 }
 
 function formatFileSize(bytes?: number): string {
@@ -890,6 +904,7 @@ onBeforeUnmount(() => {
               <!-- Avatar (only for first message) -->
               <div
                 class="w-12 h-12 sm:w-10 sm:h-10 rounded-full overflow-hidden flex-shrink-0 mt-0.5"
+                @click="openProfile(group.username)"
               >
                 <UserAvatar :username="group.username" />
               </div>
@@ -900,8 +915,9 @@ onBeforeUnmount(() => {
                   <span
                     class="font-medium text-base sm:text-sm hover:underline cursor-pointer"
                     :style="{ color: getAvatarColor(group.username) }"
+                    @click="openProfile(group.username)"
                   >
-                    {{ group.username }}
+                    {{ displayNameOf(group.username) }}
                   </span>
                   <span class="text-sm sm:text-[11px] text-dc-text-muted">{{
                     formatTime(group.timestamp)
@@ -1147,7 +1163,7 @@ onBeforeUnmount(() => {
                                 : 'text-dc-text-secondary'
                             "
                           >
-                            {{ user === chatStore.username ? t('common.you') : user }}
+                            {{ user === chatStore.username ? t('common.you') : displayNameOf(user) }}
                           </div>
                         </div>
                       </div>
@@ -1159,6 +1175,12 @@ onBeforeUnmount(() => {
           </div>
         </TransitionGroup>
       </div>
+      <UserProfileCard
+        v-if="profileUsername"
+        :username="profileUsername"
+        :open="showProfile"
+        @close="showProfile = false"
+      />
     </div>
 
     <!-- Voice recording indicator -->
@@ -1205,7 +1227,7 @@ onBeforeUnmount(() => {
           <div class="w-0.5 h-8 bg-dc-blurple rounded-full flex-shrink-0" />
           <div class="flex-1 min-w-0">
             <p class="text-[11px] font-semibold text-dc-blurple leading-none mb-0.5">
-              {{ t('chat.replyingTo') }} {{ replyingTo.username }}
+              {{ t('chat.replyingTo') }} {{ displayNameOf(replyingTo.username) }}
             </p>
             <p class="text-[12px] text-dc-text-muted truncate leading-snug">
               {{ replyingTo.text }}

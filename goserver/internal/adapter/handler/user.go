@@ -15,9 +15,19 @@ type changePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
+type updateProfileRequest struct {
+	DisplayName        string `json:"display_name"`
+	Bio                string `json:"bio"`
+	StatusText         string `json:"status_text"`
+	StatusEmoji        string `json:"status_emoji"`
+	BannerURL          string `json:"banner_url"`
+	WebsiteURL         string `json:"website_url"`
+}
+
 type directoryUserResponse struct {
 	ID         string     `json:"id"`
 	Username   string     `json:"username"`
+	DisplayName *string   `json:"display_name,omitempty"`
 	AvatarURL  *string    `json:"avatar_url,omitempty"`
 	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
 }
@@ -43,6 +53,9 @@ func (s *ServerWrapper) ListServerUsers(w http.ResponseWriter, r *http.Request) 
 			Username:   e.Username,
 			LastSeenAt: e.LastSeenAt,
 		}
+		if e.DisplayName != "" {
+			item.DisplayName = &e.DisplayName
+		}
 		if e.HasAvatar {
 			url := "/api/v1/avatars/" + e.Username
 			item.AvatarURL = &url
@@ -51,6 +64,50 @@ func (s *ServerWrapper) ListServerUsers(w http.ResponseWriter, r *http.Request) 
 	}
 
 	WriteJSONResponse(w, http.StatusOK, resp)
+}
+
+// UpdateCurrentUserProfile handles PATCH /api/v1/me
+func (s *ServerWrapper) UpdateCurrentUserProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(contextKeyUserID).(int)
+	if !ok {
+		WriteErrorResponse(w, http.StatusUnauthorized, domain.ToErrorResponse(domain.ErrUnauthorized))
+		return
+	}
+
+	var req updateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, domain.ToErrorResponse(domain.ErrValidation))
+		return
+	}
+
+	updated, err := s.userService.UpdateProfile(r.Context(), userID, &domain.User{
+		DisplayName:        req.DisplayName,
+		Bio:                req.Bio,
+		StatusText:         req.StatusText,
+		StatusEmoji:        req.StatusEmoji,
+		BannerURL:          req.BannerURL,
+		WebsiteURL:         req.WebsiteURL,
+	})
+	if err != nil {
+		WriteErrorResponse(w, domain.GetStatusCode(err), domain.ToErrorResponse(err))
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, convertToUserProfile(updated, true))
+}
+
+// GetPublicUserProfile handles GET /api/v1/users/{username}/profile
+func (s *ServerWrapper) GetPublicUserProfile(w http.ResponseWriter, r *http.Request, username string) {
+	if username == "" {
+		WriteErrorResponse(w, http.StatusBadRequest, domain.ToErrorResponse(domain.ErrValidation))
+		return
+	}
+	profile, err := s.userService.GetPublicProfileByUsername(r.Context(), username)
+	if err != nil {
+		WriteErrorResponse(w, domain.GetStatusCode(err), domain.ToErrorResponse(err))
+		return
+	}
+	WriteJSONResponse(w, http.StatusOK, convertToUserProfile(profile, false))
 }
 
 // ChangePassword handles POST /api/v1/me/password

@@ -17,7 +17,9 @@ type UserRepository interface {
 	UpdateAvatar(ctx context.Context, userID int, data []byte, contentType string) error
 	GetAvatarByUsername(ctx context.Context, username string) ([]byte, string, error)
 	UpdatePassword(ctx context.Context, userID int, hashedPassword string) error
+	UpdateProfile(ctx context.Context, userID int, user *domain.User) error
 	UpdateLastSeen(ctx context.Context, userID int) error
+	FindByUsernamePublic(ctx context.Context, username string) (*domain.User, error)
 	ListUsers(ctx context.Context) ([]*domain.User, error)
 	// ListUsersForDirectory returns id, username, and whether an avatar exists (no blob loaded).
 	ListUsersForDirectory(ctx context.Context) ([]*domain.UserDirectoryEntry, error)

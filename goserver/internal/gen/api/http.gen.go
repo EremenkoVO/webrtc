@@ -128,12 +128,34 @@ type RoomParticipantsResponse struct {
 	RoomId       *string            `json:"room_id,omitempty"`
 }
 
+// UpdateProfileRequest defines model for UpdateProfileRequest.
+type UpdateProfileRequest struct {
+	BannerUrl   *string `json:"banner_url,omitempty"`
+	Bio         *string `json:"bio,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
+	StatusEmoji *string `json:"status_emoji,omitempty"`
+	StatusText  *string `json:"status_text,omitempty"`
+	WebsiteUrl  *string `json:"website_url,omitempty"`
+}
+
 // UserProfile defines model for UserProfile.
 type UserProfile struct {
 	// AvatarUrl Present when the user has an avatar; relative path e.g. /api/v1/avatars/{username}
-	AvatarUrl *string `json:"avatar_url,omitempty"`
-	Id        *string `json:"id,omitempty"`
-	Username  *string `json:"username,omitempty"`
+	AvatarUrl   *string `json:"avatar_url,omitempty"`
+	BannerUrl   *string `json:"banner_url,omitempty"`
+	Bio         *string `json:"bio,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
+	Id          *string `json:"id,omitempty"`
+
+	// LastSeenAt Last known activity timestamp; omitted for users who have never logged in.
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
+
+	// Role User role in the system.
+	Role        *string `json:"role,omitempty"`
+	StatusEmoji *string `json:"status_emoji,omitempty"`
+	StatusText  *string `json:"status_text,omitempty"`
+	Username    *string `json:"username,omitempty"`
+	WebsiteUrl  *string `json:"website_url,omitempty"`
 }
 
 // BadRequestError defines model for BadRequestError.
@@ -161,6 +183,11 @@ type ChatWebSocketParams struct {
 	Username *string `form:"username,omitempty" json:"username,omitempty"`
 }
 
+// PresenceWebSocketParams defines parameters for PresenceWebSocket.
+type PresenceWebSocketParams struct {
+	Token string `form:"token" json:"token"`
+}
+
 // SignalingWebSocketParams defines parameters for SignalingWebSocket.
 type SignalingWebSocketParams struct {
 	Token string `form:"token" json:"token"`
@@ -174,6 +201,9 @@ type RefreshTokenJSONRequestBody = RefreshRequest
 
 // RegisterUserJSONRequestBody defines body for RegisterUser for application/json ContentType.
 type RegisterUserJSONRequestBody = RegisterRequest
+
+// UpdateCurrentUserProfileJSONRequestBody defines body for UpdateCurrentUserProfile for application/json ContentType.
+type UpdateCurrentUserProfileJSONRequestBody = UpdateProfileRequest
 
 // CreateRoomJSONRequestBody defines body for CreateRoom for application/json ContentType.
 type CreateRoomJSONRequestBody = CreateRoomRequest
@@ -198,6 +228,12 @@ type ServerInterface interface {
 	// Get current user profile
 	// (GET /api/v1/me)
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
+	// Update current user profile
+	// (PATCH /api/v1/me)
+	UpdateCurrentUserProfile(w http.ResponseWriter, r *http.Request)
+	// WebSocket connection for global user presence
+	// (GET /api/v1/presence/ws)
+	PresenceWebSocket(w http.ResponseWriter, r *http.Request, params PresenceWebSocketParams)
 	// List available rooms
 	// (GET /api/v1/rooms)
 	ListRooms(w http.ResponseWriter, r *http.Request)
@@ -213,6 +249,9 @@ type ServerInterface interface {
 	// List all registered users on the server
 	// (GET /api/v1/users)
 	ListServerUsers(w http.ResponseWriter, r *http.Request)
+	// Get public user profile
+	// (GET /api/v1/users/{username}/profile)
+	GetPublicUserProfile(w http.ResponseWriter, r *http.Request, username string)
 	// WebSocket connection for signaling
 	// (GET /api/v1/ws)
 	SignalingWebSocket(w http.ResponseWriter, r *http.Request, params SignalingWebSocketParams)
@@ -366,6 +405,60 @@ func (siw *ServerInterfaceWrapper) GetCurrentUser(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateCurrentUserProfile operation middleware
+func (siw *ServerInterfaceWrapper) UpdateCurrentUserProfile(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateCurrentUserProfile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PresenceWebSocket operation middleware
+func (siw *ServerInterfaceWrapper) PresenceWebSocket(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PresenceWebSocketParams
+
+	// ------------- Required query parameter "token" -------------
+
+	if paramValue := r.URL.Query().Get("token"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "token"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "token", r.URL.Query(), &params.Token)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PresenceWebSocket(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListRooms operation middleware
 func (siw *ServerInterfaceWrapper) ListRooms(w http.ResponseWriter, r *http.Request) {
 
@@ -479,6 +572,31 @@ func (siw *ServerInterfaceWrapper) ListServerUsers(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListServerUsers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPublicUserProfile operation middleware
+func (siw *ServerInterfaceWrapper) GetPublicUserProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "username" -------------
+	var username string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPublicUserProfile(w, r, username)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -648,11 +766,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/register", wrapper.RegisterUser)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/chat/ws", wrapper.ChatWebSocket)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/me", wrapper.GetCurrentUser)
+	m.HandleFunc("PATCH "+options.BaseURL+"/api/v1/me", wrapper.UpdateCurrentUserProfile)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/presence/ws", wrapper.PresenceWebSocket)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/rooms", wrapper.ListRooms)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/rooms", wrapper.CreateRoom)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/rooms/{roomId}/join", wrapper.JoinRoom)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/rooms/{roomId}/participants", wrapper.GetRoomParticipants)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/users", wrapper.ListServerUsers)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/users/{username}/profile", wrapper.GetPublicUserProfile)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/ws", wrapper.SignalingWebSocket)
 
 	return m

@@ -7,10 +7,12 @@ import { useSidebarStore } from '@/shared/stores/sidebarStore'
 import { useSignalingStore } from '@/shared/stores/signalingStore'
 import { usePresenceStore } from '@/shared/stores/presenceStore'
 import { useSettingsStore } from '@/shared/stores/settingsStore'
+import { useDisplayNameStore } from '@/shared/stores/displayNameStore'
 import { useVoiceStateStore } from '@/shared/stores/voiceStateStore'
 import { useWebRTC } from '@/shared/lib/useWebRTC'
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import UserPanel from '@/widgets/user-panel/UserPanel.vue'
+import UserProfileCard from '@/widgets/user-profile/UserProfileCard.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -23,6 +25,7 @@ const voiceStateStore = useVoiceStateStore()
 const signalingStore = useSignalingStore()
 const presenceStore = usePresenceStore()
 const settingsStore = useSettingsStore()
+const displayNameStore = useDisplayNameStore()
 
 const { audioDevices, videoDevices, fetchAudioDevices, fetchVideoDevices } = useWebRTC()
 const microphoneMenuOpen = ref(false)
@@ -70,6 +73,8 @@ const isLoading = ref(false)
 
 const serverUsers = ref<UserProfile[]>([])
 const directoryLoading = ref(false)
+const sidebarProfileUsername = ref<string | null>(null)
+const showSidebarProfile = ref(false)
 
 const showSwitchModal = ref(false)
 const pendingSwitchChannelId = ref<string | undefined>()
@@ -111,7 +116,11 @@ const filteredTextChannels = computed(() =>
 const filteredServerUsers = computed(() => {
   if (!searchQuery.value.trim()) return serverUsers.value
   const q = searchQuery.value.toLowerCase()
-  return serverUsers.value.filter((u) => (u.username ?? '').toLowerCase().includes(q))
+  return serverUsers.value.filter((u) => {
+    const username = (u.username ?? '').toLowerCase()
+    const displayName = (u.display_name ?? '').toLowerCase()
+    return username.includes(q) || displayName.includes(q)
+  })
 })
 
 const onlineServerUsers = computed(() =>
@@ -195,6 +204,7 @@ async function fetchServerUsers() {
     const res = await UserService.listServerUsers()
     if (Array.isArray(res)) {
       serverUsers.value = res
+      displayNameStore.setFromProfiles(res)
     } else {
       serverUsers.value = []
     }
@@ -204,6 +214,16 @@ async function fetchServerUsers() {
   } finally {
     directoryLoading.value = false
   }
+}
+
+function displayNameOf(username?: string) {
+  return displayNameStore.get(username)
+}
+
+function openUserProfile(username?: string | null) {
+  if (!username) return
+  sidebarProfileUsername.value = username
+  showSidebarProfile.value = true
 }
 
 async function refreshChannels() {
@@ -549,7 +569,9 @@ watch(
                 <div
                   v-for="mate in ch.roommates"
                   :key="mate"
-                  class="flex items-center gap-2 py-[3px] px-1.5 rounded group/user hover:bg-dc-bg-hover/50 transition-colors"
+                  class="flex items-center gap-2 py-[3px] px-1.5 rounded group/user hover:bg-dc-bg-hover/50 transition-colors cursor-pointer"
+                  :title="t('sidebar.viewProfile')"
+                  @click="openUserProfile(mate)"
                   @contextmenu.prevent="openContextMenu($event, mate)"
                   @mouseenter="onParticipantRowEnter($event, mate)"
                   @mouseleave="onParticipantRowLeave()"
@@ -578,7 +600,7 @@ watch(
                         : 'text-dc-text-secondary',
                     ]"
                   >
-                    {{ mate }}
+                    {{ displayNameOf(mate) }}
                     <span
                       v-if="isUserConnecting(mate)"
                       class="ml-1.5 text-xs sm:text-[10px] text-dc-text-muted"
@@ -601,6 +623,10 @@ watch(
                     v-if="isUserMuted(mate)"
                     icon="microphone-slash"
                     class="text-sm sm:text-[11px] flex-shrink-0 text-dc-red/80"
+                  />
+                  <font-awesome-icon
+                    icon="id-card"
+                    class="text-[10px] flex-shrink-0 text-dc-text-muted opacity-0 group-hover/user:opacity-100 transition-opacity"
                   />
                 </div>
               </div>
@@ -690,7 +716,9 @@ watch(
               <div
                 v-for="u in onlineServerUsers"
                 :key="`online-${u.id || u.username}`"
-                class="sidebar-member-row flex items-center gap-2 py-[3px] px-1.5 rounded hover:bg-dc-bg-hover/50 transition-colors"
+                class="sidebar-member-row group/member flex items-center gap-2 py-[3px] px-1.5 rounded hover:bg-dc-bg-hover/50 transition-colors cursor-pointer"
+                :title="t('sidebar.viewProfile')"
+                @click="openUserProfile(u.username)"
               >
                 <div class="relative w-7 h-7 sm:w-6 sm:h-6 flex-shrink-0">
                   <div class="w-7 h-7 sm:w-6 sm:h-6 rounded-full overflow-hidden">
@@ -699,8 +727,12 @@ watch(
                   <span class="absolute right-0 bottom-0 w-2.5 h-2.5 rounded-full border-2 border-dc-bg-secondary bg-dc-green" />
                 </div>
                 <span class="flex-1 text-base sm:text-[13px] leading-4 truncate text-dc-text-secondary">
-                  {{ u.username }}
+                  {{ displayNameOf(u.username) }}
                 </span>
+                <font-awesome-icon
+                  icon="id-card"
+                  class="text-[10px] flex-shrink-0 text-dc-text-muted opacity-0 group-hover/member:opacity-100 transition-opacity"
+                />
               </div>
             </div>
           </div>
@@ -716,7 +748,9 @@ watch(
               <div
                 v-for="u in offlineServerUsers"
                 :key="`offline-${u.id || u.username}`"
-                class="sidebar-member-row flex items-center gap-2 py-[3px] px-1.5 rounded hover:bg-dc-bg-hover/50 transition-colors"
+                class="sidebar-member-row group/member flex items-center gap-2 py-[3px] px-1.5 rounded hover:bg-dc-bg-hover/50 transition-colors cursor-pointer"
+                :title="t('sidebar.viewProfile')"
+                @click="openUserProfile(u.username)"
               >
                 <div class="relative w-7 h-7 sm:w-6 sm:h-6 flex-shrink-0">
                   <div class="w-7 h-7 sm:w-6 sm:h-6 rounded-full overflow-hidden">
@@ -726,17 +760,28 @@ watch(
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-base sm:text-[13px] leading-4 truncate text-dc-text-secondary">
-                    {{ u.username }}
+                    {{ displayNameOf(u.username) }}
                   </div>
                   <div class="sidebar-last-seen text-[10px] text-dc-text-muted">
                     {{ t('sidebar.lastSeen') }}: {{ formatLastSeen(u) }}
                   </div>
                 </div>
+                <font-awesome-icon
+                  icon="id-card"
+                  class="text-[10px] flex-shrink-0 text-dc-text-muted opacity-0 group-hover/member:opacity-100 transition-opacity"
+                />
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <UserProfileCard
+        v-if="sidebarProfileUsername"
+        :username="sidebarProfileUsername"
+        :open="showSidebarProfile"
+        @close="showSidebarProfile = false"
+      />
 
       <!-- Refresh -->
       <div class="px-2 mt-4">

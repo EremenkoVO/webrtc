@@ -5,8 +5,15 @@ import { setLocale, SUPPORTED_LOCALES, type SupportedLocale } from '@/shared/i18
 import { useWebRTC } from '@/shared/lib/useWebRTC'
 import { useAvatarStore } from '@/shared/stores/avatarStore'
 import { useChatStore } from '@/shared/stores/chatStore'
-import { THEMES, useSettingsStore, type Theme, type DensityMode } from '@/shared/stores/settingsStore'
+import { useDisplayNameStore } from '@/shared/stores/displayNameStore'
+import {
+  THEMES,
+  useSettingsStore,
+  type DensityMode,
+  type Theme,
+} from '@/shared/stores/settingsStore'
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
+import EmojiPicker from '@/widgets/chat/EmojiPicker.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -16,6 +23,7 @@ const { t } = useI18n()
 const settings = useSettingsStore()
 const chatStore = useChatStore()
 const avatarStore = useAvatarStore()
+const displayNameStore = useDisplayNameStore()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const visible = ref(true)
@@ -72,7 +80,19 @@ const densityModes: Array<{ id: DensityMode; labelKey: string }> = [
 
 const showAvatarEditor = ref(false)
 const currentUsername = ref<string | null>(null)
-
+const profileLoading = ref(false)
+const profileSaving = ref(false)
+const profileSaveSuccess = ref(false)
+const profileError = ref('')
+const showStatusEmojiPicker = ref(false)
+const profileForm = ref({
+  displayName: '',
+  bio: '',
+  statusText: '',
+  statusEmoji: '',
+  bannerUrl: '',
+  websiteUrl: '',
+})
 // Electron server URL
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const serverUrlInput = ref(localStorage.getItem('serverUrl') ?? '')
@@ -83,7 +103,9 @@ function saveServerUrl() {
   localStorage.setItem('serverUrl', url)
   window.electronAPI?.setServerUrl(url)
   serverUrlSaved.value = true
-  setTimeout(() => { serverUrlSaved.value = false }, 3000)
+  setTimeout(() => {
+    serverUrlSaved.value = false
+  }, 3000)
 }
 
 // Password state
@@ -105,13 +127,27 @@ watch(
 onMounted(async () => {
   await fetchAudioDevices()
   await fetchVideoDevices()
+  profileLoading.value = true
   try {
     const profile = await UserService.getCurrentUser()
     if (profile && 'username' in profile && profile.username) {
       currentUsername.value = profile.username
     }
+    if (profile && 'username' in profile) {
+      profileForm.value.displayName = profile.display_name ?? ''
+      profileForm.value.bio = profile.bio ?? ''
+      profileForm.value.statusText = profile.status_text ?? ''
+      profileForm.value.statusEmoji = profile.status_emoji ?? ''
+      profileForm.value.bannerUrl = profile.banner_url ?? ''
+      profileForm.value.websiteUrl = profile.website_url ?? ''
+      if (profile.username) {
+        displayNameStore.setOne(profile.username, profile.display_name)
+      }
+    }
   } catch {
     /* ignore */
+  } finally {
+    profileLoading.value = false
   }
 })
 
@@ -159,11 +195,43 @@ function selectSection(s: Section) {
   activeSection.value = s
   passwordError.value = ''
   passwordSuccess.value = false
+  profileSaveSuccess.value = false
+  profileError.value = ''
+  showStatusEmojiPicker.value = false
 }
 
 function selectSectionMobile(s: Section) {
   selectSection(s)
   mobilePage.value = 'section'
+}
+
+async function saveProfile() {
+  profileError.value = ''
+  profileSaveSuccess.value = false
+  profileSaving.value = true
+  try {
+    await UserService.updateCurrentUserProfile({
+      display_name: profileForm.value.displayName.trim(),
+      bio: profileForm.value.bio.trim(),
+      status_text: profileForm.value.statusText.trim(),
+      status_emoji: profileForm.value.statusEmoji.trim(),
+      banner_url: profileForm.value.bannerUrl.trim(),
+      website_url: profileForm.value.websiteUrl.trim(),
+    })
+    if (currentUsername.value) {
+      displayNameStore.setOne(currentUsername.value, profileForm.value.displayName)
+    }
+    profileSaveSuccess.value = true
+  } catch {
+    profileError.value = t('settings.profile.saveError')
+  } finally {
+    profileSaving.value = false
+  }
+}
+
+function pickStatusEmoji(emoji: string) {
+  profileForm.value.statusEmoji = emoji
+  showStatusEmojiPicker.value = false
 }
 </script>
 
@@ -179,6 +247,7 @@ function selectSectionMobile(s: Section) {
             : {}
         "
         @click.self="close"
+        @click="showStatusEmojiPicker = false"
       >
         <div
           class="modal-content relative bg-dc-bg-secondary w-full h-[92dvh] sm:h-[85vh] rounded-t-2xl sm:rounded-2xl shadow-2xl sm:max-w-[980px] sm:mx-4 flex flex-col sm:flex-row overflow-hidden sm:border sm:border-white/10"
@@ -315,7 +384,9 @@ function selectSectionMobile(s: Section) {
             </div>
 
             <!-- Section body -->
-            <div class="settings-surface flex-1 px-5 sm:px-8 pb-6 overflow-y-auto dc-scrollbar-thin">
+            <div
+              class="settings-surface flex-1 px-5 sm:px-8 pb-6 overflow-y-auto dc-scrollbar-thin"
+            >
               <Transition name="section" mode="out-in">
                 <div :key="activeSection">
                   <!-- ── Profile ── -->
@@ -324,7 +395,7 @@ function selectSectionMobile(s: Section) {
                       {{ t('settings.menu.profile') }}
                     </h3>
 
-                    <div class="flex items-center gap-5">
+                    <div class="flex items-center gap-5 mb-6">
                       <div
                         class="relative group w-20 h-20 rounded-full cursor-pointer flex-shrink-0"
                         @click="showAvatarEditor = true"
@@ -360,6 +431,98 @@ function selectSectionMobile(s: Section) {
                         </button>
                       </div>
                     </div>
+
+                    <div v-if="profileLoading" class="text-sm text-dc-text-muted">
+                      {{ t('common.loading') }}
+                    </div>
+
+                    <form v-else class="space-y-4" @submit.prevent="saveProfile">
+                      <div>
+                        <label class="block text-sm font-medium text-dc-text-heading mb-1.5">{{
+                          t('settings.profile.displayName')
+                        }}</label>
+                        <input
+                          v-model="profileForm.displayName"
+                          type="text"
+                          maxlength="64"
+                          class="w-full px-3 py-2 rounded bg-dc-bg-tertiary text-dc-text border border-dc-separator/40 outline-none focus:ring-2 focus:ring-dc-blurple/40 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-dc-text-heading mb-1.5">{{
+                          t('settings.profile.status')
+                        }}</label>
+                        <div class="grid grid-cols-[88px_1fr] gap-2 items-start">
+                          <div class="relative">
+                            <button
+                              type="button"
+                              class="w-full px-3 py-2 rounded bg-dc-bg-tertiary text-dc-text border border-dc-separator/40 outline-none focus:ring-2 focus:ring-dc-blurple/40 text-sm text-left hover:bg-dc-bg-hover transition-colors"
+                              @click.stop="showStatusEmojiPicker = !showStatusEmojiPicker"
+                            >
+                              {{ profileForm.statusEmoji || '🙂' }}
+                            </button>
+                            <div v-if="showStatusEmojiPicker" class="absolute z-50 mt-2 left-0">
+                              <EmojiPicker @pick="pickStatusEmoji" />
+                            </div>
+                          </div>
+                          <input
+                            v-model="profileForm.statusText"
+                            type="text"
+                            maxlength="80"
+                            class="px-3 py-2 rounded bg-dc-bg-tertiary text-dc-text border border-dc-separator/40 outline-none focus:ring-2 focus:ring-dc-blurple/40 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-dc-text-heading mb-1.5">{{
+                          t('settings.profile.bio')
+                        }}</label>
+                        <textarea
+                          v-model="profileForm.bio"
+                          maxlength="280"
+                          rows="4"
+                          class="w-full px-3 py-2 rounded bg-dc-bg-tertiary text-dc-text border border-dc-separator/40 outline-none focus:ring-2 focus:ring-dc-blurple/40 text-sm resize-y"
+                        />
+                        <div class="text-[11px] text-dc-text-muted mt-1 text-right">
+                          {{ profileForm.bio.length }}/280
+                        </div>
+                      </div>
+                      <div>
+                        <div>
+                          <label class="block text-sm font-medium text-dc-text-heading mb-1.5">{{
+                            t('settings.profile.websiteUrl')
+                          }}</label>
+                          <input
+                            v-model="profileForm.websiteUrl"
+                            type="url"
+                            maxlength="256"
+                            class="w-full px-3 py-2 rounded bg-dc-bg-tertiary text-dc-text border border-dc-separator/40 outline-none focus:ring-2 focus:ring-dc-blurple/40 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-dc-text-heading mb-1.5">{{
+                          t('settings.profile.bannerUrl')
+                        }}</label>
+                        <input
+                          v-model="profileForm.bannerUrl"
+                          type="url"
+                          maxlength="256"
+                          class="w-full px-3 py-2 rounded bg-dc-bg-tertiary text-dc-text border border-dc-separator/40 outline-none focus:ring-2 focus:ring-dc-blurple/40 text-sm"
+                        />
+                      </div>
+                      <p v-if="profileError" class="text-xs text-dc-red">{{ profileError }}</p>
+                      <p v-if="profileSaveSuccess" class="text-xs text-dc-green">
+                        {{ t('settings.profile.saved') }}
+                      </p>
+                      <button
+                        type="submit"
+                        class="px-3 py-2 rounded bg-dc-blurple text-white text-sm font-medium hover:bg-dc-blurple-hover transition-colors disabled:opacity-60"
+                        :disabled="profileSaving"
+                      >
+                        {{ profileSaving ? t('common.loading') : t('settings.profile.save') }}
+                      </button>
+                    </form>
                   </template>
 
                   <!-- ── Voice & Video ── -->
@@ -628,7 +791,9 @@ function selectSectionMobile(s: Section) {
                       <p class="text-sm font-semibold text-dc-text-heading mb-1">
                         {{ t('settings.serverUrl') }}
                       </p>
-                      <p class="text-xs text-dc-text-muted mb-4">{{ t('settings.serverUrlDesc') }}</p>
+                      <p class="text-xs text-dc-text-muted mb-4">
+                        {{ t('settings.serverUrlDesc') }}
+                      </p>
                       <div class="flex gap-2">
                         <input
                           v-model="serverUrlInput"

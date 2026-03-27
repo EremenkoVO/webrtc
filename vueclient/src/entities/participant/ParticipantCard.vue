@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
-import { ref, watch, watchEffect } from 'vue'
+import { useDisplayNameStore } from '@/shared/stores/displayNameStore'
+import UserProfileCard from '@/widgets/user-profile/UserProfileCard.vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -26,6 +28,9 @@ const audioRef = ref<HTMLAudioElement | null>(null)
 const localMuted = ref(props.isMuted)
 const localVolume = ref(props.volume ?? 1)
 const showMenu = ref(false)
+const showProfile = ref(false)
+const displayNameStore = useDisplayNameStore()
+const shownName = computed(() => displayNameStore.get(props.name))
 
 watch(
   () => props.isMuted,
@@ -85,7 +90,11 @@ function handleVolumeInput(event: Event) {
     <audio v-if="!isLocal" ref="audioRef" autoplay playsinline />
 
     <!-- Avatar -->
-    <div class="w-14 h-14 2xl:w-16 2xl:h-16 rounded-full mb-2 relative">
+    <button
+      type="button"
+      class="w-14 h-14 2xl:w-16 2xl:h-16 rounded-full mb-2 relative"
+      @click="showProfile = true"
+    >
       <div class="absolute inset-0 rounded-full overflow-hidden">
         <UserAvatar :username="name" />
       </div>
@@ -100,11 +109,11 @@ function handleVolumeInput(event: Event) {
       >
         <div class="w-2 h-2 bg-white rounded-full animate-pulse" />
       </div>
-    </div>
+    </button>
 
     <!-- Name -->
     <div class="text-xs 2xl:text-sm font-medium text-dc-text truncate max-w-full px-1 text-center">
-      {{ isLocal ? `${name} (${t('common.you')})` : name }}
+      {{ isLocal ? `${shownName} (${t('common.you')})` : shownName }}
       <span v-if="isConnecting" class="block text-[10px] text-dc-text-muted mt-0.5">
         {{ t('common.connecting') }}
       </span>
@@ -156,6 +165,7 @@ function handleVolumeInput(event: Event) {
       </div>
     </Transition>
   </div>
+  <UserProfileCard :username="name" :open="showProfile" @close="showProfile = false" />
 </template>
 
 <style scoped>

@@ -32,12 +32,22 @@ func (r *userRepository) CreateUser(ctx context.Context, user *domain.User) erro
 }
 
 func (r *userRepository) FindByUsername(ctx context.Context, username string) (*domain.User, error) {
-	query := `SELECT id, username, password, created_at, role, COALESCE(bootstrap_admin, 0) FROM users WHERE username = ?`
+	query := `SELECT id, username, password, created_at, role, COALESCE(bootstrap_admin, 0),
+		COALESCE(display_name, ''), COALESCE(bio, ''), COALESCE(status_text, ''), COALESCE(status_emoji, ''),
+		COALESCE(banner_url, ''), COALESCE(website_url, ''), COALESCE(pronouns, ''), COALESCE(location, ''),
+		COALESCE(bio_visibility, 'public'), COALESCE(website_visibility, 'public'),
+		COALESCE(location_visibility, 'public'), COALESCE(last_seen_visibility, 'public')
+		FROM users WHERE username = ?`
 	row := r.db.QueryRowContext(ctx, query, username)
 
 	var user domain.User
 	var boot int
-	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.CreatedAt, &user.Role, &boot)
+	err := row.Scan(
+		&user.ID, &user.Username, &user.Password, &user.CreatedAt, &user.Role, &boot,
+		&user.DisplayName, &user.Bio, &user.StatusText, &user.StatusEmoji,
+		&user.BannerURL, &user.WebsiteURL, &user.Pronouns, &user.Location,
+		&user.BioVisibility, &user.WebsiteVisibility, &user.LocationVisibility, &user.LastSeenVisibility,
+	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -49,12 +59,22 @@ func (r *userRepository) FindByUsername(ctx context.Context, username string) (*
 }
 
 func (r *userRepository) FindByID(ctx context.Context, id int) (*domain.User, error) {
-	query := `SELECT id, username, password, created_at, avatar, avatar_content_type, role, COALESCE(bootstrap_admin, 0) FROM users WHERE id = ?`
+	query := `SELECT id, username, password, created_at, avatar, avatar_content_type, role, COALESCE(bootstrap_admin, 0),
+		COALESCE(display_name, ''), COALESCE(bio, ''), COALESCE(status_text, ''), COALESCE(status_emoji, ''),
+		COALESCE(banner_url, ''), COALESCE(website_url, ''), COALESCE(pronouns, ''), COALESCE(location, ''),
+		COALESCE(bio_visibility, 'public'), COALESCE(website_visibility, 'public'),
+		COALESCE(location_visibility, 'public'), COALESCE(last_seen_visibility, 'public')
+		FROM users WHERE id = ?`
 	row := r.db.QueryRowContext(ctx, query, id)
 
 	var user domain.User
 	var boot int
-	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.CreatedAt, &user.AvatarData, &user.AvatarContentType, &user.Role, &boot)
+	err := row.Scan(
+		&user.ID, &user.Username, &user.Password, &user.CreatedAt, &user.AvatarData, &user.AvatarContentType, &user.Role, &boot,
+		&user.DisplayName, &user.Bio, &user.StatusText, &user.StatusEmoji,
+		&user.BannerURL, &user.WebsiteURL, &user.Pronouns, &user.Location,
+		&user.BioVisibility, &user.WebsiteVisibility, &user.LocationVisibility, &user.LastSeenVisibility,
+	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -127,10 +147,55 @@ func (r *userRepository) UpdatePassword(ctx context.Context, userID int, hashedP
 	return err
 }
 
+func (r *userRepository) UpdateProfile(ctx context.Context, userID int, user *domain.User) error {
+	query := `UPDATE users
+		SET display_name = ?, bio = ?, status_text = ?, status_emoji = ?, banner_url = ?,
+		    website_url = ?, pronouns = ?
+		WHERE id = ?`
+	_, err := r.db.ExecContext(
+		ctx,
+		query,
+		user.DisplayName,
+		user.Bio,
+		user.StatusText,
+		user.StatusEmoji,
+		user.BannerURL,
+		user.WebsiteURL,
+		user.Pronouns,
+		userID,
+	)
+	return err
+}
+
 func (r *userRepository) UpdateLastSeen(ctx context.Context, userID int) error {
 	query := `UPDATE users SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, userID)
 	return err
+}
+
+func (r *userRepository) FindByUsernamePublic(ctx context.Context, username string) (*domain.User, error) {
+	query := `SELECT id, username, created_at, avatar, avatar_content_type, role, last_seen_at,
+		COALESCE(display_name, ''), COALESCE(bio, ''), COALESCE(status_text, ''), COALESCE(status_emoji, ''),
+		COALESCE(banner_url, ''), COALESCE(website_url, ''), COALESCE(pronouns, ''), COALESCE(location, ''),
+		COALESCE(bio_visibility, 'public'), COALESCE(website_visibility, 'public'),
+		COALESCE(location_visibility, 'public'), COALESCE(last_seen_visibility, 'public')
+		FROM users WHERE username = ?`
+	row := r.db.QueryRowContext(ctx, query, username)
+
+	var user domain.User
+	err := row.Scan(
+		&user.ID, &user.Username, &user.CreatedAt, &user.AvatarData, &user.AvatarContentType, &user.Role, &user.LastSeenAt,
+		&user.DisplayName, &user.Bio, &user.StatusText, &user.StatusEmoji,
+		&user.BannerURL, &user.WebsiteURL, &user.Pronouns, &user.Location,
+		&user.BioVisibility, &user.WebsiteVisibility, &user.LocationVisibility, &user.LastSeenVisibility,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 
 func (r *userRepository) GetAvatarByUsername(ctx context.Context, username string) ([]byte, string, error) {
@@ -169,7 +234,7 @@ func (r *userRepository) ListUsers(ctx context.Context) ([]*domain.User, error) 
 }
 
 func (r *userRepository) ListUsersForDirectory(ctx context.Context) ([]*domain.UserDirectoryEntry, error) {
-	query := `SELECT id, username,
+	query := `SELECT id, username, COALESCE(display_name, ''),
 		CASE WHEN COALESCE(LENGTH(avatar), 0) > 0 THEN 1 ELSE 0 END
 		,last_seen_at
 		FROM users ORDER BY username COLLATE NOCASE ASC`
@@ -183,7 +248,7 @@ func (r *userRepository) ListUsersForDirectory(ctx context.Context) ([]*domain.U
 	for rows.Next() {
 		var e domain.UserDirectoryEntry
 		var hasAvatar int
-		if err := rows.Scan(&e.ID, &e.Username, &hasAvatar, &e.LastSeenAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.Username, &e.DisplayName, &hasAvatar, &e.LastSeenAt); err != nil {
 			return nil, err
 		}
 		e.HasAvatar = hasAvatar != 0

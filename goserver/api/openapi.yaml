@@ -194,6 +194,33 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         default:
           $ref: '#/components/responses/ServerError'
+    patch:
+      tags: [User]
+      summary: Update current user profile
+      description: |
+        Update profile fields for the authenticated user.
+      operationId: updateCurrentUserProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        default:
+          $ref: '#/components/responses/ServerError'
   /api/v1/users:
     get:
       tags: [User]
@@ -216,6 +243,28 @@ paths:
                   $ref: '#/components/schemas/UserProfile'
         '401':
           $ref: '#/components/responses/UnauthorizedError'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /api/v1/users/{username}/profile:
+    get:
+      tags: [User]
+      summary: Get public user profile
+      operationId: getPublicUserProfile
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Public profile card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
         default:
           $ref: '#/components/responses/ServerError'
   /api/v1/rooms:
@@ -453,10 +502,48 @@ components:
         avatar_url:
           type: string
           description: Present when the user has an avatar; relative path e.g. /api/v1/avatars/{username}
+        role:
+          type: string
+          description: User role in the system.
+        display_name:
+          type: string
+        bio:
+          type: string
+        status_text:
+          type: string
+        status_emoji:
+          type: string
+        banner_url:
+          type: string
+        website_url:
+          type: string
         last_seen_at:
           type: string
           format: date-time
           description: Last known activity timestamp; omitted for users who have never logged in.
+    UpdateProfileRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          maxLength: 64
+        bio:
+          type: string
+          maxLength: 280
+        status_text:
+          type: string
+          maxLength: 80
+        status_emoji:
+          type: string
+          maxLength: 16
+        banner_url:
+          type: string
+          format: uri
+          maxLength: 256
+        website_url:
+          type: string
+          format: uri
+          maxLength: 256
     ErrorResponse:
       type: object
       properties:

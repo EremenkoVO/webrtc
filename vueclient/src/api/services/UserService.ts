@@ -3,6 +3,7 @@
 /* tslint:disable */
  
 import type { ErrorResponse } from '../models/ErrorResponse';
+import type { UpdateProfileRequest } from '../models/UpdateProfileRequest';
 import type { UserProfile } from '../models/UserProfile';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
@@ -30,6 +31,24 @@ export class UserService {
     }
 
     /**
+     * Update current user profile
+     */
+    public static updateCurrentUserProfile(
+        requestBody: UpdateProfileRequest,
+    ): CancelablePromise<UserProfile | ErrorResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/me',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+            },
+        });
+    }
+
+    /**
      * List all registered users on the server (directory).
      */
     public static listServerUsers(): CancelablePromise<Array<UserProfile> | ErrorResponse> {
@@ -38,6 +57,24 @@ export class UserService {
             url: '/api/v1/users',
             errors: {
                 401: `Unauthorized`,
+            },
+        });
+    }
+
+    /**
+     * Get public user profile
+     */
+    public static getPublicUserProfile(
+        username: string,
+    ): CancelablePromise<UserProfile | ErrorResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/users/{username}/profile',
+            path: {
+                username: username,
+            },
+            errors: {
+                404: `Resource Not Found`,
             },
         });
     }

@@ -49,10 +49,16 @@ func NewServerWrapper(
 // userProfileResponse extends the generated UserProfile with avatar_url and role.
 // Used instead of api.UserProfile to avoid editing generated files.
 type userProfileResponse struct {
-	ID        string  `json:"id"`
-	Username  string  `json:"username"`
-	AvatarURL *string `json:"avatar_url,omitempty"`
-	Role      string  `json:"role"`
+	ID                 string     `json:"id"`
+	Username           string     `json:"username"`
+	AvatarURL          *string    `json:"avatar_url,omitempty"`
+	Role               string     `json:"role"`
+	DisplayName        *string    `json:"display_name,omitempty"`
+	Bio                *string    `json:"bio,omitempty"`
+	StatusText         *string    `json:"status_text,omitempty"`
+	StatusEmoji        *string    `json:"status_emoji,omitempty"`
+	BannerURL          *string    `json:"banner_url,omitempty"`
+	WebsiteURL         *string    `json:"website_url,omitempty"`
 }
 
 // Conversion functions
@@ -65,15 +71,33 @@ func convertToAuthTokens(tokens *domain.AuthTokens) api.AuthTokens {
 	}
 }
 
-func convertToUserProfile(profile *domain.User) userProfileResponse {
+func convertToUserProfile(profile *domain.User, isSelf bool) userProfileResponse {
 	resp := userProfileResponse{
-		ID:       strconv.Itoa(profile.ID),
-		Username: profile.Username,
-		Role:     profile.Role,
+		ID:                 strconv.Itoa(profile.ID),
+		Username:           profile.Username,
+		Role:               profile.Role,
 	}
 	if len(profile.AvatarData) > 0 {
 		url := "/api/v1/avatars/" + profile.Username
 		resp.AvatarURL = &url
+	}
+	if profile.DisplayName != "" {
+		resp.DisplayName = &profile.DisplayName
+	}
+	if profile.StatusText != "" {
+		resp.StatusText = &profile.StatusText
+	}
+	if profile.StatusEmoji != "" {
+		resp.StatusEmoji = &profile.StatusEmoji
+	}
+	if profile.BannerURL != "" {
+		resp.BannerURL = &profile.BannerURL
+	}
+	if profile.Bio != "" {
+		resp.Bio = &profile.Bio
+	}
+	if profile.WebsiteURL != "" {
+		resp.WebsiteURL = &profile.WebsiteURL
 	}
 	return resp
 }

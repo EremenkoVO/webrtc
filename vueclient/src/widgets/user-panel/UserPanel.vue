@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { AuthService } from '@/api/index'
 import { useAuthStore } from '@/shared/stores/authStore'
+import { useDisplayNameStore } from '@/shared/stores/displayNameStore'
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import SettingsModal from '@/widgets/settings/SettingsModal.vue'
+import UserProfileCard from '@/widgets/user-profile/UserProfileCard.vue'
 import AdminPage from '@/pages/admin/AdminPage.vue'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -15,10 +17,13 @@ const props = defineProps<{
 }>()
 
 const authStore = useAuthStore()
+const displayNameStore = useDisplayNameStore()
 const router = useRouter()
 const showSettings = ref(false)
 const showAdmin = ref(false)
+const showProfile = ref(false)
 const isAdmin = computed(() => authStore.userRole === 'admin')
+const shownName = computed(() => displayNameStore.get(props.username))
 
 async function logout() {
   try {
@@ -38,12 +43,12 @@ async function logout() {
     </div>
 
     <!-- User info -->
-    <div class="flex-1 min-w-0">
+    <button type="button" class="flex-1 min-w-0 text-left" @click="showProfile = true">
       <div class="text-sm font-semibold text-dc-text-heading truncate leading-tight">
-        {{ props.username }}
+        {{ shownName }}
       </div>
       <div class="text-[11px] text-dc-text-muted leading-tight">{{ t('common.online') }}</div>
-    </div>
+    </button>
 
     <!-- Controls -->
     <div class="flex items-center gap-0.5">
@@ -73,6 +78,7 @@ async function logout() {
       </button>
     </div>
     <SettingsModal v-if="showSettings" @close="showSettings = false" />
+    <UserProfileCard :username="props.username" :open="showProfile" @close="showProfile = false" />
 
     <Teleport to="body">
       <Transition name="admin-modal">

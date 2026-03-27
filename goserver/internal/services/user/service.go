@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"net/url"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -12,6 +14,14 @@ import (
 type userService struct {
 	userRepo ports.UserRepository
 }
+
+const (
+	maxDisplayNameLen = 64
+	maxBioLen         = 280
+	maxStatusTextLen  = 80
+	maxStatusEmojiLen = 16
+	maxURLLen         = 256
+)
 
 func NewUserService(userRepo ports.UserRepository) ports.UserService {
 	return &userService{userRepo: userRepo}
@@ -31,6 +41,12 @@ func (s *userService) GetProfile(ctx context.Context, userID int) (*domain.User,
 		Username:          user.Username,
 		AvatarData:        user.AvatarData,
 		AvatarContentType: user.AvatarContentType,
+		DisplayName:       user.DisplayName,
+		Bio:               user.Bio,
+		StatusText:        user.StatusText,
+		StatusEmoji:       user.StatusEmoji,
+		BannerURL:         user.BannerURL,
+		WebsiteURL:        user.WebsiteURL,
 		Role:              user.Role,
 	}, nil
 }
@@ -88,4 +104,80 @@ func (s *userService) ChangePassword(ctx context.Context, userID int, currentPas
 	}
 
 	return nil
+}
+
+func (s *userService) UpdateProfile(ctx context.Context, userID int, profile *domain.User) (*domain.User, error) {
+	if profile == nil {
+		return nil, domain.ErrValidation
+	}
+
+	candidate := &domain.User{
+		DisplayName:        strings.TrimSpace(profile.DisplayName),
+		Bio:                strings.TrimSpace(profile.Bio),
+		StatusText:         strings.TrimSpace(profile.StatusText),
+		StatusEmoji:        strings.TrimSpace(profile.StatusEmoji),
+		BannerURL:          strings.TrimSpace(profile.BannerURL),
+		WebsiteURL:         strings.TrimSpace(profile.WebsiteURL),
+	}
+
+	if !validProfile(candidate) {
+		return nil, domain.ErrValidation
+	}
+
+	if err := s.userRepo.UpdateProfile(ctx, userID, candidate); err != nil {
+		return nil, domain.ErrServerError
+	}
+
+	return s.GetProfile(ctx, userID)
+}
+
+func (s *userService) GetPublicProfileByUsername(ctx context.Context, username string) (*domain.User, error) {
+	profile, err := s.userRepo.FindByUsernamePublic(ctx, strings.TrimSpace(username))
+	if err != nil {
+		return nil, domain.ErrServerError
+	}
+	if profile == nil {
+		return nil, domain.ErrUserNotFound
+	}
+	return profile, nil
+}
+
+func defaultVisibility(v string) string {
+	switch v {
+	case domain.ProfileVisibilityPublic, domain.ProfileVisibilityContacts, domain.ProfileVisibilityPrivate:
+		return v
+	default:
+		return domain.ProfileVisibilityPublic
+	}
+}
+
+func validProfile(p *domain.User) bool {
+	if len(p.DisplayName) > maxDisplayNameLen || len(p.Bio) > maxBioLen || len(p.StatusText) > maxStatusTextLen {
+		return false
+	}
+	if len(p.StatusEmoji) > maxStatusEmojiLen {
+		return false
+	}
+	if len(p.BannerURL) > maxURLLen || len(p.WebsiteURL) > maxURLLen {
+		return false
+	}
+	if !isValidURLOrEmpty(p.BannerURL) || !isValidURLOrEmpty(p.WebsiteURL) {
+		return false
+	}
+	return true
+}
+
+func isValidVisibility(v string) bool {
+	return v == domain.ProfileVisibilityPublic || v == domain.ProfileVisibilityContacts || v == domain.ProfileVisibilityPrivate
+}
+
+func isValidURLOrEmpty(raw string) bool {
+	if raw == "" {
+		return true
+	}
+	u, err := url.ParseRequestURI(raw)
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "http" || u.Scheme == "https"
 }

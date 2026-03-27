@@ -209,7 +209,7 @@ func (s *ServerWrapper) ChatWebSocket(w http.ResponseWriter, r *http.Request, pa
 }
 
 // PresenceWebSocket upgrades to a dedicated presence websocket.
-func (s *ServerWrapper) PresenceWebSocket(w http.ResponseWriter, r *http.Request) {
+func (s *ServerWrapper) PresenceWebSocket(w http.ResponseWriter, r *http.Request, _ api.PresenceWebSocketParams) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
