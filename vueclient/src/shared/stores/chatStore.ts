@@ -1,14 +1,16 @@
 import { OpenAPI } from '@/api/core/OpenAPI'
+import { useDmStore } from '@/shared/stores/dmStore'
+import { useRoomStore } from '@/shared/stores/roomStore'
 import {
   requestNotificationPermission,
   showNotification,
-  isWindowFocused,
   getNotificationPermission,
 } from '@/shared/lib/useNotifications'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 export type ChatConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
+export type NotificationConnectionState = 'disconnected' | 'connecting' | 'connected'
 
 export interface ChatMessage {
   type: 'chat_message' | 'voice_message' | 'file_message'
@@ -112,11 +114,26 @@ export type ChatWebSocketMessage =
   | VoiceRecordingMessage
   | { type: 'error'; message: string }
 
+export interface ChatNotificationMessage {
+  type: 'chat_notification'
+  scopeType: 'channel' | 'dm'
+  scopeId: string
+  fromUserId: string
+  fromUsername: string
+  messageType: 'chat_message' | 'voice_message' | 'file_message'
+  textPreview: string
+  timestamp: string
+}
+
 export const useChatStore = defineStore('chat', () => {
   const ws = ref<WebSocket | null>(null)
+  const notifyWs = ref<WebSocket | null>(null)
   const connectionState = ref<ChatConnectionState>('disconnected')
+  const notificationConnectionState = ref<NotificationConnectionState>('disconnected')
   const currentRoomId = ref<string | null>(null)
+  const currentScopeType = ref<'channel' | 'dm'>('channel')
   const messagesByRoom = ref<Map<string, ChatMessage[]>>(new Map())
+  const unreadByScope = ref<Map<string, number>>(new Map())
   const typingUsers = ref<Set<string>>(new Set())
   const voiceRecordingUsers = ref<Set<string>>(new Set())
   const reconnectAttempts = ref(0)
@@ -138,7 +155,37 @@ export const useChatStore = defineStore('chat', () => {
   const isInRoom = computed(() => currentRoomId.value !== null)
   const notificationPermission = computed(() => getNotificationPermission())
 
-  function connect(roomId: string, userName: string) {
+  function scopeKey(scopeType: 'channel' | 'dm', scopeId: string): string {
+    return `${scopeType}:${scopeId}`
+  }
+
+  function activeScopeKey(): string | null {
+    if (!currentRoomId.value) return null
+    return scopeKey(currentScopeType.value, currentRoomId.value)
+  }
+
+  function unreadCountFor(scopeType: 'channel' | 'dm', scopeId: string): number {
+    return unreadByScope.value.get(scopeKey(scopeType, scopeId)) || 0
+  }
+
+  function clearUnread(scopeType: 'channel' | 'dm', scopeId: string) {
+    unreadByScope.value.delete(scopeKey(scopeType, scopeId))
+  }
+
+  function incrementUnread(scopeType: 'channel' | 'dm', scopeId: string) {
+    const key = scopeKey(scopeType, scopeId)
+    unreadByScope.value.set(key, (unreadByScope.value.get(key) || 0) + 1)
+  }
+
+  function shouldNotify(message: ChatMessage, messageScopeType: 'channel' | 'dm', messageScopeId: string): boolean {
+    if (!notificationsEnabled.value) return false
+    if (message.from === clientId.value) return false
+    const active = activeScopeKey()
+    if (!active) return true
+    return scopeKey(messageScopeType, messageScopeId) !== active
+  }
+
+  function connect(roomId: string, userName: string, scopeType: 'channel' | 'dm' = 'channel') {
     if (ws.value && (ws.value.readyState === WebSocket.OPEN || ws.value.readyState === WebSocket.CONNECTING) && currentRoomId.value === roomId) return
     if (ws.value && currentRoomId.value !== roomId) {
       typingUsers.value.clear()
@@ -148,7 +195,9 @@ export const useChatStore = defineStore('chat', () => {
 
     connectionState.value = 'connecting'
     currentRoomId.value = roomId
+    currentScopeType.value = scopeType
     username.value = userName
+    clearUnread(scopeType, roomId)
 
     if (!messagesByRoom.value.has(roomId)) {
       messagesByRoom.value.set(roomId, [])
@@ -168,7 +217,7 @@ export const useChatStore = defineStore('chat', () => {
       const wsUrl = `${baseUrl}/api/v1/chat/ws`
       const token =
         typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : localStorage.getItem('token') || ''
-      const url = `${wsUrl}?token=${encodeURIComponent(token)}&room=${encodeURIComponent(roomId)}&username=${encodeURIComponent(userName)}`
+      const url = `${wsUrl}?token=${encodeURIComponent(token)}&scopeType=${encodeURIComponent(scopeType)}&scopeId=${encodeURIComponent(roomId)}&username=${encodeURIComponent(userName)}`
 
       console.log('Connecting to chat WebSocket:', url)
       const newWs = new WebSocket(url)
@@ -212,6 +261,50 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function connectNotifications() {
+    if (notifyWs.value && (notifyWs.value.readyState === WebSocket.OPEN || notifyWs.value.readyState === WebSocket.CONNECTING)) return
+    notificationConnectionState.value = 'connecting'
+    try {
+      let baseUrl = OpenAPI.BASE
+      if (!baseUrl || baseUrl === '') {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+        baseUrl = `${protocol}//${window.location.host}`
+      } else {
+        baseUrl = baseUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+      }
+      const wsUrl = `${baseUrl}/api/v1/chat/notifications/ws`
+      const token =
+        typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : localStorage.getItem('token') || ''
+      const url = `${wsUrl}?token=${encodeURIComponent(token)}`
+      const socket = new WebSocket(url)
+      notifyWs.value = socket
+      socket.onopen = () => {
+        if (notifyWs.value !== socket) return
+        notificationConnectionState.value = 'connected'
+      }
+      socket.onmessage = (event) => {
+        if (notifyWs.value !== socket) return
+        try {
+          const msg: ChatNotificationMessage = JSON.parse(event.data)
+          handleNotification(msg)
+        } catch (error) {
+          console.error('Failed to parse notification message:', error)
+        }
+      }
+      socket.onclose = () => {
+        if (notifyWs.value !== socket) return
+        notificationConnectionState.value = 'disconnected'
+        notifyWs.value = null
+      }
+      socket.onerror = () => {
+        if (notifyWs.value !== socket) return
+        notificationConnectionState.value = 'disconnected'
+      }
+    } catch (error) {
+      notificationConnectionState.value = 'disconnected'
+    }
+  }
+
   function attemptReconnect() {
     if (!currentRoomId.value || !username.value) return
     connectionState.value = 'reconnecting'
@@ -219,7 +312,7 @@ export const useChatStore = defineStore('chat', () => {
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.value), 30000)
     reconnectTimeout.value = setTimeout(() => {
       if (currentRoomId.value && username.value) {
-        connect(currentRoomId.value, username.value)
+        connect(currentRoomId.value, username.value, currentScopeType.value)
       }
     }, delay)
   }
@@ -242,6 +335,19 @@ export const useChatStore = defineStore('chat', () => {
     typingUsers.value.clear()
     voiceRecordingUsers.value.clear()
     reconnectAttempts.value = 0
+  }
+
+  function disconnectNotifications() {
+    if (notifyWs.value) {
+      const old = notifyWs.value
+      notifyWs.value = null
+      old.onopen = null
+      old.onmessage = null
+      old.onerror = null
+      old.onclose = null
+      old.close()
+    }
+    notificationConnectionState.value = 'disconnected'
   }
 
   function sendMessage(text: string, replyToId?: string) {
@@ -279,7 +385,7 @@ export const useChatStore = defineStore('chat', () => {
     const fd = new FormData()
     fd.append('audio', blob, 'voice.webm')
     fd.append('duration', String(Math.round(duration)))
-    await fetch(`${base}/api/v1/chat/${encodeURIComponent(roomId)}/voice`, {
+    await fetch(`${base}/api/v1/chat/${encodeURIComponent(roomId)}/voice?scopeType=${encodeURIComponent(currentScopeType.value)}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: fd,
@@ -291,7 +397,7 @@ export const useChatStore = defineStore('chat', () => {
     const base = OpenAPI.BASE || ''
     const fd = new FormData()
     fd.append('file', file)
-    const res = await fetch(`${base}/api/v1/chat/${encodeURIComponent(roomId)}/file`, {
+    const res = await fetch(`${base}/api/v1/chat/${encodeURIComponent(roomId)}/file?scopeType=${encodeURIComponent(currentScopeType.value)}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: fd,
@@ -369,20 +475,18 @@ export const useChatStore = defineStore('chat', () => {
       case 'voice_message':
       case 'file_message': {
         const roomId = message.room || currentRoomId.value
+        const messageScopeType = currentScopeType.value
         if (roomId) {
           const roomMessages = messagesByRoom.value.get(roomId) || []
           const updated = roomMessages.length >= 100
             ? [...roomMessages.slice(-99), message]
             : [...roomMessages, message]
           messagesByRoom.value.set(roomId, updated)
-        }
-        if (
-          message.type === 'chat_message' &&
-          notificationsEnabled.value &&
-          message.from !== clientId.value &&
-          message.room === currentRoomId.value
-        ) {
-          if (!isWindowFocused()) {
+          const key = scopeKey(messageScopeType, roomId)
+          if (activeScopeKey() !== key) {
+            incrementUnread(messageScopeType, roomId)
+          }
+          if (message.type === 'chat_message' && shouldNotify(message, messageScopeType, roomId)) {
             showNotification(`${message.username}`, {
               body: message.text.length > 100 ? message.text.substring(0, 100) + '...' : message.text,
               tag: `chat-${message.room}-${message.from}`,
@@ -468,6 +572,46 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function handleNotification(message: ChatNotificationMessage) {
+    if (message.type !== 'chat_notification') return
+    if (message.fromUserId === clientId.value || message.fromUserId === userId.value) return
+    const active = activeScopeKey()
+    const key = scopeKey(message.scopeType, message.scopeId)
+    if (active !== key) {
+      incrementUnread(message.scopeType, message.scopeId)
+      if (notificationsEnabled.value) {
+        const roomStore = useRoomStore()
+        const dmStore = useDmStore()
+        const channelName =
+          message.scopeType === 'channel'
+            ? roomStore.channelById(message.scopeId)?.name || message.scopeId
+            : null
+        const notificationBody =
+          message.scopeType === 'channel'
+            ? `#${channelName}: ${message.textPreview || '[New message]'}`
+            : message.textPreview || '[New message]'
+        showNotification(`${message.fromUsername}`, {
+          body: notificationBody,
+          tag: `chat-${message.scopeType}-${message.scopeId}-${message.fromUserId}`,
+          icon: '/favicon.ico',
+          onClick: () => {
+            if (message.scopeType === 'channel') {
+              void roomStore.selectChannel(message.scopeId)
+              clearUnread('channel', message.scopeId)
+              return
+            }
+            const conversation = dmStore.conversations.find((c) => c.id === message.scopeId)
+            const dmTitle = conversation
+              ? dmStore.titleFor(conversation, userId.value || null)
+              : message.fromUsername || 'DM'
+            roomStore.selectDirectConversation(message.scopeId, dmTitle)
+            clearUnread('dm', message.scopeId)
+          },
+        })
+      }
+    }
+  }
+
   function setNotificationsEnabled(enabled: boolean) {
     notificationsEnabled.value = enabled
     localStorage.setItem('chatNotificationsEnabled', String(enabled))
@@ -488,6 +632,7 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     connectionState,
+    notificationConnectionState,
     currentRoomId,
     messages,
     typingUsers,
@@ -499,8 +644,13 @@ export const useChatStore = defineStore('chat', () => {
     isConnected,
     isInRoom,
     notificationPermission,
+    unreadByScope,
+    unreadCountFor,
+    clearUnread,
     connect,
+    connectNotifications,
     disconnect,
+    disconnectNotifications,
     sendMessage,
     sendTyping,
     sendVoiceRecording,

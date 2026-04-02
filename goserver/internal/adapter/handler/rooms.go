@@ -179,11 +179,25 @@ func (s *ServerWrapper) ChatWebSocket(w http.ResponseWriter, r *http.Request, pa
 		return
 	}
 
-	// Verify room exists
-	room := s.roomService.GetRoom(params.Room)
-	if room == nil {
-		http.Error(w, "room not found", http.StatusNotFound)
-		return
+	scopeType := string(params.ScopeType)
+	scopeID := params.ScopeId
+	if scopeType == "channel" {
+		room := s.roomService.GetRoom(scopeID)
+		if room == nil {
+			http.Error(w, "room not found", http.StatusNotFound)
+			return
+		}
+	}
+	if scopeType == "dm" {
+		ok, derr := s.dmService.IsParticipant(r.Context(), userID, scopeID)
+		if derr != nil {
+			http.Error(w, "server error", http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			http.Error(w, "conversation not found", http.StatusNotFound)
+			return
+		}
 	}
 
 	// Get username: prefer query param, then fetch from profile
@@ -205,7 +219,21 @@ func (s *ServerWrapper) ChatWebSocket(w http.ResponseWriter, r *http.Request, pa
 		return
 	}
 
-	s.chatService.HandleWebSocketConnection(conn, userID, username, params.Room)
+	s.chatService.HandleWebSocketConnection(conn, userID, username, scopeType, scopeID)
+}
+
+// ChatNotificationsWebSocket upgrades to a dedicated notifications websocket.
+func (s *ServerWrapper) ChatNotificationsWebSocket(w http.ResponseWriter, r *http.Request, params api.ChatNotificationsWebSocketParams) {
+	userID, err := s.authService.ValidateToken(r.Context(), params.Token)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	s.chatNotifySvc.HandleWebSocketConnection(conn, userID)
 }
 
 // PresenceWebSocket upgrades to a dedicated presence websocket.

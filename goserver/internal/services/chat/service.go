@@ -20,43 +20,61 @@ type chatRoom struct {
 }
 
 type Service struct {
-	rooms    map[string]*chatRoom
-	roomsMu  sync.RWMutex
-	msgRepo  ports.ChatMessageRepository
-	userRepo ports.UserRepository
+	rooms      map[string]*chatRoom
+	roomsMu    sync.RWMutex
+	msgRepo    ports.ChatMessageRepository
+	userRepo   ports.UserRepository
+	dmSvc      ports.DirectConversationService
+	notifySvc  ports.ChatNotifyService
 }
 
-func NewChatService(msgRepo ports.ChatMessageRepository, userRepo ports.UserRepository) *Service {
+func NewChatService(msgRepo ports.ChatMessageRepository, userRepo ports.UserRepository, dmSvc ports.DirectConversationService, notifySvc ports.ChatNotifyService) *Service {
 	return &Service{
-		rooms:    make(map[string]*chatRoom),
-		msgRepo:  msgRepo,
-		userRepo: userRepo,
+		rooms:     make(map[string]*chatRoom),
+		msgRepo:   msgRepo,
+		userRepo:  userRepo,
+		dmSvc:     dmSvc,
+		notifySvc: notifySvc,
 	}
 }
 
-func (s *Service) getOrCreateRoom(roomID string) *chatRoom {
+func scopeKey(scopeType, scopeID string) string {
+	return scopeType + ":" + scopeID
+}
+
+func (s *Service) getOrCreateRoom(scopeType, scopeID string) *chatRoom {
 	s.roomsMu.Lock()
 	defer s.roomsMu.Unlock()
-	if r, ok := s.rooms[roomID]; ok {
+	key := scopeKey(scopeType, scopeID)
+	if r, ok := s.rooms[key]; ok {
 		return r
 	}
 	r := &chatRoom{clients: make(map[string]*domain.ChatClient)}
-	s.rooms[roomID] = r
+	s.rooms[key] = r
 	return r
 }
 
-func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, username, roomID string) {
+func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, username, scopeType, scopeID string) {
 	ctx := context.Background()
+	if scopeType == "dm" && s.dmSvc != nil {
+		ok, err := s.dmSvc.IsParticipant(ctx, userID, scopeID)
+		if err != nil || !ok {
+			_ = conn.WriteJSON(map[string]any{"type": "error", "message": "conversation not found"})
+			_ = conn.Close()
+			return
+		}
+	}
 
 	client := &domain.ChatClient{
 		ConnID:   uuid.NewString(),
 		UserID:   userID,
 		Username: username,
-		RoomID:   roomID,
+		ScopeType: scopeType,
+		ScopeID:   scopeID,
 		Conn:     conn,
 	}
 
-	room := s.getOrCreateRoom(roomID)
+	room := s.getOrCreateRoom(scopeType, scopeID)
 
 	room.mu.Lock()
 	room.clients[client.ConnID] = client
@@ -67,7 +85,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 	// Send join confirmation
 	_ = conn.WriteJSON(map[string]any{
 		"type":      "joined",
-		"room":      roomID,
+		"room":      scopeID,
 		"clientId":  client.ConnID,
 		"userId":    userIDStr,
 		"username":  username,
@@ -75,7 +93,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 	})
 
 	// Send chat history from DB
-	history, err := s.msgRepo.ListByRoom(ctx, roomID, 100)
+	history, err := s.msgRepo.ListByScope(ctx, scopeType, scopeID, 100)
 	if err != nil {
 		log.Printf("chat history load: %v", err)
 	}
@@ -83,7 +101,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 		s.hydrateOutboundMessages(ctx, history)
 		_ = conn.WriteJSON(map[string]any{
 			"type":     "chat_history",
-			"room":     roomID,
+			"room":     scopeID,
 			"messages": history,
 		})
 	}
@@ -91,7 +109,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 	// Notify others
 	s.broadcastExcept(room, map[string]any{
 		"type":      "user_joined",
-		"room":      roomID,
+		"room":      scopeID,
 		"clientId":  client.ConnID,
 		"username":  username,
 		"timestamp": time.Now().UTC(),
@@ -105,7 +123,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 
 		s.broadcastExcept(room, map[string]any{
 			"type":      "user_left",
-			"room":      roomID,
+			"room":      scopeID,
 			"clientId":  client.ConnID,
 			"username":  username,
 			"timestamp": time.Now().UTC(),
@@ -131,7 +149,9 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 			chatMsg := &domain.ChatMessage{
 				ID:        uuid.NewString(),
 				Type:      "chat_message",
-				Room:      roomID,
+				Room:      scopeID,
+				ScopeType: scopeType,
+				ScopeID:   scopeID,
 				From:      userIDStr,
 				Username:  username,
 				Text:      text,
@@ -160,8 +180,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 				_ = conn.WriteJSON(map[string]any{"type": "error", "message": "Failed to save message"})
 				continue
 			}
-			s.hydrateOutboundMessages(ctx, []*domain.ChatMessage{chatMsg})
-			s.broadcastAll(room, chatMsg)
+			s.BroadcastToScope(scopeType, scopeID, chatMsg)
 
 		case "typing":
 			isTyping := true
@@ -170,7 +189,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 			}
 			s.broadcastExcept(room, map[string]any{
 				"type":     "typing",
-				"room":     roomID,
+				"room":     scopeID,
 				"from":     client.ConnID,
 				"username": username,
 				"isTyping": isTyping,
@@ -208,7 +227,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 			}
 			s.broadcastAll(room, map[string]any{
 				"type":      "message_edited",
-				"room":      roomID,
+				"room":      scopeID,
 				"messageId": messageID,
 				"text":      newText,
 				"timestamp": time.Now().UTC(),
@@ -241,7 +260,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 			}
 			s.broadcastAll(room, map[string]any{
 				"type":      "message_deleted",
-				"room":      roomID,
+				"room":      scopeID,
 				"messageId": messageID,
 			})
 
@@ -275,7 +294,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 			}
 			s.broadcastAll(room, map[string]any{
 				"type":      "reaction_updated",
-				"room":      roomID,
+				"room":      scopeID,
 				"messageId": messageID,
 				"emoji":     emoji,
 				"reactions": target.Reactions,
@@ -311,7 +330,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 			}
 			s.broadcastAll(room, map[string]any{
 				"type":      "reaction_updated",
-				"room":      roomID,
+				"room":      scopeID,
 				"messageId": messageID,
 				"emoji":     emoji,
 				"reactions": target.Reactions,
@@ -321,7 +340,7 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 			isRec, _ := msg["isRecording"].(bool)
 			s.broadcastExcept(room, map[string]any{
 				"type":        "voice_recording",
-				"room":        roomID,
+				"room":        scopeID,
 				"username":    username,
 				"isRecording": isRec,
 			}, client.ConnID)
@@ -332,16 +351,78 @@ func (s *Service) HandleWebSocketConnection(conn *websocket.Conn, userID int, us
 	}
 }
 
-func (s *Service) BroadcastToRoom(roomID string, msg any) {
+func (s *Service) BroadcastToScope(scopeType, scopeID string, msg any) {
 	if cm, ok := msg.(*domain.ChatMessage); ok {
 		s.hydrateOutboundMessages(context.Background(), []*domain.ChatMessage{cm})
+		s.publishNotification(context.Background(), cm)
 	}
 	s.roomsMu.RLock()
-	room, ok := s.rooms[roomID]
+	room, ok := s.rooms[scopeKey(scopeType, scopeID)]
 	s.roomsMu.RUnlock()
 	if ok {
 		s.broadcastAll(room, msg)
 	}
+}
+
+func (s *Service) publishNotification(ctx context.Context, msg *domain.ChatMessage) {
+	if s.notifySvc == nil || msg == nil {
+		return
+	}
+	senderID, err := strconv.Atoi(msg.From)
+	if err != nil {
+		return
+	}
+	recipients := s.notificationRecipients(ctx, msg.ScopeType, msg.ScopeID, senderID)
+	if len(recipients) == 0 {
+		return
+	}
+	text := msg.Text
+	if text == "" {
+		switch msg.Type {
+		case "voice_message":
+			text = "[Voice message]"
+		case "file_message":
+			text = "[File attachment]"
+		}
+	}
+	s.notifySvc.NotifyUsers(recipients, ports.ChatNotification{
+		ScopeType:    msg.ScopeType,
+		ScopeID:      msg.ScopeID,
+		FromUserID:   msg.From,
+		FromUsername: msg.Username,
+		Type:         msg.Type,
+		TextPreview:  text,
+		Timestamp:    msg.Timestamp.Format(time.RFC3339),
+	})
+}
+
+func (s *Service) notificationRecipients(ctx context.Context, scopeType, scopeID string, senderID int) []int {
+	if scopeType == "dm" && s.dmSvc != nil {
+		conv, err := s.dmSvc.Get(ctx, senderID, scopeID)
+		if err == nil && conv != nil {
+			out := make([]int, 0, len(conv.Participants))
+			for _, p := range conv.Participants {
+				if p.UserID != senderID {
+					out = append(out, p.UserID)
+				}
+			}
+			return out
+		}
+	}
+	if s.userRepo == nil {
+		return nil
+	}
+	users, err := s.userRepo.ListUsers(ctx)
+	if err != nil {
+		return nil
+	}
+	out := make([]int, 0, len(users))
+	for _, u := range users {
+		if u != nil && u.ID != senderID {
+			out = append(out, u.ID)
+		}
+	}
+	return out
 }
 
 func (s *Service) broadcastAll(room *chatRoom, msg any) {

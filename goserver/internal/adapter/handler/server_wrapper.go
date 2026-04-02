@@ -15,6 +15,8 @@ type ServerWrapper struct {
 	userService  ports.UserService
 	roomService  ports.RoomService
 	chatService  ports.ChatService
+	chatNotifySvc ports.ChatNotifyService
+	dmService    ports.DirectConversationService
 	presenceSvc  ports.PresenceService
 	adminService ports.AdminService
 	auditRepo    ports.AuditRepository
@@ -27,6 +29,8 @@ func NewServerWrapper(
 	userService ports.UserService,
 	roomService ports.RoomService,
 	chatService ports.ChatService,
+	chatNotifySvc ports.ChatNotifyService,
+	dmService ports.DirectConversationService,
 	presenceSvc ports.PresenceService,
 	adminService ports.AdminService,
 	auditRepo ports.AuditRepository,
@@ -38,6 +42,8 @@ func NewServerWrapper(
 		userService:  userService,
 		roomService:  roomService,
 		chatService:  chatService,
+		chatNotifySvc: chatNotifySvc,
+		dmService:    dmService,
 		presenceSvc:  presenceSvc,
 		adminService: adminService,
 		auditRepo:    auditRepo,

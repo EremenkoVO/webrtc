@@ -13,6 +13,7 @@ import ChannelView from '@/widgets/channel/ChannelView.vue'
 import router from '@/app/router'
 import { onBeforeUnmount, onMounted, ref, type Ref, nextTick } from 'vue'
 import Hammer from 'hammerjs'
+import { useI18n } from 'vue-i18n'
 
 const { parseApiError } = useApiErrors()
 const authStore = useAuthStore()
@@ -26,6 +27,7 @@ const user: Ref<UserProfile> = ref({ id: '', username: '' })
 const containerRef = ref<HTMLElement | null>(null)
 const channelViewRef = ref<HTMLElement | null>(null)
 let hammerInstance: HammerManager | null = null
+const { t } = useI18n()
 
 const getUser = async () => {
   try {
@@ -55,7 +57,10 @@ function cleanup() {
     roomStore.setParticipants([])
     roomStore.selectedChannelId = ''
     roomStore.selectedChannelName = ''
+    roomStore.selectedChatScopeId = ''
+    roomStore.selectedChatScopeType = 'channel'
     if (chatStore.isConnected) chatStore.disconnect()
+    chatStore.disconnectNotifications()
     if (presenceStore.isConnected) presenceStore.disconnect()
     chatStore.clearMessages()
   } catch (error) {
@@ -64,6 +69,7 @@ function cleanup() {
 }
 
 onMounted(async () => {
+  document.title = t('sidebar.appTitle')
   if (!authStore.token && !authStore.refreshToken) {
     router.push({ name: 'Login' })
     return
@@ -71,6 +77,7 @@ onMounted(async () => {
   sidebarStore.checkMobile()
   await getUser()
   presenceStore.connect()
+  chatStore.connectNotifications()
 
   // Initialize HammerJS for swipe gestures after DOM is ready
   await nextTick()

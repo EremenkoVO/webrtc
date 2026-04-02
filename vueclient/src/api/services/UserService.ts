@@ -1,7 +1,7 @@
 /* generated using openapi-typescript-codegen -- do not edit */
 /* istanbul ignore file */
 /* tslint:disable */
- 
+/* eslint-disable */
 import type { ErrorResponse } from '../models/ErrorResponse';
 import type { UpdateProfileRequest } from '../models/UpdateProfileRequest';
 import type { UserProfile } from '../models/UserProfile';
@@ -29,9 +29,14 @@ export class UserService {
             },
         });
     }
-
     /**
      * Update current user profile
+     * Update profile fields for the authenticated user.
+     *
+     * @param requestBody
+     * @returns UserProfile Updated user profile
+     * @returns ErrorResponse Unexpected server error
+     * @throws ApiError
      */
     public static updateCurrentUserProfile(
         requestBody: UpdateProfileRequest,
@@ -47,9 +52,15 @@ export class UserService {
             },
         });
     }
-
     /**
-     * List all registered users on the server (directory).
+     * List all registered users on the server
+     * Returns every user account (directory / address book). Optional `avatar_url` is present when the user has uploaded an avatar.
+     *
+     * Requires a valid `Authorization: Bearer <access_token>` header.
+     *
+     * @returns UserProfile List of users
+     * @returns ErrorResponse Unexpected server error
+     * @throws ApiError
      */
     public static listServerUsers(): CancelablePromise<Array<UserProfile> | ErrorResponse> {
         return __request(OpenAPI, {
@@ -60,9 +71,12 @@ export class UserService {
             },
         });
     }
-
     /**
      * Get public user profile
+     * @param username
+     * @returns UserProfile Public profile card
+     * @returns ErrorResponse Unexpected server error
+     * @throws ApiError
      */
     public static getPublicUserProfile(
         username: string,
@@ -71,46 +85,11 @@ export class UserService {
             method: 'GET',
             url: '/api/v1/users/{username}/profile',
             path: {
-                username: username,
+                'username': username,
             },
             errors: {
                 404: `Resource Not Found`,
             },
         });
-    }
-
-    /**
-     * Upload avatar for the current user.
-     * Sends multipart/form-data with field "avatar". Max 5 MB.
-     * Content-Type is auto-detected server-side (JPEG, PNG, WebP, GIF).
-     */
-    public static async uploadAvatar(blob: Blob): Promise<void> {
-        const token = typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : ''
-        const formData = new FormData()
-        formData.append('avatar', blob, 'avatar.jpg')
-        const res = await fetch(`${OpenAPI.BASE}/api/v1/me/avatar`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-        })
-        if (!res.ok) {
-            throw new Error(`Avatar upload failed: ${res.status}`)
-        }
-    }
-
-    public static async changePassword(currentPassword: string, newPassword: string): Promise<void> {
-        const token = typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : ''
-        const res = await fetch(`${OpenAPI.BASE}/api/v1/me/password`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-        })
-        if (!res.ok) {
-            const body = await res.json().catch(() => ({}))
-            throw { status: res.status, body }
-        }
     }
 }

@@ -20,6 +20,8 @@ import (
 	adminService "github.com/EremenkoVO/webrtc/goserver/internal/services/admin"
 	authService "github.com/EremenkoVO/webrtc/goserver/internal/services/auth"
 	chatService "github.com/EremenkoVO/webrtc/goserver/internal/services/chat"
+	chatNotifyService "github.com/EremenkoVO/webrtc/goserver/internal/services/chatnotify"
+	dmService "github.com/EremenkoVO/webrtc/goserver/internal/services/dm"
 	presenceService "github.com/EremenkoVO/webrtc/goserver/internal/services/presence"
 	roomService "github.com/EremenkoVO/webrtc/goserver/internal/services/room"
 	userService "github.com/EremenkoVO/webrtc/goserver/internal/services/user"
@@ -55,6 +57,7 @@ func (app *API) init(ctx context.Context) error {
 	tokenRepo := sqlite.NewTokenRepository(app.db)
 	roomRepo := sqlite.NewRoomRepository(app.db)
 	auditRepo := sqlite.NewAuditRepository(app.db)
+	dmRepo := sqlite.NewDirectConversationRepository(app.db)
 
 	// Initialize JWT manager and token cache
 	jwtManager := jwt.NewJWTManager(app.config.Auth.TokenSecret)
@@ -66,11 +69,13 @@ func (app *API) init(ctx context.Context) error {
 	presenceSvc := presenceService.NewPresenceService()
 	roomSvc := roomService.NewRoomService(roomRepo, presenceSvc)
 	msgRepo := sqlite.NewChatMessageRepository(app.db)
-	chatSvc := chatService.NewChatService(msgRepo, userRepo)
+	dmSvc := dmService.NewDMService(dmRepo, msgRepo)
+	chatNotifySvc := chatNotifyService.NewChatNotifyService()
+	chatSvc := chatService.NewChatService(msgRepo, userRepo, dmSvc, chatNotifySvc)
 	adminSvc := adminService.NewAdminService(userRepo, roomRepo, authSvc, roomSvc, auditRepo)
 
 	// Initialize handlers
-	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc, chatSvc, presenceSvc, adminSvc, auditRepo, msgRepo, app.config.UploadDir)
+	serverWrapper := handler.NewServerWrapper(authSvc, userSvc, roomSvc, chatSvc, chatNotifySvc, dmSvc, presenceSvc, adminSvc, auditRepo, msgRepo, app.config.UploadDir)
 	authenticator := handler.NewAuthenticator(authSvc)
 
 	// Setup HTTP server with routes

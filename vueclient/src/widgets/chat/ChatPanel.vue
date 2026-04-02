@@ -12,7 +12,7 @@ import VoicePlayer from './VoicePlayer.vue'
 import UserProfileCard from '@/widgets/user-profile/UserProfileCard.vue'
 
 const { t } = useI18n()
-const props = defineProps<{ roomId: string | null; userName: string | undefined }>()
+const props = defineProps<{ roomId: string | null; userName: string | undefined; scopeType?: 'channel' | 'dm' }>()
 const chatStore = useChatStore()
 const displayNameStore = useDisplayNameStore()
 const messageInput = ref('')
@@ -530,7 +530,7 @@ function connectToChat() {
     if (chatStore.currentRoomId) chatStore.disconnect()
     return
   }
-  chatStore.connect(props.roomId, props.userName)
+  chatStore.connect(props.roomId, props.userName, props.scopeType ?? 'channel')
   setTimeout(() => scrollToBottom(), 300)
 }
 
@@ -546,6 +546,12 @@ watch(
 )
 watch(
   () => props.userName,
+  (n, o) => {
+    if (n !== o && props.roomId) connectToChat()
+  },
+)
+watch(
+  () => props.scopeType,
   (n, o) => {
     if (n !== o && props.roomId) connectToChat()
   },

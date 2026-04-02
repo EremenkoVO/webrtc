@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, session, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, session, Menu, Notification } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 
@@ -31,6 +31,15 @@ function writeSettings(settings: Settings): void {
 }
 
 const currentSettings = readSettings()
+app.setName('WebRTC Voice')
+
+function resolveAppAssetPath(assetPath: string): string {
+  const normalized = assetPath.startsWith('/') ? assetPath.slice(1) : assetPath
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'app.asar', 'dist', normalized)
+  }
+  return path.join(app.getAppPath(), 'public', normalized)
+}
 
 // ── Certificate bypass for self-signed certs ──────────────────────────────────
 
@@ -87,11 +96,14 @@ if (process.platform === 'darwin' && useLegacyMacScreenAudio) {
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
+  const appIconPath = resolveAppAssetPath('/icon-512.png')
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    title: 'WebRTC Voice',
+    icon: fs.existsSync(appIconPath) ? appIconPath : undefined,
     titleBarStyle: 'default',
     backgroundColor: '#1e1f22',
     webPreferences: {
@@ -238,3 +250,38 @@ ipcMain.handle('is-native-available', () => false)
 ipcMain.handle('start-app-audio', () => false)
 
 ipcMain.handle('stop-app-audio', () => undefined)
+
+// ── IPC: Native notifications ─────────────────────────────────────────────────
+
+ipcMain.handle(
+  'notifications:show',
+  (_event, payload: { title: string; body?: string; icon?: string; tag?: string; silent?: boolean }) => {
+    try {
+      if (!Notification.isSupported()) return false
+      const resolvedIcon = payload.icon
+        ? resolveAppAssetPath(payload.icon)
+        : resolveAppAssetPath('/icon-192.png')
+      const notification = new Notification({
+        title: payload.title,
+        body: payload.body,
+        icon: fs.existsSync(resolvedIcon) ? resolvedIcon : undefined,
+        silent: payload.silent ?? false,
+      })
+      notification.on('click', () => {
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) mainWindow.restore()
+          mainWindow.show()
+          mainWindow.focus()
+          if (payload.tag) {
+            mainWindow.webContents.send('notifications:click', payload.tag)
+          }
+        }
+      })
+      notification.show()
+      return true
+    } catch (error) {
+      console.error('[main] Failed to show notification:', error)
+      return false
+    }
+  },
+)

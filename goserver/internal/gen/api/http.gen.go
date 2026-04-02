@@ -42,6 +42,12 @@ const (
 	RoomTypeVoice RoomType = "voice"
 )
 
+// Defines values for ChatWebSocketParamsScopeType.
+const (
+	Channel ChatWebSocketParamsScopeType = "channel"
+	Dm      ChatWebSocketParamsScopeType = "dm"
+)
+
 // AuthTokens defines model for AuthTokens.
 type AuthTokens struct {
 	AccessToken *string `json:"access_token,omitempty"`
@@ -52,6 +58,34 @@ type AuthTokens struct {
 	// RefreshExpiresIn Refresh token expiration time in seconds
 	RefreshExpiresIn *int    `json:"refresh_expires_in,omitempty"`
 	RefreshToken     *string `json:"refresh_token,omitempty"`
+}
+
+// ChatMessage defines model for ChatMessage.
+type ChatMessage struct {
+	Edited          *bool                `json:"edited,omitempty"`
+	FileContentType *string              `json:"fileContentType,omitempty"`
+	FileName        *string              `json:"fileName,omitempty"`
+	FileSize        *int                 `json:"fileSize,omitempty"`
+	FileUrl         *string              `json:"fileUrl,omitempty"`
+	From            *string              `json:"from,omitempty"`
+	Id              *string              `json:"id,omitempty"`
+	Reactions       *map[string][]string `json:"reactions,omitempty"`
+	ReplyToId       *string              `json:"replyToId,omitempty"`
+	ReplyToText     *string              `json:"replyToText,omitempty"`
+	ReplyToUsername *string              `json:"replyToUsername,omitempty"`
+	Room            *string              `json:"room,omitempty"`
+	Text            *string              `json:"text,omitempty"`
+	Timestamp       *time.Time           `json:"timestamp,omitempty"`
+	Type            *string              `json:"type,omitempty"`
+	Username        *string              `json:"username,omitempty"`
+	VoiceDuration   *float32             `json:"voiceDuration,omitempty"`
+	VoiceUrl        *string              `json:"voiceUrl,omitempty"`
+}
+
+// CreateDirectConversationRequest defines model for CreateDirectConversationRequest.
+type CreateDirectConversationRequest struct {
+	// PeerUserId User ID of the other participant
+	PeerUserId string `json:"peer_user_id"`
 }
 
 // CreateRoomRequest defines model for CreateRoomRequest.
@@ -65,6 +99,23 @@ type CreateRoomRequest struct {
 
 // CreateRoomRequestType Channel type
 type CreateRoomRequestType string
+
+// DirectConversation defines model for DirectConversation.
+type DirectConversation struct {
+	CreatedAt    time.Time                       `json:"created_at"`
+	Id           string                          `json:"id"`
+	LastMessage  *ChatMessage                    `json:"last_message,omitempty"`
+	Participants []DirectConversationParticipant `json:"participants"`
+	UnreadCount  *int                            `json:"unread_count,omitempty"`
+	UpdatedAt    *time.Time                      `json:"updated_at,omitempty"`
+}
+
+// DirectConversationParticipant defines model for DirectConversationParticipant.
+type DirectConversationParticipant struct {
+	DisplayName *string `json:"display_name,omitempty"`
+	UserId      string  `json:"user_id"`
+	Username    string  `json:"username"`
+}
 
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
@@ -176,12 +227,21 @@ type UnauthorizedError = ErrorResponse
 // UnprocessableEntityError defines model for UnprocessableEntityError.
 type UnprocessableEntityError = ErrorResponse
 
+// ChatNotificationsWebSocketParams defines parameters for ChatNotificationsWebSocket.
+type ChatNotificationsWebSocketParams struct {
+	Token string `form:"token" json:"token"`
+}
+
 // ChatWebSocketParams defines parameters for ChatWebSocket.
 type ChatWebSocketParams struct {
-	Token    string  `form:"token" json:"token"`
-	Room     string  `form:"room" json:"room"`
-	Username *string `form:"username,omitempty" json:"username,omitempty"`
+	Token     string                       `form:"token" json:"token"`
+	ScopeType ChatWebSocketParamsScopeType `form:"scopeType" json:"scopeType"`
+	ScopeId   string                       `form:"scopeId" json:"scopeId"`
+	Username  *string                      `form:"username,omitempty" json:"username,omitempty"`
 }
+
+// ChatWebSocketParamsScopeType defines parameters for ChatWebSocket.
+type ChatWebSocketParamsScopeType string
 
 // PresenceWebSocketParams defines parameters for PresenceWebSocket.
 type PresenceWebSocketParams struct {
@@ -201,6 +261,9 @@ type RefreshTokenJSONRequestBody = RefreshRequest
 
 // RegisterUserJSONRequestBody defines body for RegisterUser for application/json ContentType.
 type RegisterUserJSONRequestBody = RegisterRequest
+
+// CreateOrGetDirectConversationJSONRequestBody defines body for CreateOrGetDirectConversation for application/json ContentType.
+type CreateOrGetDirectConversationJSONRequestBody = CreateDirectConversationRequest
 
 // UpdateCurrentUserProfileJSONRequestBody defines body for UpdateCurrentUserProfile for application/json ContentType.
 type UpdateCurrentUserProfileJSONRequestBody = UpdateProfileRequest
@@ -222,9 +285,21 @@ type ServerInterface interface {
 	// Register new user
 	// (POST /api/v1/auth/register)
 	RegisterUser(w http.ResponseWriter, r *http.Request)
+	// WebSocket connection for chat notifications
+	// (GET /api/v1/chat/notifications/ws)
+	ChatNotificationsWebSocket(w http.ResponseWriter, r *http.Request, params ChatNotificationsWebSocketParams)
 	// WebSocket connection for text chat
 	// (GET /api/v1/chat/ws)
 	ChatWebSocket(w http.ResponseWriter, r *http.Request, params ChatWebSocketParams)
+	// List direct conversations for current user
+	// (GET /api/v1/dm/conversations)
+	ListDirectConversations(w http.ResponseWriter, r *http.Request)
+	// Create or get direct conversation
+	// (POST /api/v1/dm/conversations)
+	CreateOrGetDirectConversation(w http.ResponseWriter, r *http.Request)
+	// Get direct conversation details
+	// (GET /api/v1/dm/conversations/{id})
+	GetDirectConversation(w http.ResponseWriter, r *http.Request, id string)
 	// Get current user profile
 	// (GET /api/v1/me)
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
@@ -328,6 +403,40 @@ func (siw *ServerInterfaceWrapper) RegisterUser(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ChatNotificationsWebSocket operation middleware
+func (siw *ServerInterfaceWrapper) ChatNotificationsWebSocket(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ChatNotificationsWebSocketParams
+
+	// ------------- Required query parameter "token" -------------
+
+	if paramValue := r.URL.Query().Get("token"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "token"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "token", r.URL.Query(), &params.Token)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChatNotificationsWebSocket(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ChatWebSocket operation middleware
 func (siw *ServerInterfaceWrapper) ChatWebSocket(w http.ResponseWriter, r *http.Request) {
 
@@ -351,18 +460,33 @@ func (siw *ServerInterfaceWrapper) ChatWebSocket(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// ------------- Required query parameter "room" -------------
+	// ------------- Required query parameter "scopeType" -------------
 
-	if paramValue := r.URL.Query().Get("room"); paramValue != "" {
+	if paramValue := r.URL.Query().Get("scopeType"); paramValue != "" {
 
 	} else {
-		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "room"})
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scopeType"})
 		return
 	}
 
-	err = runtime.BindQueryParameter("form", true, true, "room", r.URL.Query(), &params.Room)
+	err = runtime.BindQueryParameter("form", true, true, "scopeType", r.URL.Query(), &params.ScopeType)
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "room", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scopeType", Err: err})
+		return
+	}
+
+	// ------------- Required query parameter "scopeId" -------------
+
+	if paramValue := r.URL.Query().Get("scopeId"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scopeId"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "scopeId", r.URL.Query(), &params.ScopeId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scopeId", Err: err})
 		return
 	}
 
@@ -376,6 +500,77 @@ func (siw *ServerInterfaceWrapper) ChatWebSocket(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ChatWebSocket(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDirectConversations operation middleware
+func (siw *ServerInterfaceWrapper) ListDirectConversations(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDirectConversations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateOrGetDirectConversation operation middleware
+func (siw *ServerInterfaceWrapper) CreateOrGetDirectConversation(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateOrGetDirectConversation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDirectConversation operation middleware
+func (siw *ServerInterfaceWrapper) GetDirectConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDirectConversation(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -764,7 +959,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/logout", wrapper.LogoutUser)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/refresh", wrapper.RefreshToken)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/auth/register", wrapper.RegisterUser)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/chat/notifications/ws", wrapper.ChatNotificationsWebSocket)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/chat/ws", wrapper.ChatWebSocket)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/dm/conversations", wrapper.ListDirectConversations)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/dm/conversations", wrapper.CreateOrGetDirectConversation)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/dm/conversations/{id}", wrapper.GetDirectConversation)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/me", wrapper.GetCurrentUser)
 	m.HandleFunc("PATCH "+options.BaseURL+"/api/v1/me", wrapper.UpdateCurrentUserProfile)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/presence/ws", wrapper.PresenceWebSocket)

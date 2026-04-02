@@ -26,6 +26,16 @@ interface ElectronAPI {
   platform: string
   useSystemPicker: boolean
   capturer: ElectronCapturer
+  notifications?: {
+    show(payload: {
+      title: string
+      body?: string
+      icon?: string
+      tag?: string
+      silent?: boolean
+    }): Promise<boolean>
+    onClick(cb: (tag: string) => void): () => void
+  }
 }
 
 interface Window {

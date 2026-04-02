@@ -23,9 +23,9 @@ func (r *messageRepository) Store(ctx context.Context, msg *domain.ChatMessage) 
 	}
 	_, err = r.db.ExecContext(ctx,
 		`INSERT INTO chat_messages
-		 (id, room_id, from_user, username, text, reactions, reply_to_id, reply_to_username, reply_to_text, edited, created_at, msg_type)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		msg.ID, msg.Room, msg.From, msg.Username, msg.Text,
+		 (id, room_id, scope_type, scope_id, from_user, username, text, reactions, reply_to_id, reply_to_username, reply_to_text, edited, created_at, msg_type)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		msg.ID, msg.Room, msg.ScopeType, msg.ScopeID, msg.From, msg.Username, msg.Text,
 		string(reactionsJSON),
 		msg.ReplyToID, msg.ReplyToUsername, msg.ReplyToText,
 		boolToInt(msg.Edited), msg.Timestamp, msg.Type,
@@ -37,9 +37,9 @@ func (r *messageRepository) StoreVoice(ctx context.Context, msg *domain.ChatMess
 	reactionsJSON, _ := json.Marshal(msg.Reactions)
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO chat_messages
-		 (id, room_id, from_user, username, text, reactions, reply_to_id, reply_to_username, reply_to_text, edited, created_at, msg_type, voice_data, voice_content_type, voice_duration)
-		 VALUES (?, ?, ?, ?, '', ?, '', '', '', 0, ?, 'voice_message', ?, ?, ?)`,
-		msg.ID, msg.Room, msg.From, msg.Username,
+		 (id, room_id, scope_type, scope_id, from_user, username, text, reactions, reply_to_id, reply_to_username, reply_to_text, edited, created_at, msg_type, voice_data, voice_content_type, voice_duration)
+		 VALUES (?, ?, ?, ?, ?, ?, '', ?, '', '', '', 0, ?, 'voice_message', ?, ?, ?)`,
+		msg.ID, msg.Room, msg.ScopeType, msg.ScopeID, msg.From, msg.Username,
 		string(reactionsJSON),
 		msg.Timestamp,
 		data, contentType, msg.VoiceDuration,
@@ -63,9 +63,9 @@ func (r *messageRepository) StoreFile(ctx context.Context, msg *domain.ChatMessa
 	reactionsJSON, _ := json.Marshal(msg.Reactions)
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO chat_messages
-		 (id, room_id, from_user, username, text, reactions, reply_to_id, reply_to_username, reply_to_text, edited, created_at, msg_type, file_path, file_name, file_size, file_content_type)
-		 VALUES (?, ?, ?, ?, '', ?, '', '', '', 0, ?, 'file_message', ?, ?, ?, ?)`,
-		msg.ID, msg.Room, msg.From, msg.Username,
+		 (id, room_id, scope_type, scope_id, from_user, username, text, reactions, reply_to_id, reply_to_username, reply_to_text, edited, created_at, msg_type, file_path, file_name, file_size, file_content_type)
+		 VALUES (?, ?, ?, ?, ?, ?, '', ?, '', '', '', 0, ?, 'file_message', ?, ?, ?, ?)`,
+		msg.ID, msg.Room, msg.ScopeType, msg.ScopeID, msg.From, msg.Username,
 		string(reactionsJSON),
 		msg.Timestamp,
 		msg.FileURL, msg.FileName, msg.FileSize, msg.FileContentType,
@@ -86,16 +86,20 @@ func (r *messageRepository) GetFileMeta(ctx context.Context, id string) (string,
 
 func (r *messageRepository) GetByID(ctx context.Context, id string) (*domain.ChatMessage, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id, room_id, from_user, username, text, reactions, reply_to_id, reply_to_username, reply_to_text, edited, created_at, msg_type, voice_duration, file_path, file_name, file_size, file_content_type
+		`SELECT id, room_id, scope_type, scope_id, from_user, username, text, reactions, reply_to_id, reply_to_username, reply_to_text, edited, created_at, msg_type, voice_duration, file_path, file_name, file_size, file_content_type
 		 FROM chat_messages WHERE id = ?`, id)
 	return scanMessage(row)
 }
 
 func (r *messageRepository) ListByRoom(ctx context.Context, roomID string, limit int) ([]*domain.ChatMessage, error) {
+	return r.ListByScope(ctx, "channel", roomID, limit)
+}
+
+func (r *messageRepository) ListByScope(ctx context.Context, scopeType, scopeID string, limit int) ([]*domain.ChatMessage, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, room_id, from_user, username, text, reactions, reply_to_id, reply_to_username, reply_to_text, edited, created_at, msg_type, voice_duration, file_path, file_name, file_size, file_content_type
-		 FROM chat_messages WHERE room_id = ? ORDER BY created_at ASC LIMIT ?`,
-		roomID, limit)
+		`SELECT id, room_id, scope_type, scope_id, from_user, username, text, reactions, reply_to_id, reply_to_username, reply_to_text, edited, created_at, msg_type, voice_duration, file_path, file_name, file_size, file_content_type
+		 FROM chat_messages WHERE scope_type = ? AND scope_id = ? ORDER BY created_at ASC LIMIT ?`,
+		scopeType, scopeID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -151,13 +155,13 @@ func (r *messageRepository) GetOwner(ctx context.Context, id string) (string, er
 func scanMessage(row *sql.Row) (*domain.ChatMessage, error) {
 	var reactionsJSON string
 	var editedInt int
-	var msgType string
+	var msgType, scopeType, scopeID string
 	var voiceDuration float64
 	var filePath, fileName, fileContentType string
 	var fileSize int64
 	msg := &domain.ChatMessage{}
 	err := row.Scan(
-		&msg.ID, &msg.Room, &msg.From, &msg.Username, &msg.Text,
+		&msg.ID, &msg.Room, &scopeType, &scopeID, &msg.From, &msg.Username, &msg.Text,
 		&reactionsJSON,
 		&msg.ReplyToID, &msg.ReplyToUsername, &msg.ReplyToText,
 		&editedInt, &msg.Timestamp, &msgType, &voiceDuration,
@@ -170,6 +174,11 @@ func scanMessage(row *sql.Row) (*domain.ChatMessage, error) {
 		return nil, err
 	}
 	msg.Type = msgType
+	msg.ScopeType = scopeType
+	msg.ScopeID = scopeID
+	if msg.Room == "" {
+		msg.Room = scopeID
+	}
 	msg.Edited = editedInt != 0
 	msg.VoiceDuration = voiceDuration
 	if msg.Type == "voice_message" {
@@ -190,13 +199,13 @@ func scanMessage(row *sql.Row) (*domain.ChatMessage, error) {
 func scanMessageRow(rows *sql.Rows) (*domain.ChatMessage, error) {
 	var reactionsJSON string
 	var editedInt int
-	var msgType string
+	var msgType, scopeType, scopeID string
 	var voiceDuration float64
 	var filePath, fileName, fileContentType string
 	var fileSize int64
 	msg := &domain.ChatMessage{}
 	err := rows.Scan(
-		&msg.ID, &msg.Room, &msg.From, &msg.Username, &msg.Text,
+		&msg.ID, &msg.Room, &scopeType, &scopeID, &msg.From, &msg.Username, &msg.Text,
 		&reactionsJSON,
 		&msg.ReplyToID, &msg.ReplyToUsername, &msg.ReplyToText,
 		&editedInt, &msg.Timestamp, &msgType, &voiceDuration,
@@ -206,6 +215,11 @@ func scanMessageRow(rows *sql.Rows) (*domain.ChatMessage, error) {
 		return nil, err
 	}
 	msg.Type = msgType
+	msg.ScopeType = scopeType
+	msg.ScopeID = scopeID
+	if msg.Room == "" {
+		msg.Room = scopeID
+	}
 	msg.Edited = editedInt != 0
 	msg.VoiceDuration = voiceDuration
 	if msg.Type == "file_message" && filePath != "" {

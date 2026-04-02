@@ -50,6 +50,17 @@ func (s *ServerWrapper) UploadVoiceMessage(w http.ResponseWriter, r *http.Reques
 		WriteErrorResponse(w, http.StatusBadRequest, domain.ToErrorResponse(domain.ErrValidation))
 		return
 	}
+	scopeType := r.URL.Query().Get("scopeType")
+	if scopeType == "" {
+		scopeType = "channel"
+	}
+	if scopeType == "dm" {
+		ok, err := s.dmService.IsParticipant(r.Context(), userID, roomID)
+		if err != nil || !ok {
+			WriteErrorResponse(w, http.StatusNotFound, domain.ToErrorResponse(domain.ErrUserNotFound))
+			return
+		}
+	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxVoiceSize+4096)
 	if err := r.ParseMultipartForm(maxVoiceSize); err != nil {
@@ -88,6 +99,8 @@ func (s *ServerWrapper) UploadVoiceMessage(w http.ResponseWriter, r *http.Reques
 		ID:            msgID,
 		Type:          "voice_message",
 		Room:          roomID,
+		ScopeType:     scopeType,
+		ScopeID:       roomID,
 		From:          strconv.Itoa(userID),
 		Username:      username,
 		Text:          "",
@@ -102,7 +115,7 @@ func (s *ServerWrapper) UploadVoiceMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	s.chatService.BroadcastToRoom(roomID, chatMsg)
+	s.chatService.BroadcastToScope(scopeType, roomID, chatMsg)
 
 	WriteJSONResponse(w, http.StatusCreated, map[string]string{
 		"id":  msgID,
@@ -132,6 +145,17 @@ func (s *ServerWrapper) UploadFileMessage(w http.ResponseWriter, r *http.Request
 	if roomID == "" {
 		WriteErrorResponse(w, http.StatusBadRequest, domain.ToErrorResponse(domain.ErrValidation))
 		return
+	}
+	scopeType := r.URL.Query().Get("scopeType")
+	if scopeType == "" {
+		scopeType = "channel"
+	}
+	if scopeType == "dm" {
+		ok, err := s.dmService.IsParticipant(r.Context(), userID, roomID)
+		if err != nil || !ok {
+			WriteErrorResponse(w, http.StatusNotFound, domain.ToErrorResponse(domain.ErrUserNotFound))
+			return
+		}
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxFileSize+4096)
@@ -177,6 +201,8 @@ func (s *ServerWrapper) UploadFileMessage(w http.ResponseWriter, r *http.Request
 		ID:              msgID,
 		Type:            "file_message",
 		Room:            roomID,
+		ScopeType:       scopeType,
+		ScopeID:         roomID,
 		From:            strconv.Itoa(userID),
 		Username:        username,
 		Timestamp:       time.Now().UTC(),
@@ -196,7 +222,7 @@ func (s *ServerWrapper) UploadFileMessage(w http.ResponseWriter, r *http.Request
 
 	// Set public URL for broadcast
 	chatMsg.FileURL = "/api/v1/chat/files/" + msgID
-	s.chatService.BroadcastToRoom(roomID, chatMsg)
+	s.chatService.BroadcastToScope(scopeType, roomID, chatMsg)
 
 	WriteJSONResponse(w, http.StatusCreated, map[string]string{
 		"id":  msgID,

@@ -35,8 +35,30 @@ type RoomService interface {
 }
 
 type ChatService interface {
-	HandleWebSocketConnection(conn *websocket.Conn, userID int, username, roomID string)
-	BroadcastToRoom(roomID string, msg any)
+	HandleWebSocketConnection(conn *websocket.Conn, userID int, username, scopeType, scopeID string)
+	BroadcastToScope(scopeType, scopeID string, msg any)
+}
+
+type ChatNotification struct {
+	ScopeType    string
+	ScopeID      string
+	FromUserID   string
+	FromUsername string
+	Type         string
+	TextPreview  string
+	Timestamp    string
+}
+
+type ChatNotifyService interface {
+	HandleWebSocketConnection(conn *websocket.Conn, userID int)
+	NotifyUsers(userIDs []int, notification ChatNotification)
+}
+
+type DirectConversationService interface {
+	CreateOrGet(ctx context.Context, userID int, peerUserID int) (*domain.DirectConversation, bool, error)
+	Get(ctx context.Context, userID int, conversationID string) (*domain.DirectConversation, error)
+	ListByUserID(ctx context.Context, userID int) ([]*domain.DirectConversation, error)
+	IsParticipant(ctx context.Context, userID int, conversationID string) (bool, error)
 }
 
 type PresenceService interface {

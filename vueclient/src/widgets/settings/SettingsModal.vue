@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { UserService } from '@/api'
+import { OpenAPI } from '@/api/core/OpenAPI'
 import AvatarEditor from '@/features/avatar/AvatarEditor.vue'
 import { setLocale, SUPPORTED_LOCALES, type SupportedLocale } from '@/shared/i18n'
 import { useWebRTC } from '@/shared/lib/useWebRTC'
@@ -119,7 +120,7 @@ const passwordLoading = ref(false)
 watch(
   () => settings.notificationsEnabled,
   (v) => {
-    chatStore.notificationsEnabled = v
+    chatStore.setNotificationsEnabled(v)
   },
   { immediate: true },
 )
@@ -152,7 +153,17 @@ onMounted(async () => {
 })
 
 async function handleAvatarSave(blob: Blob) {
-  await UserService.uploadAvatar(blob)
+  const fd = new FormData()
+  fd.append('avatar', blob, 'avatar.png')
+  const token =
+    typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : localStorage.getItem('token') || ''
+  const base = OpenAPI.BASE || ''
+  const res = await fetch(`${base}/api/v1/me/avatar`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd,
+  })
+  if (!res.ok) throw new Error(`Avatar upload failed: ${res.status}`)
   if (currentUsername.value) avatarStore.refresh(currentUsername.value)
   showAvatarEditor.value = false
 }
@@ -178,7 +189,25 @@ async function handleChangePassword() {
   }
   passwordLoading.value = true
   try {
-    await UserService.changePassword(currentPassword.value, newPassword.value)
+    const token =
+      typeof OpenAPI.TOKEN === 'string' ? OpenAPI.TOKEN : localStorage.getItem('token') || ''
+    const base = OpenAPI.BASE || ''
+    const res = await fetch(`${base}/api/v1/me/password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        current_password: currentPassword.value,
+        new_password: newPassword.value,
+      }),
+    })
+    if (!res.ok) {
+      const err: any = new Error(`Password update failed: ${res.status}`)
+      ;(err as any).status = res.status
+      throw err
+    }
     passwordSuccess.value = true
     currentPassword.value = ''
     newPassword.value = ''

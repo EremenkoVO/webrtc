@@ -12,6 +12,12 @@ const isLogin = ref(true)
 const { t } = useI18n()
 const showServerPicker = ref(false)
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+const appTitle = computed(() => t('sidebar.appTitle'))
+
+function syncPageTitle() {
+  const page = isLogin.value ? t('auth.login') : t('auth.register')
+  document.title = `${page} - ${appTitle.value}`
+}
 
 const currentServerDomain = computed(() => {
   const url = localStorage.getItem('serverUrl') ?? ''
@@ -25,12 +31,12 @@ const currentServerDomain = computed(() => {
 
 onMounted(() => {
   if (route.name === 'Register') isLogin.value = false
-  document.title = isLogin.value ? t('auth.login') : t('auth.register')
+  syncPageTitle()
 })
 
 function switchMode() {
   isLogin.value = !isLogin.value
-  document.title = isLogin.value ? t('auth.login') : t('auth.register')
+  syncPageTitle()
 }
 </script>
 

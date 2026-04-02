@@ -31,6 +31,14 @@ import_electron.contextBridge.exposeInMainWorld("electronAPI", {
       import_electron.ipcRenderer.on("audio-error", handler);
       return () => import_electron.ipcRenderer.removeListener("audio-error", handler);
     }
+  },
+  notifications: {
+    show: (payload) => import_electron.ipcRenderer.invoke("notifications:show", payload),
+    onClick: (cb) => {
+      const handler = (_event, tag) => cb(tag);
+      import_electron.ipcRenderer.on("notifications:click", handler);
+      return () => import_electron.ipcRenderer.removeListener("notifications:click", handler);
+    }
   }
 });
 //# sourceMappingURL=preload.cjs.map

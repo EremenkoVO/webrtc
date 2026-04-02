@@ -2,6 +2,8 @@
 import { SignalingService, UserService, type UserProfile } from '@/api/index'
 import { useApiErrors } from '@/shared/lib/useApiErrors'
 import { useCallStore } from '@/shared/stores/callStore'
+import { useChatStore } from '@/shared/stores/chatStore'
+import { useDmStore } from '@/shared/stores/dmStore'
 import { useRoomStore } from '@/shared/stores/roomStore'
 import { useSidebarStore } from '@/shared/stores/sidebarStore'
 import { useSignalingStore } from '@/shared/stores/signalingStore'
@@ -19,6 +21,8 @@ import { useI18n } from 'vue-i18n'
 const { t, locale } = useI18n()
 const { clearErrors, parseApiError } = useApiErrors()
 const roomStore = useRoomStore()
+const chatStore = useChatStore()
+const dmStore = useDmStore()
 const sidebarStore = useSidebarStore()
 const callStore = useCallStore()
 const voiceStateStore = useVoiceStateStore()
@@ -131,6 +135,22 @@ const offlineServerUsers = computed(() =>
   filteredServerUsers.value.filter((u) => !presenceStore.isUserOnline(u.id)),
 )
 
+function unreadForChannel(channelId?: string): number {
+  if (!channelId) return 0
+  return chatStore.unreadCountFor('channel', channelId)
+}
+
+function unreadForDM(conversationId?: string): number {
+  if (!conversationId) return 0
+  return chatStore.unreadCountFor('dm', conversationId)
+}
+
+function openDM(conversationId: string, title: string) {
+  roomStore.selectDirectConversation(conversationId, title)
+  chatStore.clearUnread('dm', conversationId)
+  sidebarStore.close()
+}
+
 function openCreateModal() {
   newChannelName.value = ''
   newChannelType.value = 'voice'
@@ -150,7 +170,7 @@ async function addChannel() {
   try {
     await SignalingService.createRoom({
       name: newChannelName.value.trim(),
-      type: newChannelType.value,
+      type: newChannelType.value as any,
     })
     await roomStore.getListChannels()
     closeCreateModal()
@@ -231,10 +251,23 @@ async function refreshChannels() {
   try {
     await roomStore.getListChannels()
     await fetchServerUsers()
+    await dmStore.fetchConversations()
   } catch (e) {
     parseApiError(e)
   } finally {
     isLoading.value = false
+  }
+}
+
+async function startDirectMessage(user: UserProfile) {
+  if (!user.id || user.id === props.user.id) return
+  try {
+    const conv = await dmStore.createOrGet(user.id)
+    if (!conv) return
+    roomStore.selectDirectConversation(conv.id, dmStore.titleFor(conv, props.user.id || null))
+    sidebarStore.close()
+  } catch (e) {
+    parseApiError(e)
   }
 }
 
@@ -651,7 +684,7 @@ watch(
             <button
               v-for="ch in filteredTextChannels"
               :key="ch.id || ''"
-              @click="selectChannel(ch.id)"
+              @click="selectChannel(ch.id); if (ch.id) chatStore.clearUnread('channel', ch.id)"
               :class="[
                 'w-full flex items-center gap-2 sm:gap-1.5 px-3 sm:px-2 py-2.5 sm:py-[6px] rounded group transition-colors text-left',
                 ch.id === roomStore.selectedChannelId
@@ -666,10 +699,55 @@ watch(
               <span class="flex-1 text-base sm:text-[15px] truncate font-medium leading-5">{{
                 ch.name || t('common.unnamed')
               }}</span>
+              <span
+                v-if="unreadForChannel(ch.id) > 0"
+                class="min-w-5 h-5 px-1 rounded-full bg-dc-red text-white text-[11px] font-bold flex items-center justify-center"
+              >
+                {{ unreadForChannel(ch.id) > 99 ? '99+' : unreadForChannel(ch.id) }}
+              </span>
             </button>
           </div>
         </div>
       </template>
+
+      <div class="mt-3 pt-2 border-t border-dc-separator/40">
+        <div class="flex items-center px-2 mb-1">
+          <font-awesome-icon
+            icon="chevron-down"
+            class="w-3 h-3 text-dc-text-muted mr-0.5 text-[10px]"
+          />
+          <span
+            class="sidebar-section-label text-sm sm:text-[11px] font-bold uppercase tracking-wider text-dc-text-muted flex-1"
+          >
+            DMs
+          </span>
+        </div>
+        <div v-if="dmStore.conversations.length === 0" class="px-2 py-2 text-dc-text-muted text-xs">
+          No direct messages yet
+        </div>
+        <div v-else class="px-2 space-y-px">
+          <button
+            v-for="dm in dmStore.conversations"
+            :key="dm.id"
+            @click="openDM(dm.id, dmStore.titleFor(dm, props.user.id || null))"
+            :class="[
+              'w-full flex items-center gap-2 px-3 py-2 rounded transition-colors text-left',
+              roomStore.selectedChatScopeType === 'dm' && roomStore.selectedChatScopeId === dm.id
+                ? 'bg-dc-bg-active text-dc-text-heading'
+                : 'text-dc-text-muted hover:text-dc-text-secondary hover:bg-dc-bg-hover',
+            ]"
+          >
+            <font-awesome-icon icon="at" class="w-5 h-5 opacity-70" />
+            <span class="truncate text-sm">{{ dmStore.titleFor(dm, props.user.id || null) }}</span>
+            <span
+              v-if="unreadForDM(dm.id) > 0"
+              class="min-w-5 h-5 px-1 rounded-full bg-dc-red text-white text-[11px] font-bold flex items-center justify-center"
+            >
+              {{ unreadForDM(dm.id) > 99 ? '99+' : unreadForDM(dm.id) }}
+            </span>
+          </button>
+        </div>
+      </div>
 
       <!-- Server members (directory) -->
       <div class="mt-3 pt-2 border-t border-dc-separator/40">
@@ -733,6 +811,14 @@ watch(
                   icon="id-card"
                   class="text-[10px] flex-shrink-0 text-dc-text-muted opacity-0 group-hover/member:opacity-100 transition-opacity"
                 />
+                <button
+                  v-if="u.id !== props.user.id && u.username !== props.user.username"
+                  @click.stop="startDirectMessage(u)"
+                  class="ml-1 w-6 h-6 rounded flex items-center justify-center text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover"
+                  title="Direct message"
+                >
+                  <font-awesome-icon icon="comment" class="text-[10px]" />
+                </button>
               </div>
             </div>
           </div>
@@ -770,6 +856,14 @@ watch(
                   icon="id-card"
                   class="text-[10px] flex-shrink-0 text-dc-text-muted opacity-0 group-hover/member:opacity-100 transition-opacity"
                 />
+                <button
+                  v-if="u.id !== props.user.id && u.username !== props.user.username"
+                  @click.stop="startDirectMessage(u)"
+                  class="ml-1 w-6 h-6 rounded flex items-center justify-center text-dc-text-muted hover:text-dc-text hover:bg-dc-bg-hover"
+                  title="Direct message"
+                >
+                  <font-awesome-icon icon="comment" class="text-[10px]" />
+                </button>
               </div>
             </div>
           </div>

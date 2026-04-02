@@ -41,6 +41,8 @@ type ChatMessage struct {
 	ID        string              `json:"id"`
 	Type      string              `json:"type"`
 	Room      string              `json:"room"`
+	ScopeType string              `json:"-"`
+	ScopeID   string              `json:"-"`
 	From      string              `json:"from"`      // string(userID)
 	Username  string              `json:"username"`
 	Text      string              `json:"text"`
@@ -63,7 +65,8 @@ type ChatClient struct {
 	ConnID   string // UUID (connection-specific)
 	UserID   int
 	Username string
-	RoomID   string
+	ScopeType string
+	ScopeID   string
 	Conn     *websocket.Conn
 }
 

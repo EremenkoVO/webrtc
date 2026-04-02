@@ -61,6 +61,7 @@ type ChatMessageRepository interface {
 	Store(ctx context.Context, msg *domain.ChatMessage) error
 	GetByID(ctx context.Context, id string) (*domain.ChatMessage, error)
 	ListByRoom(ctx context.Context, roomID string, limit int) ([]*domain.ChatMessage, error)
+	ListByScope(ctx context.Context, scopeType, scopeID string, limit int) ([]*domain.ChatMessage, error)
 	UpdateText(ctx context.Context, id, text string) error
 	Delete(ctx context.Context, id string) error
 	UpdateReactions(ctx context.Context, id string, reactions map[string][]string) error
@@ -70,4 +71,14 @@ type ChatMessageRepository interface {
 	StoreFile(ctx context.Context, msg *domain.ChatMessage) error
 	GetFileMeta(ctx context.Context, id string) (filePath, fileName, contentType string, err error)
 	ClearAllFiles(ctx context.Context) error
+}
+
+type DirectConversationRepository interface {
+	Create(ctx context.Context, conv *domain.DirectConversation) error
+	GetByID(ctx context.Context, id string) (*domain.DirectConversation, error)
+	GetByPairKey(ctx context.Context, pairKey string) (*domain.DirectConversation, error)
+	ListByUserID(ctx context.Context, userID int) ([]*domain.DirectConversation, error)
+	AddParticipant(ctx context.Context, conversationID string, userID int) error
+	ListParticipants(ctx context.Context, conversationID string) ([]*domain.DirectConversationParticipant, error)
+	IsParticipant(ctx context.Context, conversationID string, userID int) (bool, error)
 }

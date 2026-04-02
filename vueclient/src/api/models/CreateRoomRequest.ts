@@ -1,7 +1,7 @@
 /* generated using openapi-typescript-codegen -- do not edit */
 /* istanbul ignore file */
 /* tslint:disable */
- 
+/* eslint-disable */
 export type CreateRoomRequest = {
     /**
      * Human-readable room name
@@ -10,7 +10,15 @@ export type CreateRoomRequest = {
     /**
      * Channel type
      */
-    type?: 'voice' | 'text';
+    type?: CreateRoomRequest.type;
 };
-
+export namespace CreateRoomRequest {
+    /**
+     * Channel type
+     */
+    export enum type {
+        VOICE = 'voice',
+        TEXT = 'text',
+    }
+}
 

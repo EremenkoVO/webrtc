@@ -52,6 +52,7 @@ const filteredUsers = computed(() =>
 
 // ─── Init ────────────────────────────────────────────────────────
 onMounted(async () => {
+  document.title = `${t('admin.title')} - ${t('sidebar.appTitle')}`
   if (props.modal) {
     screen.value = 'panel'
     loadTab('dashboard')

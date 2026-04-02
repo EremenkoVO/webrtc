@@ -91,7 +91,9 @@ type PeerWithVideo = {
 const showParticipantsPanel = ref(true)
 const showLocalPreview = ref(false)
 
-const isTextChannel = computed(() => roomStore.selectedChannelType === 'text')
+const isTextChannel = computed(
+  () => roomStore.selectedChatScopeType === 'dm' || roomStore.selectedChannelType === 'text',
+)
 
 function hasLiveVideoTrack(stream: MediaStream | null | undefined): boolean {
   if (!stream) return false
@@ -462,6 +464,7 @@ watch(
   () => roomStore.selectedChannelId,
   async (newId, oldId) => {
     if (!oldId || newId === oldId || !callStore.isInCall) return
+    if (!newId) return
 
     const newChannel = roomStore.channelById(newId!)
     const isNewVoice = (newChannel?.type ?? 'voice') !== 'text'
@@ -567,10 +570,16 @@ watch(
 )
 
 watch(
-  () => roomStore.selectedChannelId,
-  async (newId, oldId) => {
-    if (newId && newId !== oldId) await roomStore.getRoomParticipants(newId)
-    else if (!newId) {
+  () => [roomStore.selectedChannelId, roomStore.roomId, callStore.isInCall] as const,
+  async ([selectedChannelId, activeRoomId, isInCall], previous) => {
+    const prev = previous ?? ([undefined, undefined, undefined] as [string?, string?, boolean?])
+    const [prevSelectedChannelId, prevActiveRoomId, prevIsInCall] = prev
+    const targetChannelId = isInCall ? activeRoomId : selectedChannelId
+    const prevTargetChannelId = prevIsInCall ? prevActiveRoomId : prevSelectedChannelId
+
+    if (targetChannelId && targetChannelId !== prevTargetChannelId) {
+      await roomStore.getRoomParticipants(targetChannelId)
+    } else if (!targetChannelId && !isInCall) {
       roomStore.setRoommates([])
       roomStore.setParticipants([])
     }
@@ -580,8 +589,9 @@ watch(
 
 let participantsRefreshInterval: ReturnType<typeof setInterval> | null = null
 watch(
-  () => [roomStore.selectedChannelId, callStore.isInCall],
-  ([channelId, isInCall]) => {
+  () => [roomStore.selectedChannelId, roomStore.roomId, callStore.isInCall] as const,
+  ([selectedChannelId, activeRoomId, isInCall]) => {
+    const channelId = isInCall ? activeRoomId : selectedChannelId
     if (participantsRefreshInterval) {
       clearInterval(participantsRefreshInterval)
       participantsRefreshInterval = null
@@ -589,8 +599,7 @@ watch(
     if (typeof channelId === 'string' && channelId && isInCall) {
       roomStore.getRoomParticipants(channelId)
       participantsRefreshInterval = setInterval(() => {
-        if (roomStore.selectedChannelId && callStore.isInCall)
-          roomStore.getRoomParticipants(roomStore.selectedChannelId)
+        if (roomStore.roomId && callStore.isInCall) roomStore.getRoomParticipants(roomStore.roomId)
       }, 5000)
     }
   },
@@ -850,7 +859,7 @@ onBeforeUnmount(() => {
           {{ roomStore.selectedChannelName || t('channel.selectChannel') }}
         </h1>
 
-        <div v-if="roomStore.selectedChannelId" class="flex items-center gap-2">
+        <div v-if="roomStore.selectedChatScopeId" class="flex items-center gap-2">
           <div
             :class="[
               'w-2 h-2 rounded-full',
@@ -864,7 +873,7 @@ onBeforeUnmount(() => {
 
         <!-- Mobile chat toggle -->
         <button
-          v-if="roomStore.selectedChannelId"
+          v-if="roomStore.selectedChatScopeId"
           @click="sidebarStore.toggleChat()"
           class="w-7 h-7 flex items-center justify-center text-dc-text-muted hover:text-dc-text transition-colors"
           :title="t('channel.toggleChat')"
@@ -875,7 +884,7 @@ onBeforeUnmount(() => {
 
       <!-- Empty state -->
       <div
-        v-if="!roomStore.selectedChannelId"
+        v-if="!roomStore.selectedChatScopeId"
         class="flex-1 flex items-center justify-center bg-dc-bg-primary"
       >
         <div class="text-center max-w-sm px-8">
@@ -899,7 +908,7 @@ onBeforeUnmount(() => {
         <!-- Text channel: full-height chat, no voice UI -->
         <template v-if="isTextChannel">
           <div class="flex-1 min-h-0 flex">
-            <ChatPanel :room-id="roomStore.selectedChannelId" :user-name="props.userName" class="flex-1" />
+            <ChatPanel :room-id="roomStore.selectedChatScopeId" :scope-type="roomStore.selectedChatScopeType" :user-name="props.userName" class="flex-1" />
           </div>
         </template>
 
@@ -1162,7 +1171,7 @@ onBeforeUnmount(() => {
       v-if="!isTextChannel && sidebarStore.chatOpen && !sidebarStore.isMobile"
       class="hidden lg:flex w-80 2xl:w-96 3xl:w-[420px] border-l border-dc-separator/80 shadow-[-1px_0_0_rgba(0,0,0,0.22)] flex-shrink-0"
     >
-      <ChatPanel :room-id="roomStore.selectedChannelId" :user-name="props.userName" />
+      <ChatPanel :room-id="roomStore.selectedChatScopeId" :scope-type="roomStore.selectedChatScopeType" :user-name="props.userName" />
     </div>
 
     <!-- Chat panel (mobile overlay, voice channels only) -->
@@ -1181,7 +1190,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <div class="flex-1 overflow-hidden min-h-0">
-          <ChatPanel :room-id="roomStore.selectedChannelId" :user-name="props.userName" />
+          <ChatPanel :room-id="roomStore.selectedChatScopeId" :scope-type="roomStore.selectedChatScopeType" :user-name="props.userName" />
         </div>
       </div>
     </Transition>

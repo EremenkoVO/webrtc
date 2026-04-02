@@ -2,12 +2,9 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type UpdateProfileRequest = {
+export type DirectConversationParticipant = {
+    user_id: string;
+    username: string;
     display_name?: string;
-    bio?: string;
-    status_text?: string;
-    status_emoji?: string;
-    banner_url?: string;
-    website_url?: string;
 };
 

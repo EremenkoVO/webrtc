@@ -12,6 +12,8 @@ export const useRoomStore = defineStore('room', {
     channels: [] as Room[],
     selectedChannelId: '' as string,
     selectedChannelName: '' as string,
+    selectedChatScopeType: 'channel' as 'channel' | 'dm',
+    selectedChatScopeId: '' as string,
   }),
   getters: {
     selectedChannelType: (state): 'voice' | 'text' => {
@@ -65,11 +67,22 @@ export const useRoomStore = defineStore('room', {
 
       this.selectedChannelId = id
       this.selectedChannelName = channel?.name || ''
+      this.selectedChatScopeType = 'channel'
+      this.selectedChatScopeId = id
       this.setRoommates(roommates)
 
       if (id) {
         await this.getRoomParticipants(id)
       }
+    },
+    selectDirectConversation(conversationId: string, title: string) {
+      if (!conversationId) return
+      this.selectedChannelId = ''
+      this.selectedChannelName = title
+      this.selectedChatScopeType = 'dm'
+      this.selectedChatScopeId = conversationId
+      this.setRoommates([])
+      this.setParticipants([])
     },
     setRoommates(roommates: string[] | undefined) {
       this.roommates = roommates || []

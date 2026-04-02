@@ -16,12 +16,13 @@
     "lint": "eslint . --fix",
     "format": "prettier --write src/",
     "generate-icons": "node scripts/generate-pwa-icons.js",
+    "generate-electron-icons": "mkdir -p build/icons && icon-gen -i public/icon-512.png -o build/icons --ico --ico-name icon --icns --icns-name icon -r",
     "electron:compile": "node electron/build.cjs",
     "electron:dev": "concurrently -k -n \"vite,electron\" -c \"cyan,yellow\" \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development USE_SYSTEM_PICKER=true electron .\"",
     "electron:dev:system-picker": "concurrently -k -n \"vite,electron\" -c \"cyan,yellow\" \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development USE_SYSTEM_PICKER=true electron .\"",
     "electron:dev:custom-picker": "concurrently -k -n \"vite,electron\" -c \"cyan,yellow\" \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development USE_SYSTEM_PICKER=false electron .\"",
     "electron:dev:mac-legacy-audio": "concurrently -k -n \"vite,electron\" -c \"cyan,yellow\" \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development USE_LEGACY_MAC_SCREEN_AUDIO=true electron .\"",
-    "electron:build": "vite build --base ./ && node electron/build.cjs && electron-builder"
+    "electron:build": "npm run generate-electron-icons && vite build --base ./ && node electron/build.cjs && electron-builder"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.0.1",
@@ -52,6 +53,7 @@
     "electron-builder": "^25.1.8",
     "eslint": "^9.31.0",
     "eslint-plugin-vue": "~10.3.0",
+    "icon-gen": "^5.0.0",
     "jiti": "^2.4.2",
     "npm-run-all2": "^8.0.4",
     "prettier": "3.6.2",
@@ -66,6 +68,7 @@
   "build": {
     "appId": "com.webrtc.vueclient",
     "productName": "WebRTC Voice",
+    "icon": "build/icons/icon",
     "directories": {
       "output": "dist-electron"
     },
@@ -75,6 +78,7 @@
       "package.json"
     ],
     "mac": {
+      "icon": "build/icons/icon.icns",
       "target": [
         {
           "target": "dmg",
@@ -94,6 +98,7 @@
       }
     },
     "win": {
+      "icon": "build/icons/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -104,6 +109,7 @@
       ]
     },
     "linux": {
+      "icon": "public/icon-512.png",
       "target": [
         {
           "target": "AppImage",

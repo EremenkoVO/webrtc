@@ -1,7 +1,7 @@
 /* generated using openapi-typescript-codegen -- do not edit */
 /* istanbul ignore file */
 /* tslint:disable */
- 
+/* eslint-disable */
 import type { CreateRoomRequest } from '../models/CreateRoomRequest';
 import type { ErrorResponse } from '../models/ErrorResponse';
 import type { Room } from '../models/Room';
@@ -98,6 +98,7 @@ export class SignalingService {
      * WebSocket connection for signaling
      * Upgrade to a WebSocket connection for exchanging signaling messages
      * (`offer`, `answer`, `ice`, `join`, `leave`).
+     * Authenticate via `token` query param (JWT).
      *
      * **Example message:**
      * ```json
@@ -110,13 +111,19 @@ export class SignalingService {
          * }
          * ```
          *
+         * @param token
          * @returns void
          * @throws ApiError
          */
-        public static signalingWebSocket(): CancelablePromise<void> {
+        public static signalingWebSocket(
+            token: string,
+        ): CancelablePromise<void> {
             return __request(OpenAPI, {
                 method: 'GET',
                 url: '/api/v1/ws',
+                query: {
+                    'token': token,
+                },
             });
         }
     }

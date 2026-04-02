@@ -8,6 +8,7 @@ const useSystemPicker = process.env.USE_SYSTEM_PICKER !== 'false' && process.pla
 
 type AudioDataCallback = (pcm: ArrayBuffer, sampleRate: number, channels: number) => void
 type AudioErrorCallback = (msg: string) => void
+type NotificationClickCallback = (tag: string) => void
 
 // ── Expose electronAPI ─────────────────────────────────────────────────────────
 
@@ -53,6 +54,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_event: Electron.IpcRendererEvent, msg: string) => cb(msg)
       ipcRenderer.on('audio-error', handler)
       return () => ipcRenderer.removeListener('audio-error', handler)
+    },
+  },
+
+  notifications: {
+    show: (payload: {
+      title: string
+      body?: string
+      icon?: string
+      tag?: string
+      silent?: boolean
+    }): Promise<boolean> => ipcRenderer.invoke('notifications:show', payload),
+
+    onClick: (cb: NotificationClickCallback): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, tag: string) => cb(tag)
+      ipcRenderer.on('notifications:click', handler)
+      return () => ipcRenderer.removeListener('notifications:click', handler)
     },
   },
 })

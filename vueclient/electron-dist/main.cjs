@@ -45,6 +45,14 @@ function writeSettings(settings) {
   }
 }
 var currentSettings = readSettings();
+import_electron.app.setName("WebRTC Voice");
+function resolveAppAssetPath(assetPath) {
+  const normalized = assetPath.startsWith("/") ? assetPath.slice(1) : assetPath;
+  if (import_electron.app.isPackaged) {
+    return path.join(process.resourcesPath, "app.asar", "dist", normalized);
+  }
+  return path.join(import_electron.app.getAppPath(), "public", normalized);
+}
 function getTrustedHostFromSettings() {
   const serverUrl = currentSettings.serverUrl?.trim();
   if (!serverUrl) return null;
@@ -84,11 +92,14 @@ if (process.platform === "darwin" && useLegacyMacScreenAudio) {
 }
 var mainWindow = null;
 function createWindow() {
+  const appIconPath = resolveAppAssetPath("/icon-512.png");
   mainWindow = new import_electron.BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    title: "WebRTC Voice",
+    icon: fs.existsSync(appIconPath) ? appIconPath : void 0,
     titleBarStyle: "default",
     backgroundColor: "#1e1f22",
     webPreferences: {
@@ -195,4 +206,34 @@ import_electron.ipcMain.handle("get-sources", async () => {
 import_electron.ipcMain.handle("is-native-available", () => false);
 import_electron.ipcMain.handle("start-app-audio", () => false);
 import_electron.ipcMain.handle("stop-app-audio", () => void 0);
+import_electron.ipcMain.handle(
+  "notifications:show",
+  (_event, payload) => {
+    try {
+      if (!import_electron.Notification.isSupported()) return false;
+      const resolvedIcon = payload.icon ? resolveAppAssetPath(payload.icon) : resolveAppAssetPath("/icon-192.png");
+      const notification = new import_electron.Notification({
+        title: payload.title,
+        body: payload.body,
+        icon: fs.existsSync(resolvedIcon) ? resolvedIcon : void 0,
+        silent: payload.silent ?? false
+      });
+      notification.on("click", () => {
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+          if (payload.tag) {
+            mainWindow.webContents.send("notifications:click", payload.tag);
+          }
+        }
+      });
+      notification.show();
+      return true;
+    } catch (error) {
+      console.error("[main] Failed to show notification:", error);
+      return false;
+    }
+  }
+);
 //# sourceMappingURL=main.cjs.map

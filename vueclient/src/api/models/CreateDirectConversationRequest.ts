@@ -2,7 +2,10 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type RefreshRequest = {
-    refresh_token: string;
+export type CreateDirectConversationRequest = {
+    /**
+     * User ID of the other participant
+     */
+    peer_user_id: string;
 };
 

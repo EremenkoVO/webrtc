@@ -267,6 +267,83 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         default:
           $ref: '#/components/responses/ServerError'
+  /api/v1/dm/conversations:
+    get:
+      tags: [Chat]
+      summary: List direct conversations for current user
+      operationId: listDirectConversations
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of direct conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DirectConversation'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        default:
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [Chat]
+      summary: Create or get direct conversation
+      operationId: createOrGetDirectConversation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDirectConversationRequest'
+      responses:
+        '200':
+          description: Existing direct conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectConversation'
+        '201':
+          description: New direct conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectConversation'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /api/v1/dm/conversations/{id}:
+    get:
+      tags: [Chat]
+      summary: Get direct conversation details
+      operationId: getDirectConversation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Direct conversation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectConversation'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        default:
+          $ref: '#/components/responses/ServerError'
   /api/v1/rooms:
     post:
       tags: [Signaling]
@@ -372,8 +449,11 @@ paths:
       tags: [Chat]
       summary: WebSocket connection for text chat
       description: |
-        Upgrade to a WebSocket connection for real-time text chat in a room.
-        Authenticate via `token` query param (JWT). Room is specified via `room` query param.
+        Upgrade to a WebSocket connection for real-time text chat.
+        Authenticate via `token` query param (JWT).
+        Scope is specified with `scopeType` and `scopeId` query params:
+        - `scopeType=channel`, `scopeId=<roomId>` for text channels
+        - `scopeType=dm`, `scopeId=<conversationId>` for direct messages
       operationId: chatWebSocket
       parameters:
         - name: token
@@ -381,7 +461,13 @@ paths:
           required: true
           schema:
             type: string
-        - name: room
+        - name: scopeType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [channel, dm]
+        - name: scopeId
           in: query
           required: true
           schema:
@@ -389,6 +475,23 @@ paths:
         - name: username
           in: query
           required: false
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching Protocols (WebSocket upgrade)
+  /api/v1/chat/notifications/ws:
+    get:
+      tags: [Chat]
+      summary: WebSocket connection for chat notifications
+      description: |
+        Upgrade to a WebSocket connection for realtime chat notifications across all scopes.
+        Authenticate via `token` query param (JWT).
+      operationId: chatNotificationsWebSocket
+      parameters:
+        - name: token
+          in: query
+          required: true
           schema:
             type: string
       responses:
@@ -544,6 +647,88 @@ components:
           type: string
           format: uri
           maxLength: 256
+    CreateDirectConversationRequest:
+      type: object
+      required: [peer_user_id]
+      properties:
+        peer_user_id:
+          type: string
+          description: User ID of the other participant
+    DirectConversationParticipant:
+      type: object
+      required: [user_id, username]
+      properties:
+        user_id:
+          type: string
+        username:
+          type: string
+        display_name:
+          type: string
+    DirectConversation:
+      type: object
+      required: [id, participants, created_at]
+      properties:
+        id:
+          type: string
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/DirectConversationParticipant'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_message:
+          $ref: '#/components/schemas/ChatMessage'
+        unread_count:
+          type: integer
+          minimum: 0
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        room:
+          type: string
+        from:
+          type: string
+        username:
+          type: string
+        text:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        edited:
+          type: boolean
+        reactions:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        replyToId:
+          type: string
+        replyToUsername:
+          type: string
+        replyToText:
+          type: string
+        voiceUrl:
+          type: string
+        voiceDuration:
+          type: number
+        fileUrl:
+          type: string
+        fileName:
+          type: string
+        fileSize:
+          type: integer
+        fileContentType:
+          type: string
     ErrorResponse:
       type: object
       properties:
