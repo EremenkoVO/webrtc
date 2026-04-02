@@ -139,6 +139,10 @@ export const useChatStore = defineStore('chat', () => {
   const reconnectAttempts = ref(0)
   const maxReconnectAttempts = 5
   const reconnectTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
+  const notifyReconnectAttempts = ref(0)
+  const notifyReconnectTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
+  const maxNotifyReconnectAttempts = 8
+  const shouldReconnectNotifications = ref(true)
   const clientId = ref<string | null>(null)
   const userId = ref<string | null>(null)
   const username = ref<string | null>(null)
@@ -263,6 +267,7 @@ export const useChatStore = defineStore('chat', () => {
 
   function connectNotifications() {
     if (notifyWs.value && (notifyWs.value.readyState === WebSocket.OPEN || notifyWs.value.readyState === WebSocket.CONNECTING)) return
+    shouldReconnectNotifications.value = true
     notificationConnectionState.value = 'connecting'
     try {
       let baseUrl = OpenAPI.BASE
@@ -281,6 +286,7 @@ export const useChatStore = defineStore('chat', () => {
       socket.onopen = () => {
         if (notifyWs.value !== socket) return
         notificationConnectionState.value = 'connected'
+        notifyReconnectAttempts.value = 0
       }
       socket.onmessage = (event) => {
         if (notifyWs.value !== socket) return
@@ -295,6 +301,16 @@ export const useChatStore = defineStore('chat', () => {
         if (notifyWs.value !== socket) return
         notificationConnectionState.value = 'disconnected'
         notifyWs.value = null
+        if (
+          shouldReconnectNotifications.value &&
+          notifyReconnectAttempts.value < maxNotifyReconnectAttempts
+        ) {
+          notifyReconnectAttempts.value++
+          const delay = Math.min(1000 * Math.pow(2, notifyReconnectAttempts.value), 30000)
+          notifyReconnectTimeout.value = setTimeout(() => {
+            connectNotifications()
+          }, delay)
+        }
       }
       socket.onerror = () => {
         if (notifyWs.value !== socket) return
@@ -338,6 +354,11 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function disconnectNotifications() {
+    shouldReconnectNotifications.value = false
+    if (notifyReconnectTimeout.value) {
+      clearTimeout(notifyReconnectTimeout.value)
+      notifyReconnectTimeout.value = null
+    }
     if (notifyWs.value) {
       const old = notifyWs.value
       notifyWs.value = null
@@ -348,6 +369,7 @@ export const useChatStore = defineStore('chat', () => {
       old.close()
     }
     notificationConnectionState.value = 'disconnected'
+    notifyReconnectAttempts.value = 0
   }
 
   function sendMessage(text: string, replyToId?: string) {
