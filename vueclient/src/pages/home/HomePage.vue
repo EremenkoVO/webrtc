@@ -10,6 +10,7 @@ import { useSignalingStore } from '@/shared/stores/signalingStore'
 import { usePresenceStore } from '@/shared/stores/presenceStore'
 import Sidebar from '@/widgets/sidebar/Sidebar.vue'
 import ChannelView from '@/widgets/channel/ChannelView.vue'
+import InAppNotifications from '@/widgets/notifications/InAppNotifications.vue'
 import router from '@/app/router'
 import { onBeforeUnmount, onMounted, ref, type Ref, nextTick } from 'vue'
 import Hammer from 'hammerjs'
@@ -151,5 +152,6 @@ onBeforeUnmount(() => {
     <div ref="channelViewRef" class="flex-1 min-w-0 overflow-hidden lg:ml-0">
       <ChannelView :user-name="user.username" />
     </div>
+    <InAppNotifications />
   </div>
 </template>

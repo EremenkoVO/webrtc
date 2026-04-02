@@ -1,9 +1,9 @@
 import { OpenAPI } from '@/api/core/OpenAPI'
 import { useDmStore } from '@/shared/stores/dmStore'
+import { useInAppNotificationStore } from '@/shared/stores/inAppNotificationStore'
 import { useRoomStore } from '@/shared/stores/roomStore'
 import {
   requestNotificationPermission,
-  showNotification,
   getNotificationPermission,
 } from '@/shared/lib/useNotifications'
 import { defineStore } from 'pinia'
@@ -316,7 +316,7 @@ export const useChatStore = defineStore('chat', () => {
         if (notifyWs.value !== socket) return
         notificationConnectionState.value = 'disconnected'
       }
-    } catch (error) {
+    } catch {
       notificationConnectionState.value = 'disconnected'
     }
   }
@@ -391,7 +391,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       ws.value.send(JSON.stringify({ type: 'typing', isTyping }))
       return true
-    } catch (error) {
+    } catch {
       return false
     }
   }
@@ -509,10 +509,11 @@ export const useChatStore = defineStore('chat', () => {
             incrementUnread(messageScopeType, roomId)
           }
           if (message.type === 'chat_message' && shouldNotify(message, messageScopeType, roomId)) {
-            showNotification(`${message.username}`, {
+            const notifications = useInAppNotificationStore()
+            notifications.push({
+              title: `${message.username}`,
               body: message.text.length > 100 ? message.text.substring(0, 100) + '...' : message.text,
-              tag: `chat-${message.room}-${message.from}`,
-              icon: '/favicon.ico',
+              kind: messageScopeType === 'dm' ? 'dm' : 'channel',
             })
           }
         }
@@ -602,6 +603,7 @@ export const useChatStore = defineStore('chat', () => {
     if (active !== key) {
       incrementUnread(message.scopeType, message.scopeId)
       if (notificationsEnabled.value) {
+        const notifications = useInAppNotificationStore()
         const roomStore = useRoomStore()
         const dmStore = useDmStore()
         const channelName =
@@ -612,10 +614,10 @@ export const useChatStore = defineStore('chat', () => {
           message.scopeType === 'channel'
             ? `#${channelName}: ${message.textPreview || '[New message]'}`
             : message.textPreview || '[New message]'
-        showNotification(`${message.fromUsername}`, {
+        notifications.push({
+          title: `${message.fromUsername}`,
           body: notificationBody,
-          tag: `chat-${message.scopeType}-${message.scopeId}-${message.fromUserId}`,
-          icon: '/favicon.ico',
+          kind: message.scopeType === 'dm' ? 'dm' : 'channel',
           onClick: () => {
             if (message.scopeType === 'channel') {
               void roomStore.selectChannel(message.scopeId)
