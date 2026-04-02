@@ -1,7 +1,55 @@
 <script setup lang="ts">
 import { useInAppNotificationStore } from '@/shared/stores/inAppNotificationStore'
+import { useSettingsStore } from '@/shared/stores/settingsStore'
+import { watch } from 'vue'
 
 const notifications = useInAppNotificationStore()
+const settingsStore = useSettingsStore()
+
+function playNotificationSound() {
+  try {
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioContextCtor) return
+    const ctx = new AudioContextCtor()
+    const now = ctx.currentTime
+
+    // Short two-tone ping to keep it subtle.
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0.0001, now)
+    gain.gain.exponentialRampToValueAtTime(0.08, now + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22)
+    gain.connect(ctx.destination)
+
+    const oscA = ctx.createOscillator()
+    oscA.type = 'sine'
+    oscA.frequency.setValueAtTime(880, now)
+    oscA.frequency.exponentialRampToValueAtTime(1046, now + 0.09)
+    oscA.connect(gain)
+    oscA.start(now)
+    oscA.stop(now + 0.11)
+
+    const oscB = ctx.createOscillator()
+    oscB.type = 'sine'
+    oscB.frequency.setValueAtTime(1174, now + 0.1)
+    oscB.connect(gain)
+    oscB.start(now + 0.1)
+    oscB.stop(now + 0.22)
+
+    setTimeout(() => {
+      void ctx.close()
+    }, 300)
+  } catch {
+    // Ignore autoplay or audio context restrictions.
+  }
+}
+
+watch(
+  () => notifications.items.length,
+  (next, prev) => {
+    if (!settingsStore.soundOnConnect) return
+    if (next > prev) playNotificationSound()
+  },
+)
 
 function iconForKind(kind: 'info' | 'channel' | 'dm' | 'error') {
   if (kind === 'channel') return 'hashtag'
