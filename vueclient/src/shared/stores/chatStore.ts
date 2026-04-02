@@ -159,6 +159,20 @@ export const useChatStore = defineStore('chat', () => {
   const isInRoom = computed(() => currentRoomId.value !== null)
   const notificationPermission = computed(() => getNotificationPermission())
 
+  function totalUnreadCount(): number {
+    let total = 0
+    unreadByScope.value.forEach((count) => {
+      total += count
+    })
+    return total
+  }
+
+  function syncElectronBadgeCount() {
+    const notifications = window.electronAPI?.notifications
+    if (!notifications?.setBadgeCount) return
+    void notifications.setBadgeCount(totalUnreadCount())
+  }
+
   function scopeKey(scopeType: 'channel' | 'dm', scopeId: string): string {
     return `${scopeType}:${scopeId}`
   }
@@ -174,11 +188,13 @@ export const useChatStore = defineStore('chat', () => {
 
   function clearUnread(scopeType: 'channel' | 'dm', scopeId: string) {
     unreadByScope.value.delete(scopeKey(scopeType, scopeId))
+    syncElectronBadgeCount()
   }
 
   function incrementUnread(scopeType: 'channel' | 'dm', scopeId: string) {
     const key = scopeKey(scopeType, scopeId)
     unreadByScope.value.set(key, (unreadByScope.value.get(key) || 0) + 1)
+    syncElectronBadgeCount()
   }
 
   function shouldNotify(message: ChatMessage, messageScopeType: 'channel' | 'dm', messageScopeId: string): boolean {
@@ -351,6 +367,7 @@ export const useChatStore = defineStore('chat', () => {
     typingUsers.value.clear()
     voiceRecordingUsers.value.clear()
     reconnectAttempts.value = 0
+    syncElectronBadgeCount()
   }
 
   function disconnectNotifications() {

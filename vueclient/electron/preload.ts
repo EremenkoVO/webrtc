@@ -71,5 +71,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('notifications:click', handler)
       return () => ipcRenderer.removeListener('notifications:click', handler)
     },
+    setBadgeCount: (count: number): Promise<boolean> =>
+      ipcRenderer.invoke('notifications:set-badge-count', count),
   },
 })

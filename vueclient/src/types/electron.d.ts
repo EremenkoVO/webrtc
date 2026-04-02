@@ -35,6 +35,7 @@ interface ElectronAPI {
       silent?: boolean
     }): Promise<boolean>
     onClick(cb: (tag: string) => void): () => void
+    setBadgeCount(count: number): Promise<boolean>
   }
 }
 

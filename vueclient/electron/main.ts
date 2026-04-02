@@ -285,3 +285,14 @@ ipcMain.handle(
     }
   },
 )
+
+ipcMain.handle('notifications:set-badge-count', (_event, count: number) => {
+  try {
+    const normalized = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
+    app.setBadgeCount(normalized)
+    return true
+  } catch (error) {
+    console.error('[main] Failed to set badge count:', error)
+    return false
+  }
+})
